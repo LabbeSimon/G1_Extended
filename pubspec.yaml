@@ -50,6 +50,9 @@ dependencies:
       url: https://github.com/alphacep/vosk-flutter.git
 
   # --- Misc ---
+  # Hands the diagnostic report to the system share sheet. No network, no
+  # extra permission: the file goes wherever the user sends it.
+  share_plus: ^10.1.4
   url_launcher: ^6.3.1
   package_info_plus: ^8.3.1
 

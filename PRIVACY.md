@@ -58,6 +58,23 @@ discarded; the audio itself is never written to permanent storage and never
 uploaded. Transcripts are kept locally in the dictation history, capped at the
 200 most recent entries, and you can clear them at any time from that screen.
 
+## Diagnostics
+
+There is no telemetry. Nothing is collected in the background and nothing is
+sent anywhere on its own.
+
+Instead, Settings offers a diagnostic report you can generate yourself. It
+contains the app version, your operating system version, whether the glasses
+are connected and their names, battery percentages, and any raw protocol
+frames you chose to record. No location, no contacts, no audio, no identifier
+of any kind. The app lists the contents on screen before writing it, saves it
+as a JSON file you own, and hands it to your system share sheet. Where it goes
+is entirely your decision — you can read it yourself, keep it, or attach it to
+a bug report.
+
+Recording protocol frames is off by default and only records while you leave
+it on.
+
 ## Where your data lives
 
 On your phone, in the app's private storage: notes, checklists, reminders,

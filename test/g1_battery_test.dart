@@ -4,35 +4,49 @@ import 'package:g1_extended/models/g1/glass.dart';
 
 void main() {
   group('G1 Battery Tests', () {
-    test('Battery info parsing from protocol data', () {
-      // Test data based on the protocol documentation
-      // Response: [0x2C, 0x66, batteryPercentage, voltage, charging, ...]
-      List<int> leftBatteryData = [0x2C, 0x66, 85, 0xe6, 0x01]; // 85%, charging
-      List<int> rightBatteryData = [
-        0x2C,
-        0x66,
-        64,
-        0xef,
-        0x00
-      ]; // 64%, not charging
+    test('reads the percentage out of a battery reply', () {
+      final left = G1BatteryInfo.fromResponse(
+          [0x2C, 0x66, 85, 0xe6, 0x01], GlassSide.left);
+      final right = G1BatteryInfo.fromResponse(
+          [0x2C, 0x66, 64, 0xef, 0x00], GlassSide.right);
 
-      // Parse left battery
-      final leftBattery =
-          G1BatteryInfo.fromResponse(leftBatteryData, GlassSide.left);
-      expect(leftBattery, isNotNull);
-      expect(leftBattery!.percentage, equals(85));
-      expect(leftBattery.voltage, equals(0xe6));
-      expect(leftBattery.isCharging, isTrue);
-      expect(leftBattery.side, equals(GlassSide.left));
+      expect(left!.percentage, 85);
+      expect(left.side, GlassSide.left);
+      expect(right!.percentage, 64);
+      expect(right.side, GlassSide.right);
+    });
 
-      // Parse right battery
-      final rightBattery =
-          G1BatteryInfo.fromResponse(rightBatteryData, GlassSide.right);
-      expect(rightBattery, isNotNull);
-      expect(rightBattery!.percentage, equals(64));
-      expect(rightBattery.voltage, equals(0xef));
-      expect(rightBattery.isCharging, isFalse);
-      expect(rightBattery.side, equals(GlassSide.right));
+    test('does not claim to know the charging state', () {
+      // These are the two sample frames from the protocol document. Reading
+      // data[4] as a charging flag makes the arm reporting 0% charging and
+      // the one reporting 100% not charging, because 0x5d is odd and 0x80 is
+      // even. The byte is a value, not a boolean, so charging stays false
+      // until real captures identify the right offset.
+      final empty = G1BatteryInfo.fromResponse(
+        [0x2C, 0x66, 0x00, 0xe6, 0x5d, 0x24, 0x00, 0x00, 0x00, 0x01, 0x04, 0x05],
+        GlassSide.left,
+      );
+      final full = G1BatteryInfo.fromResponse(
+        [0x2C, 0x66, 0x64, 0xef, 0x80, 0x19, 0x01, 0x04, 0x05, 0x01, 0x04, 0x05],
+        GlassSide.right,
+      );
+
+      expect(empty!.percentage, 0);
+      expect(full!.percentage, 100);
+      expect(empty.isCharging, isFalse);
+      expect(full.isCharging, isFalse);
+    });
+
+    test('rejects a frame that is not a battery reply', () {
+      expect(G1BatteryInfo.fromResponse([0x2B, 0x66, 50], GlassSide.left),
+          isNull);
+      expect(G1BatteryInfo.fromResponse([0x2C], GlassSide.left), isNull);
+    });
+
+    test('clamps a percentage outside the protocol range', () {
+      final info = G1BatteryInfo.fromResponse(
+          [0x2C, 0x66, 200, 0x00], GlassSide.left);
+      expect(info!.percentage, 100);
     });
 
     test('Battery status text generation', () {
