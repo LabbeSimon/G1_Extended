@@ -835,3 +835,8 @@ received L len: 6,--39 05 00 87 01 00
 
 sent status 39  R 0 , sent size: 5  sent: 39 05 00 87 01
 received R len: 6,--39 05 00 87 01 00
+
+
+
+
+Actually looking for getting the case battery %.
