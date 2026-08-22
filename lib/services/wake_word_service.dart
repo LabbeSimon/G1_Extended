@@ -4,13 +4,19 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:vosk_flutter/vosk_flutter.dart';
 
 import 'package:g1_extended/services/vosk_model_manager.dart';
+import 'package:g1_extended/services/wake_word_vocabulary.dart';
 
-/// Service for wake word detection ("computer")
-/// Uses Vosk for on-device, offline speech recognition
-/// Apache 2.0 license - free for commercial use
+/// Listens for a spoken wake word, entirely on the device.
+///
+/// The word must be one the installed model's lexicon contains. Vosk cannot
+/// return a word it does not know — not with poor confidence, not at all — so
+/// a wake word from the wrong language leaves a feature that appears to be
+/// running and can never fire. [WakeWordVocabulary] is what keeps the choice
+/// honest.
 class WakeWordService {
   static final WakeWordService singleton = WakeWordService._internal();
   factory WakeWordService() => singleton;
@@ -80,7 +86,12 @@ class WakeWordService {
     // Load settings from preferences
     final prefs = await SharedPreferences.getInstance();
     _isEnabled = prefs.getBool('wake_word_enabled') ?? false;
-    _wakeWord = prefs.getString('wake_word') ?? 'computer';
+    // The default follows the installed model, because a wake word absent
+    // from that model's lexicon can never be returned by it — the feature
+    // would look configured and simply never fire.
+    final model = await VoskModelManager.singleton.loadSelection();
+    _wakeWord =
+        prefs.getString('wake_word') ?? WakeWordVocabulary.defaultFor(model);
     _sensitivity = prefs.getDouble('wake_word_sensitivity') ?? 0.5;
 
     // Deliberately not loaded here.
@@ -140,12 +151,18 @@ class WakeWordService {
       _recognizer = await _vosk.createRecognizer(
         model: _model!,
         sampleRate: 16000,
+        // The grammar is built from the configured word rather than a fixed
+        // list. It used to name "computer" explicitly, so changing the wake
+        // word left the recogniser still listening for the old one alongside
+        // the new.
+        //
+        // "[unk]" is what keeps this honest: without it Vosk must map every
+        // sound it hears onto some word in the grammar, and a closed grammar
+        // of one word turns any cough into a detection.
         grammar: [
           _wakeWord,
-          'hey computer',
-          'okay computer',
-          'hi computer',
-          '[unk]', // Unknown token for noise/non-matching audio
+          for (final prefix in _prefixes) '$prefix $_wakeWord',
+          '[unk]',
         ],
       );
       debugPrint(
@@ -201,14 +218,9 @@ class WakeWordService {
           debugPrint('WakeWordService: Word: "$word" conf: $conf');
 
           // Check if this word matches our wake word
-          if (word == _wakeWord.toLowerCase() ||
-              word == 'hey' ||
-              word == 'okay' ||
-              word == 'hi') {
-            if (word == _wakeWord.toLowerCase()) {
-              wakeWordFound = true;
-              maxConfidence = conf > maxConfidence ? conf : maxConfidence;
-            }
+          if (word == _wakeWord.toLowerCase()) {
+            wakeWordFound = true;
+            maxConfidence = conf > maxConfidence ? conf : maxConfidence;
           }
         }
       } else {
@@ -237,11 +249,15 @@ class WakeWordService {
   /// Check if text contains the wake word
   bool _containsWakeWord(String text) {
     final words = text.toLowerCase().split(' ');
-    return words.contains(_wakeWord.toLowerCase()) ||
-        text.contains('hey $_wakeWord') ||
-        text.contains('okay $_wakeWord') ||
-        text.contains('hi $_wakeWord');
+    if (words.contains(_wakeWord.toLowerCase())) return true;
+    return _prefixes.any((p) => text.contains('$p $_wakeWord'));
   }
+
+  /// Openings people put in front of a wake word without thinking about it.
+  ///
+  /// Both languages, unconditionally: someone who has set a French wake word
+  /// may well still say "hey" in front of it.
+  static const List<String> _prefixes = ['hey', 'okay', 'hi', 'eh', 'dis'];
 
   /// Trigger wake word detection
   void _triggerWakeWord(double confidence) {
