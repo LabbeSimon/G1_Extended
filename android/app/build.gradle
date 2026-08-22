@@ -107,18 +107,3 @@ dependencies {
   // Kotlin coroutines for async operations
   implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 }
-
-subprojects {
-    afterEvaluate { project ->
-        if (project.plugins.hasPlugin("com.android.application") ||
-                project.plugins.hasPlugin("com.android.library")) {
-            project.android {
-                compileSdkVersion 35                
-            }
-        }
-    }
-}
-subprojects {
-    project.buildDir = "${rootProject.buildDir}/${project.name}"
-    project.evaluationDependsOn(':app')
-}
