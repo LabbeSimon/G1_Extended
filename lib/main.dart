@@ -20,6 +20,7 @@ import 'package:g1_extended/services/speedometer_service.dart';
 import 'package:g1_extended/services/stops_manager.dart';
 import 'package:g1_extended/services/voice_pipeline.dart';
 import 'package:g1_extended/theme/app_theme.dart';
+import 'package:g1_extended/utils/third_party_licences.dart';
 import 'package:g1_extended/utils/ui_perfs.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -30,6 +31,7 @@ const String APP_NAME = 'G1 Extended';
 void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
+    registerThirdPartyLicences();
 
     await _step('notifications', () async {
       await flutterLocalNotificationsPlugin.initialize(
