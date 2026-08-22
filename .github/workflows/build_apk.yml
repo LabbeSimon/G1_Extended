@@ -73,7 +73,10 @@ jobs:
       - name: Build release APK
         run: |
           set -o pipefail
-          if ! flutter build apk --release 2>&1 | tee build.log; then
+          # x86_64 is emulator-only and adds ~29 MB. This app needs Bluetooth LE
+          # hardware, so an emulator build serves no purpose.
+          if ! flutter build apk --release \
+               --target-platform android-arm,android-arm64 2>&1 | tee build.log; then
             echo "::error::APK build failed. Last 40 lines follow."
             tail -40 build.log | while IFS= read -r line; do
               echo "::error::$line"

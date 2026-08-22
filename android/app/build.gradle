@@ -55,6 +55,16 @@ android {
         jvmTarget = JavaVersion.VERSION_17
     }
 
+    packaging {
+        jniLibs {
+            // Emulator-only architectures. Neither ndk.abiFilters nor
+            // --target-platform catches prebuilt libraries shipped inside a
+            // plugin's AAR, which is how Vosk's 9 MB x86_64 binary kept
+            // ending up in the APK.
+            excludes += ['**/x86_64/**', '**/x86/**']
+        }
+    }
+
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
@@ -71,8 +81,11 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled true
+        // Only filters libraries the NDK builds here. Flutter's own engine and
+        // prebuilt plugin libraries such as Vosk ignore it, so the ABI list
+        // also has to be passed to `flutter build` (see the CI workflow).
         ndk {
-            abiFilters  'armeabi-v7a', 'arm64-v8a'
+            abiFilters 'armeabi-v7a', 'arm64-v8a'
         }
         
         // Inject display name as a string resource so AndroidManifest can reference it

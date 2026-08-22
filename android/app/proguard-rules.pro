@@ -34,3 +34,15 @@
 -dontwarn com.sun.jna.Native$AWT
 -dontwarn com.sun.jna.platform.win32.**
 -dontwarn com.sun.jna.platform.unix.**
+
+# androidx.window declares the OEM window extensions as compile-only: they
+# exist at runtime only on devices whose manufacturer ships them, so R8 is
+# right that they are absent and wrong to treat it as fatal. Pulled in
+# transitively by vosk_flutter.
+-dontwarn androidx.window.extensions.**
+-dontwarn androidx.window.sidecar.**
+
+# flutter_local_notifications deserialises its scheduled notifications through
+# Gson, so R8 cannot see the constructors it uses. Stripping them breaks
+# reminders in release builds only, which is a miserable thing to debug.
+-keep class com.dexterous.** { *; }
