@@ -5,6 +5,7 @@ import 'package:notification_listener_service/notification_event.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/speedometer_service.dart';
 
 /// Puts turn-by-turn directions on the glasses by reading the notification the
 /// navigation app already posts.
@@ -44,6 +45,10 @@ class NavigationService {
   String? _lastInstruction;
   DateTime? _lastSent;
   Timer? _expiry;
+
+  /// True while directions are on the lens, so other things that want the
+  /// display can stand aside.
+  bool get isNavigating => _lastInstruction != null;
 
   Future<bool> isEnabled() async {
     final prefs = await SharedPreferences.getInstance();
@@ -120,10 +125,13 @@ class NavigationService {
     _lastSent = now;
     _restartExpiry();
 
+    final speed = SpeedometerService.singleton.label;
+    final line = speed == null ? instruction : '$instruction  ·  $speed';
+
     try {
       // Directions bypass the display preference: someone who turned the
       // display off is not navigating with it.
-      await BluetoothManager.singleton.sendPriorityText(instruction);
+      await BluetoothManager.singleton.sendPriorityText(line);
     } catch (e) {
       debugPrint('NavigationService: could not display directions: $e');
     }

@@ -14,6 +14,8 @@ No account. No telemetry. Nothing leaves your phone.
 **On the display**
 - A dashboard with the time, weather, your agenda, checklists and reminders
 - Phone notifications forwarded in real time, filtered per app
+- Turn-by-turn directions, read from whatever navigation app you already use
+- Optional live speed readout from GPS
 - Live captions from the glasses microphone
 - Dictation: hold a temple touchpad, speak, see the text on the lens
 
@@ -37,7 +39,7 @@ that was not about the glasses taken out:
 | Android digital assistant | Existed only to launch the AI |
 | Discord build webhook | Sent commit messages and usernames to a third-party chat |
 
-Android permissions went from 33 to 17. The app makes three network requests, all
+Android permissions went from 33 to 18. The app makes three network requests, all
 optional:
 
 - `api.open-meteo.com` for the weather widget, if you enable it
