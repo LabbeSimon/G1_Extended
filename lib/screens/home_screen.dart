@@ -80,8 +80,9 @@ class _HomeScreenState extends State<HomeScreen>
       if (mounted) setState(() => _now = DateTime.now());
     });
 
+    _wasConnected = _bluetooth.isConnected;
     _connectionSubscription =
-        _bluetooth.connectionStatusStream.listen((_) => _refresh());
+        _bluetooth.connectionStatusStream.listen(_onConnectionChanged);
     _caseBattery = _bluetooth.caseBattery;
     _caseSubscription = _bluetooth.caseBatteryStream.listen((reading) {
       if (mounted) setState(() => _caseBattery = reading);
@@ -153,6 +154,35 @@ class _HomeScreenState extends State<HomeScreen>
     _caseSubscription?.cancel();
     _batterySubscription?.cancel();
     super.dispose();
+  }
+
+  /// Whether the glasses were connected the last time we looked.
+  ///
+  /// Needed because the connection stream fires on every change, and the
+  /// interesting one is the transition into being connected.
+  bool _wasConnected = false;
+
+  /// Re-reads what the glasses are doing once they are reachable.
+  ///
+  /// This used to be a bare `setState`. Connection normally completes a
+  /// second or two after this screen is built, by which time the initial read
+  /// has already given up — so the tiles kept showing cached defaults for the
+  /// whole session. Automatic brightness was the visible case: the "Auto"
+  /// label only appeared after opening the brightness screen, which queries
+  /// the glasses itself.
+  void _onConnectionChanged(bool connected) {
+    final justConnected = connected && !_wasConnected;
+    _wasConnected = connected;
+
+    if (justConnected) {
+      // Only on the transition. The battery stream also calls _refresh, and
+      // asking the glasses for every setting on each battery packet would put
+      // a conversation on the radio for no reason.
+      _loadGlassesState();
+      _bluetooth.requestBatteryInfo().ignore();
+    }
+
+    _refresh();
   }
 
   void _refresh() {
