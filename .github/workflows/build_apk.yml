@@ -96,7 +96,14 @@ jobs:
         if: always()
         run: |
           if [ -f android/app/keystore/release.jks ]; then
-            echo "Signing with the release key."
+            # A notice rather than a plain echo: annotations are readable
+            # without a token, so the outcome can be confirmed from outside
+            # the run rather than inferred from the absence of a warning.
+            FINGERPRINT=$(keytool -list -v \
+              -keystore android/app/keystore/release.jks \
+              -storepass "${{ secrets.KEYSTORE_PASSWORD }}" 2>/dev/null \
+              | grep -m1 'SHA256:' | tr -d ' ' || true)
+            echo "::notice::Release key in place. $FINGERPRINT"
           else
             echo "::warning::No signing key available, this APK is debug-signed and cannot be published."
           fi
