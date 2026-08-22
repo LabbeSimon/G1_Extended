@@ -138,23 +138,23 @@ class _DebugPageSate extends State<DebugPage> {
     await bluetoothManager.setMicrophone(true);
 
     final demoText = [
-      "Hello and welcome to AGiXT",
+      "Hello and welcome to G1 Extended",
       "These glasses cured my autism!",
       "haha no just kidding but they are amazing",
       "you are watching a demo of translation",
       "but nobody is talking??",
       "that is why I said DEMO...",
-      "anyway enjoy AGiXT",
+      "anyway enjoy G1 Extended",
       "and don't forget to like and subscribe",
     ];
     final demoTextFrench = [
-      "Bonjour et bienvenue à AGiXT",
+      "Bonjour et bienvenue sur G1 Extended",
       "Ces lunettes ont guéri mon autisme!",
       "haha non je rigole mais elles sont incroyables",
       "vous regardez une démo de traduction",
       "mais personne ne parle??",
       "c'est pourquoi j'ai dit DEMO...",
-      "de toute façon, profitez de AGiXT",
+      "de toute façon, profitez de G1 Extended",
       "et n'oubliez pas de liker et de vous abonner",
     ];
     for (var i = 0; i < demoText.length; i++) {

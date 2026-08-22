@@ -19,7 +19,6 @@ import 'package:g1_extended/services/stops_manager.dart';
 import 'package:g1_extended/services/open_meteo_weather_service.dart';
 import 'package:g1_extended/utils/utils.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart'; // Add this import for MethodChannel
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:hive/hive.dart';
 import 'package:notification_listener_service/notification_event.dart';
@@ -52,20 +51,12 @@ class BluetoothManager {
 
     notificationListener!.startListening();
 
-    // Set up method channel handler for displayTranscription
-    const MethodChannel channel = MethodChannel('dev.agixt.agixt/bluetooth');
-    channel.setMethodCallHandler((call) async {
-      if (call.method == 'displayTranscription') {
-        final String transcription =
-            call.arguments['display_transcription'] as String;
-        await _displayTranscriptionOnGlasses(transcription);
-        return true;
-      }
-      return null;
-    });
+    // The displayTranscription channel was served by the iOS Swift layer only.
+    // On Android nothing emits it, so the handler is gone; dictation reaches
+    // the glasses through DictationService instead.
   }
 
-  GlassesDashboard agixtDashboard = GlassesDashboard();
+  GlassesDashboard glassesDashboard = GlassesDashboard();
   DashboardController dashboardController = DashboardController();
   StopsManager stopsManager = StopsManager();
 
@@ -209,7 +200,7 @@ class BluetoothManager {
 
   Future<void> initialize() async {
     FlutterBluePlus.setLogLevel(LogLevel.none);
-    await agixtDashboard.initialize();
+    await glassesDashboard.initialize();
     stopsManager.reload();
     _syncTimer ??= Timer.periodic(const Duration(minutes: 1), (timer) {
       _sync();
@@ -824,7 +815,7 @@ class BluetoothManager {
         msgId: (notification.id ?? 1) + DateTime.now().millisecondsSinceEpoch,
         action: 0,
         type: 0,
-        appIdentifier: packageName.isNotEmpty ? packageName : 'dev.agixt.agixt',
+        appIdentifier: packageName.isNotEmpty ? packageName : 'fr.simonlabbe.g1extended',
         title: notification.title ?? '',
         subtitle: '',
         message: notification.content ?? '',
@@ -921,7 +912,7 @@ class BluetoothManager {
       debugPrint('Error synchronizing time with glasses: $e');
     }
 
-    final notes = await agixtDashboard.generateDashboardItems();
+    final notes = await glassesDashboard.generateDashboardItems();
     for (var note in notes) {
       await sendNote(note);
     }
@@ -972,13 +963,6 @@ class BluetoothManager {
     // for an unknown issue the microphone will not close when sent to the left side
     // to work around this we send the command to the right side only
     await rightGlass!.sendData([Commands.OPEN_MIC, subCommand]);
-  }
-
-  /// Updates the time and weather on the glasses
-  // Missing methods - adding basic implementations
-  Future<void> _displayTranscriptionOnGlasses(String transcription) async {
-    debugPrint('Displaying transcription: $transcription');
-    await sendText(transcription);
   }
 
   Future<void> disconnectFromGlasses() async {

@@ -75,7 +75,7 @@ class VoiceInputService {
     // No additional setup needed here
 
     // Note: Wake word callback is handled by AIService which coordinates
-    // the full flow (recording -> transcription -> AGiXT -> response)
+    // the full flow (recording -> transcription -> dictation)
     // Do NOT set up a callback here to avoid race conditions
 
     debugPrint(

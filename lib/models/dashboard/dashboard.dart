@@ -49,7 +49,7 @@ class GlassesDashboard {
     await Hive.openBox<Checklist>('checklistBox');
     await Hive.openBox('notificationApps');
     try {
-      await Hive.openLazyBox<StopItem>('agixtStopBox');
+      await Hive.openLazyBox<StopItem>('stopBox');
     } catch (e) {
       debugPrint('Error while registering adapter: $e');
     }
@@ -71,10 +71,10 @@ class GlassesDashboard {
     final dailyBox = Hive.box<DailyItem>('dailyBox');
     items.addAll(dailyBox.values.map((e) => e.toDashboardItem()));
 
-    final agixtStopBox = Hive.lazyBox<StopItem>('agixtStopBox');
+    final stopBox = Hive.lazyBox<StopItem>('stopBox');
     final List<StopItem> stops = [];
-    for (var i = 0; i < agixtStopBox.length; i++) {
-      final item = await agixtStopBox.getAt(i);
+    for (var i = 0; i < stopBox.length; i++) {
+      final item = await stopBox.getAt(i);
       if (item != null) {
         stops.add(item);
       }
@@ -93,9 +93,9 @@ class GlassesDashboard {
 
   List<DashboardWidget> _getChecklists() {
     final List<DashboardWidget> widgets = [];
-    final agixtChecklistBox =
+    final checklistBox =
         Hive.box<Checklist>('checklistBox');
-    final allChecklists = agixtChecklistBox.values.toList();
+    final allChecklists = checklistBox.values.toList();
     for (var list in allChecklists) {
       if (list.isShown) {
         widgets.add(list);

@@ -56,11 +56,12 @@ class GlassesSettingsService {
         SilentMode.parseResponse,
       );
 
-  Future<String?> readFirmware() => _ask(
-        DeviceInfo.buildFirmwareCommand(),
-        SettingsCommands.deviceInfo,
-        DeviceInfo.parseFirmware,
-      );
+  // No readFirmware() here on purpose. [_ask] matches a reply to its request
+  // by the command byte the glasses echo back, but the firmware reply carries
+  // no header at all: it starts with 0x02 and is raw ASCII from there. Wiring
+  // it to the generic path would silently time out on every call. The command
+  // builder and parser in DeviceInfo are kept and tested, ready for whoever
+  // adds a payload-matching path for it.
 
   Future<Duration?> readUptime() => _ask(
         DeviceInfo.buildUptimeCommand(),

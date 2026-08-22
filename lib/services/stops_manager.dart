@@ -25,7 +25,7 @@ class StopsManager {
   }
 
   Future<bool> _isStopStillInDatabase(StopItem stop) async {
-    final box = Hive.lazyBox<StopItem>('agixtStopBox');
+    final box = Hive.lazyBox<StopItem>('stopBox');
     for (int i = 0; i < box.length; i++) {
       final item = await box.getAt(i);
       if (item != null && item.uuid == stop.uuid) {
@@ -37,7 +37,7 @@ class StopsManager {
 
   Future<void> loadStops() async {
     // Load stops from Hive
-    final box = Hive.lazyBox<StopItem>('agixtStopBox');
+    final box = Hive.lazyBox<StopItem>('stopBox');
     final stops = <StopItem>[];
     for (int i = 0; i < box.length; i++) {
       final item = await box.getAt(i);
@@ -76,7 +76,7 @@ class StopsManager {
       'Time to: ${item.title}',
       NotificationDetails(
         android: AndroidNotificationDetails(
-          'agixt',
+          'g1_extended',
           'G1 Extended',
           icon: 'app_logo',
           importance: Importance.max,
