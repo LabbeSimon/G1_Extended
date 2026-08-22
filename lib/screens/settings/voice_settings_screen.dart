@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:g1_extended/models/speech_model.dart';
 import 'package:g1_extended/services/vosk_model_manager.dart';
+import 'package:g1_extended/services/wake_word_vocabulary.dart';
 import 'package:g1_extended/services/voice_input_service.dart';
 import 'package:g1_extended/services/wake_word_service.dart';
 
@@ -28,6 +30,7 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
   int _modelBytes = 0;
   double _downloadProgress = 0;
   bool _downloading = false;
+  SpeechModel _model = SpeechModel.english;
 
   @override
   void initState() {
@@ -39,6 +42,7 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
   }
 
   Future<void> _load() async {
+    await _models.loadSelection();
     await _wakeWord.initialize();
     await _voiceInput.initialize();
 
@@ -48,6 +52,7 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
 
     if (!mounted) return;
     setState(() {
+      _model = _models.model;
       _wakeWordEnabled = _wakeWord.isEnabled;
       _sensitivity = _wakeWord.sensitivity;
       _wakeWordValue = _wakeWord.wakeWord;
@@ -56,6 +61,32 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
       _modelBytes = size;
       _loading = false;
     });
+  }
+
+  /// Switches recognition to another language.
+  ///
+  /// The wake word moves with it when the current one belongs to the language
+  /// being left, because it could not be recognised afterwards: Vosk returns
+  /// only words its model knows, so leaving "souffleur" set under the English
+  /// model would give a wake word that can never fire and no indication why.
+  Future<void> _setModel(SpeechModel next) async {
+    await _models.setModel(next);
+
+    if (!WakeWordVocabulary.isVerified(_wakeWord.wakeWord, next)) {
+      await _wakeWord.setWakeWord(WakeWordVocabulary.defaultFor(next));
+    }
+
+    // Turn detection off across the change. It is holding a recogniser built
+    // from the previous model, and the model it would need is very likely not
+    // downloaded yet.
+    if (_wakeWord.isEnabled) await _wakeWord.setEnabled(false);
+
+    await _load();
+  }
+
+  Future<void> _setWakeWord(String word) async {
+    await _wakeWord.setWakeWord(word);
+    if (mounted) setState(() => _wakeWordValue = word);
   }
 
   Future<void> _setUseGlassesMic(bool value) async {
@@ -164,8 +195,35 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
             const Divider(),
           ],
           _header('Offline speech model'),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              'Recognition is limited to the words the model knows. The '
+              'language chosen here therefore decides what dictation '
+              'understands, and which wake words are possible at all.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Wrap(
+              spacing: 8,
+              children: [
+                for (final option in SpeechModel.all)
+                  ChoiceChip(
+                    label: Text(option.languageLabel),
+                    selected: option.id == _model.id,
+                    onSelected: _downloading
+                        ? null
+                        : (chosen) {
+                            if (chosen) _setModel(option);
+                          },
+                  ),
+              ],
+            ),
+          ),
           ListTile(
-            title: const Text('Vosk small English'),
+            title: Text('Vosk small ${_model.languageLabel}'),
             subtitle: Text(_useGlassesMic
                 ? _modelSizeLabel
                 : '$_modelSizeLabel · not needed for the phone microphone'),
@@ -214,6 +272,31 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
               _modelInstalled
                   ? 'Say "$_wakeWordValue" to start dictating.'
                   : 'Download the offline model first.',
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Wrap(
+              spacing: 8,
+              children: [
+                for (final word in WakeWordVocabulary.suggestionsFor(_model))
+                  ChoiceChip(
+                    label: Text(word),
+                    selected: word == _wakeWordValue,
+                    onSelected: (chosen) {
+                      if (chosen) _setWakeWord(word);
+                    },
+                  ),
+              ],
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: Text(
+              'Only words the model can return are offered. A word outside '
+              'its vocabulary is not recognised poorly — it is never returned '
+              'at all, so detection would silently never fire.',
+              style: TextStyle(fontSize: 12),
             ),
           ),
           if (_wakeWordEnabled) ...[

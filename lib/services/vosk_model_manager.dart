@@ -6,7 +6,10 @@ import 'package:archive/archive_io.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vosk_flutter/vosk_flutter.dart';
+
+import 'package:g1_extended/models/speech_model.dart';
 
 /// Owns the offline Vosk speech model.
 ///
@@ -21,9 +24,42 @@ class VoskModelManager {
   static final VoskModelManager singleton = VoskModelManager._internal();
   factory VoskModelManager() => singleton;
 
-  static const modelUrl =
-      'https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip';
-  static const modelName = 'vosk-model-small-en-us-0.15';
+  static const _selectedKey = 'speech_model_id';
+
+  /// The model everything on this screen refers to.
+  ///
+  /// Recognition is closed-vocabulary, so this is not a preference about
+  /// accent or quality: it decides which words can be returned at all.
+  /// Changing it changes what dictation understands and which wake words are
+  /// possible.
+  SpeechModel _selected = SpeechModel.english;
+
+  SpeechModel get model => _selected;
+  String get modelName => _selected.id;
+  String get modelUrl => _selected.url;
+
+  /// Restores the chosen model. Safe to call more than once.
+  Future<SpeechModel> loadSelection() async {
+    final prefs = await SharedPreferences.getInstance();
+    final id = prefs.getString(_selectedKey);
+    if (id != null) _selected = SpeechModel.byId(id);
+    return _selected;
+  }
+
+  /// Switches to another model.
+  ///
+  /// The model already in memory belongs to the previous language and would
+  /// answer in it, so it is dropped rather than carried across. What is on
+  /// disk is left alone: someone moving between two languages should not have
+  /// to download forty megabytes again each time they change their mind.
+  Future<void> setModel(SpeechModel next) async {
+    if (next.id == _selected.id) return;
+    _selected = next;
+    _model = null;
+    suspectedBadModel = false;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_selectedKey, next.id);
+  }
 
   final VoskFlutterPlugin _vosk = VoskFlutterPlugin.instance();
 
