@@ -18,6 +18,7 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
 
   bool _loading = true;
   bool _applyingPosition = false;
+  bool _calibrating = false;
 
   int _brightness = 20;
   bool _autoBrightness = false;
@@ -90,6 +91,29 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
     } finally {
       if (mounted) setState(() => _applyingPosition = false);
     }
+  }
+
+  Future<void> _calibrate() async {
+    setState(() => _calibrating = true);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Look straight ahead, then confirm on the touchpad'),
+        duration: Duration(seconds: 6),
+      ),
+    );
+
+    final confirmed = await _settings.calibrateZeroAngle();
+    if (!mounted) return;
+
+    setState(() => _calibrating = false);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(confirmed
+            ? 'Level calibrated'
+            : 'Calibration was not confirmed on the glasses'),
+      ));
   }
 
   Future<void> _restoreDefaults() async {
@@ -266,6 +290,23 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
           const Divider(),
 
           _header('Head-up activation'),
+          ListTile(
+            leading: const Icon(Icons.straighten),
+            title: const Text('Calibrate level'),
+            subtitle: const Text(
+              'Sets the reference the angle is measured from. Without it, the '
+              'angle counts from wherever the glasses last thought level was.',
+            ),
+            enabled: _connected && !_calibrating,
+            trailing: _calibrating
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : null,
+            onTap: _connected && !_calibrating ? _calibrate : null,
+          ),
           ListTile(
             title: const Text('Angle'),
             subtitle: Slider(

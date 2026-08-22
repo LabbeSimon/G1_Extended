@@ -13,13 +13,16 @@ import 'package:g1_extended/screens/settings/display_settings_screen.dart';
 import 'package:g1_extended/screens/teleprompter_screen.dart';
 import 'package:g1_extended/screens/live_captions_screen.dart';
 import 'package:g1_extended/screens/settings/dashboard_screen.dart';
+import 'package:g1_extended/screens/settings/permissions_screen.dart';
 import 'package:g1_extended/screens/settings_screen.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/glasses_settings_service.dart';
+import 'package:g1_extended/services/onboarding_service.dart';
 import 'package:g1_extended/services/open_meteo_weather_service.dart';
 import 'package:g1_extended/theme/app_theme.dart';
 import 'package:g1_extended/widgets/battery_gauge.dart';
 import 'package:g1_extended/widgets/bento.dart';
+import 'package:g1_extended/widgets/permission_banner.dart';
 import 'package:g1_extended/widgets/update_banner.dart';
 
 /// The home screen: a Bento grid over a hero tile that mirrors what the
@@ -70,6 +73,23 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_bluetooth.isConnected) {
       _bluetooth.requestBatteryInfo().ignore();
     }
+
+    // Nothing used to bring the permission screen up. The glasses would pair
+    // and then sit there receiving nothing, which looks like a broken app
+    // rather than an unpermitted one.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _offerPermissions());
+  }
+
+  Future<void> _offerPermissions() async {
+    if (!await OnboardingService.shouldShowPermissionManager()) return;
+    if (!mounted) return;
+
+    await OnboardingService.markPermissionManagerShown();
+    if (!mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const PermissionsSettingsPage()),
+    );
   }
 
   /// Reads brightness and silent mode back from the glasses, so the tiles
@@ -157,6 +177,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _buildHeader(),
               const SizedBox(height: 12),
+              const PermissionBanner(),
               const UpdateBanner(),
               _buildHero(),
               const SizedBox(height: AppMetrics.gutter),

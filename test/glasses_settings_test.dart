@@ -189,4 +189,48 @@ void main() {
       expect(DebugMode.buildSetCommand(false), [0xF4, 0x00]);
     });
   });
+
+  group('ZeroCalibration', () {
+    test('replays the captured handshake byte for byte', () {
+      // These are not derived, they are the frames the official app sends.
+      expect(ZeroCalibration.buildPrelude(), [0x39, 0x05, 0x00, 0x5F, 0x01]);
+      expect(ZeroCalibration.buildDashboardLock(),
+          [0x50, 0x06, 0x00, 0x00, 0x01, 0x01]);
+      expect(ZeroCalibration.buildBegin(),
+          [0x10, 0x07, 0x00, 0x0C, 0x02, 0x01, 0x00]);
+      expect(ZeroCalibration.buildFinish(),
+          [0x10, 0x07, 0x00, 0x05, 0x02, 0x00, 0x00]);
+    });
+
+    test('declares a length matching each packet', () {
+      for (final packet in [
+        ZeroCalibration.buildPrelude(),
+        ZeroCalibration.buildDashboardLock(),
+        ZeroCalibration.buildBegin(),
+        ZeroCalibration.buildFinish(),
+      ]) {
+        expect(packet[1], packet.length, reason: '$packet');
+      }
+    });
+
+    test('recognises the wearer confirming on the glasses', () {
+      expect(
+        ZeroCalibration.isAcknowledgement([0x10, 0x06, 0x00, 0x0D, 0x02, 0xC9]),
+        isTrue,
+      );
+    });
+
+    test('does not mistake another step for the confirmation', () {
+      // The begin step is acknowledged too, and must not end the wait.
+      expect(
+        ZeroCalibration.isAcknowledgement([0x10, 0x06, 0x00, 0x0C, 0x02, 0xC9]),
+        isFalse,
+      );
+      expect(
+        ZeroCalibration.isAcknowledgement([0x10, 0x06, 0x00, 0x0D, 0x02, 0xCA]),
+        isFalse,
+      );
+      expect(ZeroCalibration.isAcknowledgement([0x10, 0x06]), isFalse);
+    });
+  });
 }

@@ -25,6 +25,16 @@ abstract final class SettingsCommands {
   static const int getWearDetection = 0x3A;
 
   static const int clearScreen = 0x18;
+
+  /// Settings and flow control, with a subcommand in byte 3.
+  static const int flow = 0x10;
+
+  /// Sent as part of the calibration handshake. Purpose unclear beyond that.
+  static const int calibrationPrelude = 0x39;
+
+  /// Documented as "Send Dashboard Lock", and used by calibration to stop
+  /// the dashboard redrawing over the prompt.
+  static const int dashboardLock = 0x50;
   static const int deviceInfo = 0x23;
   static const int timeSinceBoot = 0x37;
 
@@ -296,4 +306,69 @@ abstract final class DebugMode {
         SettingsCommands.setDebugMode,
         enabled ? 0x01 : 0x00,
       ]);
+}
+
+
+/// The head-up angle is measured from a reference the wearer sets: the
+/// position their head is in when looking straight ahead.
+///
+/// Without it, "display wakes at 30 degrees" means thirty degrees from
+/// whatever the glasses last decided was level, which drifts with how they
+/// sit on a face. Calibrating is what makes the angle setting mean anything.
+///
+/// The official app performs a fixed exchange, captured in the protocol
+/// notes. Nothing here is inferred: it is that sequence, replayed.
+abstract final class ZeroCalibration {
+  /// Subcommand that opens calibration and puts the prompt on the lens.
+  static const int _begin = 0x0C;
+
+  /// Subcommand the glasses send once the wearer confirms on the touchpad.
+  static const int acknowledged = 0x0D;
+
+  /// Subcommand that closes it.
+  static const int _finish = 0x05;
+
+  /// `39 05 00 5f 01` — sent to both arms first.
+  static Uint8List buildPrelude() => Uint8List.fromList(
+        [SettingsCommands.calibrationPrelude, 0x05, 0x00, 0x5F, 0x01],
+      );
+
+  /// `50 06 00 00 01 01` — right arm only. Holds the dashboard still so it
+  /// does not paint over the calibration prompt.
+  static Uint8List buildDashboardLock() => Uint8List.fromList(
+        [SettingsCommands.dashboardLock, 0x06, 0x00, 0x00, 0x01, 0x01],
+      );
+
+  /// `10 07 00 0c 02 01 00` — both arms. The lens then asks the wearer to
+  /// look straight ahead and confirm.
+  static Uint8List buildBegin() => Uint8List.fromList(
+        [SettingsCommands.flow, 0x07, 0x00, _begin, 0x02, 0x01, 0x00],
+      );
+
+  /// `10 07 00 05 02 00 00` — both arms, once the wearer has confirmed.
+  static Uint8List buildFinish() => Uint8List.fromList(
+        [SettingsCommands.flow, 0x07, 0x00, _finish, 0x02, 0x00, 0x00],
+      );
+
+  /// True when a frame is the glasses reporting that the wearer confirmed.
+  ///
+  /// Shape is `10 06 00 0d 02 c9`: the flow command, the acknowledgement
+  /// subcommand, and the generic success byte.
+  static bool isAcknowledgement(List<int> data) {
+    if (data.length < 6) return false;
+    return data[0] == SettingsCommands.flow &&
+        data[3] == acknowledged &&
+        data[5] == SettingsCommands.responseSuccess;
+  }
+
+  /// True when a frame acknowledges one of the steps we sent.
+  static bool isStepAccepted(List<int> data, int subcommand) {
+    if (data.length < 6) return false;
+    return data[0] == SettingsCommands.flow &&
+        data[3] == subcommand &&
+        data[5] == SettingsCommands.responseSuccess;
+  }
+
+  static const int beginSubcommand = _begin;
+  static const int finishSubcommand = _finish;
 }

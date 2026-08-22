@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:notification_listener_service/notification_event.dart';
 import 'package:notification_listener_service/notification_listener_service.dart';
 
@@ -31,6 +32,19 @@ class AndroidNotificationsListener {
         onData(event);
       }
     });
+  }
+
+  /// Whether the user has granted notification access in system settings.
+  ///
+  /// This is not a runtime permission: Android puts it behind a dedicated
+  /// settings page, so it has to be asked about rather than requested.
+  Future<bool> isGranted() async {
+    try {
+      return await NotificationListenerService.isPermissionGranted();
+    } catch (e) {
+      debugPrint('AndroidNotificationsListener: could not check access: $e');
+      return false;
+    }
   }
 
   Future<void> requestPermission() async {

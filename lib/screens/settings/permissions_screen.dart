@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:notification_listener_service/notification_listener_service.dart';
 import 'package:g1_extended/services/permission_manager.dart';
 
 class PermissionsSettingsPage extends StatefulWidget {
@@ -14,6 +15,7 @@ class _PermissionsSettingsPageState extends State<PermissionsSettingsPage> {
   final Set<AppPermission> _inFlight = <AppPermission>{};
   late final List<PermissionDefinition> _definitions;
   bool _isLoading = true;
+  bool _notificationAccess = false;
   bool _bulkRequestInFlight = false;
 
   @override
@@ -24,6 +26,13 @@ class _PermissionsSettingsPageState extends State<PermissionsSettingsPage> {
   }
 
   Future<void> _loadSummaries() async {
+    try {
+      final granted = await NotificationListenerService.isPermissionGranted();
+      if (mounted) setState(() => _notificationAccess = granted);
+    } catch (e) {
+      debugPrint('Could not read notification access: $e');
+    }
+
     if (!mounted) {
       return;
     }
@@ -204,17 +213,45 @@ class _PermissionsSettingsPageState extends State<PermissionsSettingsPage> {
         return Icons.calendar_today;
       case AppPermission.microphone:
         return Icons.mic;
-      case AppPermission.storage:
-        return Icons.folder;
       case AppPermission.batteryOptimization:
         return Icons.battery_alert;
-      case AppPermission.contacts:
-        return Icons.contacts;
-      case AppPermission.sms:
-        return Icons.sms;
-      case AppPermission.phone:
-        return Icons.phone;
     }
+  }
+
+  /// Notification access is the one that matters most here and the one the
+  /// runtime permission system does not cover.
+  ///
+  /// Android keeps it behind a settings page of its own, so it can only be
+  /// asked about and navigated to, never requested inline. Without it the
+  /// glasses pair and then receive nothing, which reads as a broken app.
+  Widget _buildNotificationAccessCard() {
+    final granted = _notificationAccess;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ListTile(
+        leading: Icon(
+          granted ? Icons.notifications_active : Icons.notifications_off,
+        ),
+        title: const Text('Notification access'),
+        subtitle: Text(
+          granted
+              ? 'Your notifications can reach the glasses.'
+              : 'Needed to forward your notifications to the glasses. Opens '
+                  'a system settings page.',
+        ),
+        trailing: granted
+            ? const Icon(Icons.check)
+            : const Icon(Icons.open_in_new, size: 18),
+        onTap: granted
+            ? null
+            : () async {
+                await NotificationListenerService.requestPermission();
+                await _loadSummaries();
+              },
+      ),
+    );
   }
 
   @override
@@ -239,6 +276,8 @@ class _PermissionsSettingsPageState extends State<PermissionsSettingsPage> {
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(16),
                     children: [
+                      _buildNotificationAccessCard(),
+                      const SizedBox(height: 12),
                       _buildBulkActionCard(),
                       const SizedBox(height: 12),
                       ..._definitions.map(_buildPermissionCard),
