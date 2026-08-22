@@ -48,14 +48,24 @@ installed automatically: if a newer version exists the app shows a banner and,
 if you tap it, opens the release page in your browser. Turn the switch off and
 the request is never made.
 
-**Your own sources.** A custom card can pull `{value}` from a web address you
-type in yourself. These are the only requests the app makes on your behalf
-rather than its own: it never adds one, never picks the host, fetches no more
-often than the interval you set, and requires https. We have no idea what
-those addresses are and no way to find out.
+**Your own endpoints.** Two features send data to a host you choose and the
+app has never heard of: a custom card pulling `{value}` from a web address, and
+the assistant.
 
-With the weather widget off, glasses dictation unused, update checks disabled
-and no custom card using a source, the app makes no network requests at all.
+The assistant is off, and has no default host. Nothing happens until you type
+an address in. What is sent is the **text** of your question — the audio never
+travels, because speech is turned into text on the phone by the offline model
+first. Point it at a machine on your own network and the question does not
+leave your home. Point it at a commercial service and that is a decision you
+made in a field you filled. An API key, if the service needs one, is kept in
+the Android keystore. These are the only requests the app makes on your behalf rather
+than its own: it never adds one, never picks the host, and fetches no more
+often than the interval you set. We have no idea what those addresses are and
+no way to find out.
+
+With the weather widget off, glasses dictation unused, update checks disabled,
+no assistant configured and no custom card using a source, the app makes no
+network requests at all.
 
 ## Speed
 

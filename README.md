@@ -19,6 +19,8 @@ No account. No telemetry. Nothing leaves your phone.
 - Live captions from the glasses microphone
 - A teleprompter that follows your voice, or a set pace, or your thumb
 - Your own lines on the lens, built from live values or a URL you choose
+- Optionally, questions answered by a model you host or chose — never a
+  bundled one, and only ever the transcribed text, never the audio
 - Dictation: hold a temple touchpad, speak, see the text on the lens
 
 **Voice**

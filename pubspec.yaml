@@ -24,6 +24,12 @@ dependencies:
   permission_handler: ^11.3.1
   device_info_plus: ^10.1.0
 
+  # --- Credentials ---
+  # Back after being removed with the account system. An assistant endpoint
+  # may need an API key, and a key belongs in the keystore, not in plain
+  # preferences alongside the brightness setting.
+  flutter_secure_storage: ^9.2.2
+
   # --- Local storage ---
   hive: ^2.2.3
   hive_flutter: ^1.1.0

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import 'package:g1_extended/services/assistant_service.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 
 /// A single piece of dictated text, kept on the device.
@@ -57,6 +58,9 @@ class DictationService {
   Stream<Dictation> get stream => _controller.stream;
 
   /// Handles a finished transcript: display it, then remember it.
+  ///
+  /// When an assistant endpoint is configured, the transcript is a question
+  /// rather than a note, and the answer is what reaches the lens.
   Future<void> record(
     String text, {
     DictationSource source = DictationSource.glasses,
@@ -65,6 +69,11 @@ class DictationService {
     final trimmed = text.trim();
     if (trimmed.isEmpty) {
       debugPrint('DictationService: empty transcript, ignoring');
+      return;
+    }
+
+    if (await AssistantService.singleton.isConfigured()) {
+      await _askAssistant(trimmed);
       return;
     }
 
@@ -84,6 +93,39 @@ class DictationService {
 
     await _persist(entry);
     if (!_controller.isClosed) _controller.add(entry);
+  }
+
+  /// Sends the transcript on and shows the answer.
+  ///
+  /// The question goes up on the lens first: a local model can take several
+  /// seconds, and a display that stays blank looks like the touchpad did not
+  /// register the press.
+  Future<void> _askAssistant(String question) async {
+    final bluetooth = BluetoothManager.singleton;
+
+    try {
+      await bluetooth.sendPriorityText('$question\n…');
+    } catch (e) {
+      debugPrint('DictationService: could not echo the question: $e');
+    }
+
+    final result = await AssistantService.singleton.ask(question);
+    final text = switch (result) {
+      AssistantAnswer(:final text) => text,
+      AssistantFailure(:final reason) => reason,
+    };
+
+    try {
+      await bluetooth.sendPriorityText(text);
+    } catch (e) {
+      debugPrint('DictationService: could not display the answer: $e');
+    }
+
+    await _persist(Dictation(
+      text: '$question\n$text',
+      capturedAt: DateTime.now(),
+      source: DictationSource.glasses,
+    ));
   }
 
   /// Most recent dictations first.
