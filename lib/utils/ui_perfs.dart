@@ -13,25 +13,25 @@ class UiPerfs {
 
   UiPerfs._internal();
 
-  // Default to Fahrenheit
-  TemperatureUnit _temperatureUnit = TemperatureUnit.FAHRENHEIT;
+  TemperatureUnit _temperatureUnit = TemperatureUnit.CELSIUS;
   TemperatureUnit get temperatureUnit => _temperatureUnit;
   set temperatureUnit(TemperatureUnit value) => _setTemperatureUnit(value);
 
-  // Default to 12-hour format
-  TimeFormat _timeFormat = TimeFormat.TWELVE_HOUR; // Corrected default
+  TimeFormat _timeFormat = TimeFormat.TWENTY_FOUR_HOUR;
   TimeFormat get timeFormat => _timeFormat;
   set timeFormat(TimeFormat value) => _setTimeFormat(value);
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // Load temperature unit preference (0 for Celsius, 1 for Fahrenheit)
-    final tempUnitIdx = prefs.getInt('temperatureUnit') ?? 1;
+    // 0 = Celsius, 1 = Fahrenheit. Celsius is the default.
+    final tempUnitIdx = prefs.getInt('temperatureUnit') ??
+        TemperatureUnit.CELSIUS.index;
     _temperatureUnit = TemperatureUnit.values[tempUnitIdx];
 
-    // Load time format preference (0 for 12-hour, 1 for 24-hour)
-    final timeFormatIdx = prefs.getInt('timeFormat') ?? 0;
+    // 0 = 12-hour, 1 = 24-hour. 24-hour is the default.
+    final timeFormatIdx = prefs.getInt('timeFormat') ??
+        TimeFormat.TWENTY_FOUR_HOUR.index;
     _timeFormat = TimeFormat.values[timeFormatIdx];
 
     // Removed loading weather provider preference

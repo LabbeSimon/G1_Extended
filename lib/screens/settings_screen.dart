@@ -3,12 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:g1_extended/models/g1/battery.dart';
+import 'package:g1_extended/screens/settings/about_screen.dart';
 import 'package:g1_extended/screens/settings/dashboard_screen.dart';
 import 'package:g1_extended/screens/settings/notifications_screen.dart';
 import 'package:g1_extended/screens/settings/display_settings_screen.dart';
 import 'package:g1_extended/screens/settings/voice_settings_screen.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
-import 'package:g1_extended/widgets/g1_battery_widget.dart';
+import 'package:g1_extended/theme/app_theme.dart';
+import 'package:g1_extended/widgets/battery_gauge.dart';
+import 'package:g1_extended/widgets/bento.dart';
 import 'package:g1_extended/widgets/glass_status.dart';
 
 class GlassesSettingsPage extends StatefulWidget {
@@ -113,44 +116,120 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
     super.dispose();
   }
 
+  /// "12s ago", "4m ago" — short enough to sit under a battery reading.
+  String _formatRelativeTime(DateTime timestamp) {
+    final elapsed = DateTime.now().difference(timestamp);
+    if (elapsed.inSeconds < 60) return '${elapsed.inSeconds}s ago';
+    if (elapsed.inMinutes < 60) return '${elapsed.inMinutes}m ago';
+    if (elapsed.inHours < 24) return '${elapsed.inHours}h ago';
+    return '${elapsed.inDays}d ago';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isConnected = _isConnected;
-    final lowestBattery =
-        isConnected ? _batteryStatus.lowestBatteryPercentage : null;
-
     return Scaffold(
       body: SafeArea(
-        child: Container(
-          color: theme.colorScheme.surface,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: ListView(
+          padding: AppMetrics.pagePadding,
+          children: [
+            _buildHeader(),
+            const SizedBox(height: 12),
+            _buildDeviceTile(),
+            const SizedBox(height: AppMetrics.gutter),
+            _buildDisplayToggle(),
+            const SizedBox(height: AppMetrics.gutter),
+            _buildSettingsList(),
+            const SizedBox(height: 28),
+            _buildVersion(),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      child: Row(
+        children: [
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            icon: const Icon(Icons.arrow_back, color: AppColors.ink),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+          const SizedBox(width: 16),
+          Text(
+            'Glasses',
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontSize: 22, fontWeight: FontWeight.w400),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The device tile: what the glasses are doing, and the one button that
+  /// changes it. Everything else on this screen is a setting.
+  Widget _buildDeviceTile() {
+    final left = _batteryStatus.leftBattery;
+    final right = _batteryStatus.rightBattery;
+    final charging = _batteryStatus.isAnyCharging;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppMetrics.tileRadius),
+      child: Container(
+        color: AppColors.tile,
+        child: DotMatrix(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildHeroSection(
-                  theme,
-                  isConnected: isConnected,
-                  batteryPercentage: lowestBattery,
-                ),
-                const SizedBox(height: 24),
-                _buildStatusCard(theme),
-                const SizedBox(height: 16),
-                _buildDisplayCard(theme),
-                const SizedBox(height: 16),
-                _buildActionsCard(theme),
-                const SizedBox(height: 24),
-                Center(
-                  child: Text(
-                    'v0.0.68',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.5),
+                Row(
+                  children: [
+                    Icon(
+                      _isConnected
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                      size: 22,
+                      color: _isConnected ? AppColors.ink : AppColors.inkFaint,
                     ),
-                  ),
+                    const SizedBox(width: 12),
+                    Text(
+                      _isConnected ? 'My G1' : 'Not connected',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
+                if (_isConnected) ...[
+                  BatteryGauge(
+                    label: 'L',
+                    percentage: left?.percentage,
+                    charging: left?.isCharging ?? charging,
+                  ),
+                  const SizedBox(height: 8),
+                  BatteryGauge(
+                    label: 'R',
+                    percentage: right?.percentage,
+                    charging: right?.isCharging ?? charging,
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Updated ${_formatRelativeTime(_batteryStatus.lastUpdated)}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ] else
+                  Text(
+                    'Put both temples in range and pair them.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                const SizedBox(height: 18),
+                const GlassStatus(),
               ],
             ),
           ),
@@ -159,373 +238,142 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
     );
   }
 
-  Widget _buildHeroSection(
-    ThemeData theme, {
-    required bool isConnected,
-    required int? batteryPercentage,
-  }) {
-    final gradient = LinearGradient(
-      colors: [theme.colorScheme.primary, theme.colorScheme.primaryContainer],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
+  /// Silent mode reads better as an on/off tile than as a paragraph and a
+  /// switch, and it is the control people reach for most often here.
+  Widget _buildDisplayToggle() {
+    final silent = !_isGlassesDisplayEnabled;
 
-    return Container(
-      decoration: BoxDecoration(
-        gradient: gradient,
-        borderRadius: BorderRadius.circular(28),
-      ),
-      padding: const EdgeInsets.all(24),
+    return BentoTile(
+      icon: silent ? Icons.nightlight_outlined : Icons.wb_sunny_outlined,
+      active: silent,
+      onTap: () {
+        setState(() => _isGlassesDisplayEnabled = silent);
+        _saveGlassesDisplayPreference(silent);
+      },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Text(
+            silent ? 'Silent mode on' : 'Display active',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            silent
+                ? 'Nothing reaches the lens until you turn this off.'
+                : 'The timeline and notifications reach the lens.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsList() {
+    final entries = <_SettingsEntry>[
+      _SettingsEntry(
+        icon: Icons.brightness_medium_outlined,
+        title: 'Display',
+        subtitle: 'Brightness, position in the lens, head-up angle.',
+        builder: (_) => const DisplaySettingsScreen(),
+      ),
+      _SettingsEntry(
+        icon: Icons.dashboard_customize_outlined,
+        title: 'Dashboard',
+        subtitle: 'What shows on your glasses timeline.',
+        builder: (_) => const DashboardSettingsPage(),
+      ),
+      _SettingsEntry(
+        icon: Icons.notifications_none,
+        title: 'Notifications',
+        subtitle: 'Which apps reach the lens.',
+        builder: (_) => const NotificationSettingsPage(),
+      ),
+      _SettingsEntry(
+        icon: Icons.record_voice_over_outlined,
+        title: 'Voice',
+        subtitle: 'Wake word, microphone, offline speech model.',
+        builder: (_) => const VoiceSettingsScreen(),
+      ),
+      _SettingsEntry(
+        icon: Icons.info_outline,
+        title: 'About',
+        subtitle: 'Version, updates, source code.',
+        builder: (_) => const AboutScreen(),
+      ),
+    ];
+
+    return Column(
+      children: [
+        for (var i = 0; i < entries.length; i++) ...[
+          if (i > 0) const SizedBox(height: AppMetrics.gutter),
+          _buildSettingsRow(entries[i]),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSettingsRow(_SettingsEntry entry) {
+    return Material(
+      color: AppColors.tile,
+      borderRadius: BorderRadius.circular(AppMetrics.tileRadius),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: entry.builder),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          child: Row(
             children: [
-              IconButton.filledTonal(
-                style: ButtonStyle(
-                  backgroundColor: WidgetStatePropertyAll(
-                    theme.colorScheme.onPrimary.withValues(alpha: 0.15),
-                  ),
-                ),
-                icon: Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: theme.colorScheme.onPrimary,
-                ),
-                onPressed: () => Navigator.of(context).maybePop(),
-              ),
+              Icon(entry.icon, size: 22, color: AppColors.ink),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Glasses Settings',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        color: theme.colorScheme.onPrimary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Keep your Even Realities G1 glasses connected and tuned to your day.',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onPrimary.withValues(
-                          alpha: 0.9,
-                        ),
-                      ),
-                    ),
+                    Text(entry.title,
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 2),
+                    Text(entry.subtitle,
+                        style: Theme.of(context).textTheme.bodySmall),
                   ],
                 ),
               ),
+              const Icon(Icons.chevron_right,
+                  size: 20, color: AppColors.inkFaint),
             ],
           ),
-          const SizedBox(height: 20),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              _StatusChip(
-                icon:
-                    isConnected
-                        ? Icons.check_circle_rounded
-                        : Icons.portable_wifi_off_rounded,
-                label: isConnected ? 'Connected' : 'Disconnected',
-                tone:
-                    isConnected
-                        ? theme.colorScheme.secondary
-                        : theme.colorScheme.error,
-                onColor: theme.colorScheme.onSecondary,
-              ),
-              _StatusChip(
-                icon:
-                    _batteryStatus.isAnyCharging
-                        ? Icons.bolt_rounded
-                        : Icons.battery_5_bar_rounded,
-                label:
-                    batteryPercentage != null
-                        ? '$batteryPercentage%'
-                            '${_batteryStatus.isAnyCharging ? ' · Charging' : ''}'
-                        : 'Battery unavailable',
-                tone: theme.colorScheme.surface.withValues(alpha: 0.25),
-                onColor: theme.colorScheme.onPrimary,
-              ),
-              _StatusChip(
-                icon: Icons.update_rounded,
-                label:
-                    'Updated ${_formatRelativeTime(_batteryStatus.lastUpdated)}',
-                tone: theme.colorScheme.surface.withValues(alpha: 0.25),
-                onColor: theme.colorScheme.onPrimary,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusCard(ThemeData theme) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.podcasts_rounded,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'Live connection',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(
-                  alpha: theme.brightness == Brightness.dark ? 0.35 : 0.6,
-                ),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Padding(
-                padding: EdgeInsets.all(16),
-                child: GlassStatus(),
-              ),
-            ),
-            if (_isConnected) ...[
-              const SizedBox(height: 20),
-              G1BatteryWidget(batteryStatus: _batteryStatus, showDetails: true),
-            ],
-          ],
         ),
       ),
     );
   }
 
-  Widget _buildDisplayCard(ThemeData theme) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Focus & presence',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Keep your display calm during meetings or moments when you need to stay heads-up.',
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                    ],
-                  ),
-                ),
-                Switch.adaptive(
-                  value: !_isGlassesDisplayEnabled,
-                  onChanged: (value) {
-                    setState(() {
-                      _isGlassesDisplayEnabled = !value;
-                    });
-                    _saveGlassesDisplayPreference(!value);
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(
-                  alpha: theme.brightness == Brightness.dark ? 0.25 : 0.5,
-                ),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text(
-                  'Silent mode pauses timeline updates and notifications on your glasses until you turn it back off.',
-                ),
-              ),
-            ),
-          ],
-        ),
+  Widget _buildVersion() {
+    return Center(
+      child: Text(
+        'G1 Extended',
+        style: Theme.of(context)
+            .textTheme
+            .bodySmall
+            ?.copyWith(color: AppColors.inkFaint),
       ),
     );
-  }
-
-  Widget _buildActionsCard(ThemeData theme) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      child: Padding(
-        padding: const EdgeInsets.only(top: 12, bottom: 8),
-        child: Column(
-          children: [
-            _buildActionTile(
-              icon: Icons.brightness_medium_outlined,
-              title: 'Display',
-              subtitle: 'Brightness, position in the lens, head-up angle.',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const DisplaySettingsScreen(),
-                  ),
-                );
-              },
-            ),
-            const Divider(height: 1),
-            _buildActionTile(
-              icon: Icons.dashboard_customize_outlined,
-              title: 'Dashboard preferences',
-              subtitle: 'Choose what shows on your glasses timeline.',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const DashboardSettingsPage(),
-                  ),
-                );
-              },
-            ),
-            const Divider(height: 1),
-            _buildActionTile(
-              icon: Icons.notifications_active_outlined,
-              title: 'Notification routing',
-              subtitle: 'Control which alerts reach your glasses in real time.',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const NotificationSettingsPage(),
-                  ),
-                );
-              },
-            ),
-            const Divider(height: 1),
-            _buildActionTile(
-              icon: Icons.record_voice_over_rounded,
-              title: 'Voice',
-              subtitle: 'Wake word, microphone and offline speech model.',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const VoiceSettingsScreen(),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    final theme = Theme.of(context);
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-      leading: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primary.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Icon(icon, color: theme.colorScheme.primary),
-      ),
-      title: Text(
-        title,
-        style: theme.textTheme.titleMedium?.copyWith(
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      subtitle: Text(subtitle),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: onTap,
-    );
-  }
-
-  String _formatRelativeTime(DateTime timestamp) {
-    final difference = DateTime.now().difference(timestamp);
-    if (difference.inMinutes < 1) {
-      return 'just now';
-    }
-    if (difference.inHours < 1) {
-      return '${difference.inMinutes}m ago';
-    }
-    if (difference.inDays < 1) {
-      return '${difference.inHours}h ago';
-    }
-    return '${difference.inDays}d ago';
   }
 }
 
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({
+class _SettingsEntry {
+  const _SettingsEntry({
     required this.icon,
-    required this.label,
-    required this.tone,
-    required this.onColor,
+    required this.title,
+    required this.subtitle,
+    required this.builder,
   });
 
   final IconData icon;
-  final String label;
-  final Color tone;
-  final Color onColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: tone,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 18, color: onColor),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(color: onColor, fontWeight: FontWeight.w600),
-          ),
-        ],
-      ),
-    );
-  }
+  final String title;
+  final String subtitle;
+  final WidgetBuilder builder;
 }

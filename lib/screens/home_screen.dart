@@ -19,6 +19,7 @@ import 'package:g1_extended/services/glasses_settings_service.dart';
 import 'package:g1_extended/services/open_meteo_weather_service.dart';
 import 'package:g1_extended/theme/app_theme.dart';
 import 'package:g1_extended/widgets/bento.dart';
+import 'package:g1_extended/widgets/update_banner.dart';
 
 /// The home screen: a Bento grid over a hero tile that mirrors what the
 /// glasses are showing right now.
@@ -149,6 +150,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _buildHeader(),
               const SizedBox(height: 12),
+              const UpdateBanner(),
               _buildHero(),
               const SizedBox(height: AppMetrics.gutter),
               _buildDeviceRow(),

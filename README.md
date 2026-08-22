@@ -37,15 +37,16 @@ that was not about the glasses taken out:
 | Android digital assistant | Existed only to launch the AI |
 | Discord build webhook | Sent commit messages and usernames to a third-party chat |
 
-Android permissions went from 33 to 19. The app makes exactly two network
-requests, both optional:
+Android permissions went from 33 to 17. The app makes three network requests, all
+optional:
 
 - `api.open-meteo.com` for the weather widget, if you enable it
 - `alphacephei.com` once, to download the offline speech model
+- `api.github.com` to check for a newer release, if you leave that on
 
 ## Privacy
 
-No account, no telemetry, two optional network requests. The full statement is
+No account, no telemetry, three optional network requests. The full statement is
 in [PRIVACY.md](PRIVACY.md).
 
 ## Contributing

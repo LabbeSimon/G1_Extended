@@ -27,14 +27,16 @@ The same things, whoever or whatever wrote it:
 
 This fork exists because the upstream app shipped a server that could read
 contacts, send SMS, take photos and list files on the phone. The app makes
-exactly two network requests, both optional and both user-visible:
+three network requests, each optional and user-visible:
 
 | Host | Why |
 |---|---|
 | `api.open-meteo.com` | Weather on the glasses, if enabled |
 | `alphacephei.com` | One-off download of the offline speech model |
+| `api.github.com` | Update check, if left enabled |
 
-Anything that adds a third is rejected on sight — analytics, crash reporting,
+Every one of them is optional, carries nothing about the user, and can be
+turned off. Anything that adds a fourth on weaker terms is rejected on sight — analytics, crash reporting,
 "anonymous" usage statistics, remote configuration, an account system. Speech
 recognition runs on the device and stays there.
 
