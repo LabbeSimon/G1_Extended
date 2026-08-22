@@ -206,8 +206,10 @@ class OpenMeteoWeatherService {
       }
 
       // Fetch weather from Open-Meteo
-      final weatherData =
-          await _fetchWeatherFromAPI(position.latitude, position.longitude);
+      final weatherData = await _fetchWeatherFromAPI(
+        coarsen(position.latitude),
+        coarsen(position.longitude),
+      );
 
       if (weatherData != null) {
         await _cacheWeather(weatherData);
@@ -261,6 +263,15 @@ class OpenMeteoWeatherService {
   }
 
   /// Fetch weather data from Open-Meteo API
+  /// Rounds a coordinate to roughly a kilometre before it leaves the device.
+  ///
+  /// Two decimal places is about 1.1 km, which changes nothing in a forecast
+  /// but stops the request from carrying a house-level position. This is the
+  /// only personal data the app ever sends anywhere.
+  @visibleForTesting
+  static double coarsen(double degrees) =>
+      (degrees * 100).roundToDouble() / 100;
+
   Future<WeatherData?> _fetchWeatherFromAPI(
       double latitude, double longitude) async {
     try {
