@@ -26,20 +26,39 @@ class BackgroundService : Service(), LifecycleDetector.Listener {
         }
 
         val notification = Notifications.buildForegroundNotification(this)
-        startForeground(Notifications.NOTIFICATION_ID_BACKGROUND_SERVICE, notification)
+        if (!enterForeground(notification)) return
 
         LifecycleDetector.listener = this
     }
 
+
+    /**
+     * Promotes the service to the foreground.
+     *
+     * A connectedDevice foreground service needs the Bluetooth runtime
+     * permissions, which are not granted on a fresh install. Android throws
+     * rather than refusing politely, and an uncaught throw here takes the whole
+     * app down before its first frame. Failing quietly and stopping is the only
+     * sane behaviour: the service is useless without the permission anyway.
+     */
+    private fun enterForeground(notification: android.app.Notification): Boolean {
+        return try {
+            startForeground(Notifications.NOTIFICATION_ID_BACKGROUND_SERVICE, notification)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not enter the foreground, stopping the service", e)
+            stopSelf()
+            false
+        }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         intent?.getLongExtra(KEY_CALLBACK_RAW_HANDLE, -1)?.let { callbackRawHandle ->
             if (callbackRawHandle != -1L) setCallbackRawHandle(callbackRawHandle)
         }
 
-        // Ensure service maintains proper foreground state even when location is enabled
         val notification = Notifications.buildForegroundNotification(this)
-        startForeground(Notifications.NOTIFICATION_ID_BACKGROUND_SERVICE, notification)
+        if (!enterForeground(notification)) return START_NOT_STICKY
 
         if (!LifecycleDetector.isActivityRunning) {
             startFlutterNativeView()
@@ -103,6 +122,8 @@ class BackgroundService : Service(), LifecycleDetector.Listener {
 
 
     companion object {
+        private const val TAG = "BackgroundService"
+
         private const val SHARED_PREFERENCES_NAME = "fr.simonlabbe.g1extended.BackgroundService"
 
         private var callbackRawHandle: Long? = null;

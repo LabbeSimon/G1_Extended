@@ -46,3 +46,12 @@
 # Gson, so R8 cannot see the constructors it uses. Stripping them breaks
 # reminders in release builds only, which is a miserable thing to debug.
 -keep class com.dexterous.** { *; }
+
+# Entry points declared only in AndroidManifest.xml: the Application, the
+# Activity and the background Service. AGP normally derives keep rules from
+# the manifest, but a stripped Application class is an instant crash on
+# launch with no useful stack trace, so this is not the place to be subtle.
+-keep class fr.simonlabbe.g1extended.App { *; }
+-keep class fr.simonlabbe.g1extended.MainActivity { *; }
+-keep class fr.simonlabbe.g1extended.BackgroundService { *; }
+-keep class fr.simonlabbe.g1extended.cpp.Cpp { *; }

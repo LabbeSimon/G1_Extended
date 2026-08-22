@@ -71,10 +71,14 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
+        <!-- Android 14 refuses a foreground service that does not declare its
+             type, and kills the process. connectedDevice matches what this
+             service does: hold the BLE link to the glasses. -->
         <service
             android:name="fr.simonlabbe.g1extended.BackgroundService"
             android:enabled="true"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
 
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
