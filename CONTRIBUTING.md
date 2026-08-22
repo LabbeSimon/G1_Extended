@@ -17,6 +17,28 @@ Generating one: tap the version ten times in Settings > About, then
 Battery frame capture > share. It leaves out anything identifying by default
 and lists its contents before writing.
 
+## Which branch
+
+Two, and only two.
+
+**`beta`** is where work happens. Every change lands here first, whoever
+wrote it. It is expected to build and to pass its tests, but not to have been
+worn on a face for a week.
+
+**`main`** is what people install. A change reaches it by way of a pull
+request from `beta`, once the build coming off `beta` has actually been used
+on the glasses. Nothing is committed to `main` directly.
+
+The distinction matters more than it might for an application that only talks
+to a screen. Half of this code speaks to hardware over two Bluetooth radios,
+and a good part of the protocol was arrived at by watching what the glasses
+answered rather than from a specification. Tests confirm that the bytes
+leaving the phone are the bytes intended; they cannot confirm that the
+glasses do anything sensible on receiving them. Only wearing them does that.
+
+Feature branches are welcome and are deleted once merged. Long-lived ones are
+not: a branch that sits for weeks stops being a change and becomes a fork.
+
 ## Sending a change
 
 Fork, branch, open a pull request. Push access is deliberately not granted to
