@@ -19,6 +19,7 @@ import 'package:g1_extended/services/voice_command_runner.dart';
 import 'package:g1_extended/services/notifications_listener.dart';
 import 'package:g1_extended/services/stops_manager.dart';
 import 'package:g1_extended/services/open_meteo_weather_service.dart';
+import 'package:g1_extended/utils/glasses_text.dart';
 import 'package:g1_extended/utils/utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -651,7 +652,10 @@ class BluetoothManager {
     Duration delay = const Duration(seconds: 5),
     int? cancelVersion,
   }) async {
-    final textMsg = TextMessage(text);
+    // The display has no glyphs for Cyrillic, Arabic and several other
+    // scripts. Sending them anyway draws blank boxes, which reads as a broken
+    // app rather than a hardware limit.
+    final textMsg = TextMessage(GlassesText.prepare(text));
     List<List<int>> packets = textMsg.constructSendText();
 
     for (int i = 0; i < packets.length; i++) {

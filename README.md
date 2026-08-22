@@ -101,6 +101,21 @@ storeFile=../app/keystore/release.jks
 
 `Even Realities G1 BLE Protocol.txt` documents the BLE commands this app uses.
 
+Hardware figures that shape the code, from the manufacturer's own
+specifications:
+
+| | |
+|---|---|
+| Display | 640 × 200, monochrome green micro LED, 25° field of view |
+| Refresh | 20 Hz — which is why directions and speed are throttled rather than redrawn on every update |
+| Scripts | Latin, Japanese, Korean and simplified Chinese. Cyrillic, Arabic, Hindi, Bengali and traditional Chinese are not drawable and are refused before sending |
+| Battery | 160 mAh in the glasses, 2000 mAh in the case |
+| Microphones | Two |
+
+The bitmap helper works on a 576 × 136 canvas, which is not the display
+resolution above. Whether that is an inherited mistake or the image command
+addressing a sub-region is untested.
+
 ## Third-party code
 
 What ships inside the APK that someone else wrote is listed in
