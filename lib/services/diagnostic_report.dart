@@ -81,7 +81,9 @@ class DiagnosticReport {
       },
       'batteryFrames': {
         'recording': log.enabled,
+        'capturedStates': log.capturedStates(),
         'varyingBytePositions': log.varyingPositions(),
+        'byState': log.comparisonTable(),
         'frames': [
           for (final frame in log.frames)
             {
