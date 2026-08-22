@@ -239,6 +239,14 @@ Future<void> _initHive() async {
     } catch (e) {
       debugPrint('Failed to open appPrefs: $e');
     }
+
+    try {
+      if (!Hive.isBoxOpen('customCards')) {
+        await Hive.openBox('customCards');
+      }
+    } catch (e) {
+      debugPrint('Failed to open customCards: $e');
+    }
   } catch (e) {
     debugPrint('Critical error initializing Hive: $e');
     rethrow;

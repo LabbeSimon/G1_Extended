@@ -48,8 +48,14 @@ installed automatically: if a newer version exists the app shows a banner and,
 if you tap it, opens the release page in your browser. Turn the switch off and
 the request is never made.
 
-With the weather widget off, glasses dictation unused and update checks
-disabled, the app makes no network requests at all.
+**Your own sources.** A custom card can pull `{value}` from a web address you
+type in yourself. These are the only requests the app makes on your behalf
+rather than its own: it never adds one, never picks the host, fetches no more
+often than the interval you set, and requires https. We have no idea what
+those addresses are and no way to find out.
+
+With the weather widget off, glasses dictation unused, update checks disabled
+and no custom card using a source, the app makes no network requests at all.
 
 ## Speed
 
