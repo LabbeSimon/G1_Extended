@@ -4,6 +4,7 @@ import 'package:g1_extended/screens/settings/permissions_screen.dart';
 import 'package:notification_listener_service/notification_listener_service.dart';
 import 'package:g1_extended/services/permission_manager.dart';
 import 'package:g1_extended/theme/app_theme.dart';
+import 'package:g1_extended/widgets/pixel_art.dart';
 
 /// Says so when the app is missing something it needs to do its job.
 ///
@@ -89,8 +90,7 @@ class PermissionBannerState extends State<PermissionBanner> {
             padding: const EdgeInsets.all(18),
             child: Row(
               children: [
-                const Icon(Icons.lock_open_outlined,
-                    size: 22, color: AppColors.ink),
+                const PixelArt(rows: PixelArtwork.lock, size: 20),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
