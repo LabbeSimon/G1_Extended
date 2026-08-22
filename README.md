@@ -65,7 +65,13 @@ flutter pub get
 flutter build apk --release
 ```
 
-CI builds an APK on every push and publishes a release from `main`.
+CI builds an APK on every push and attaches it as an artifact. A release is
+cut only by pushing a tag, so ordinary commits do not create versions:
+
+```
+git tag v1.1.0
+git push origin v1.1.0
+```
 
 ## Signing
 
@@ -90,6 +96,12 @@ storeFile=../app/keystore/release.jks
 ## Protocol
 
 `Even Realities G1 BLE Protocol.txt` documents the BLE commands this app uses.
+
+## Third-party code
+
+What ships inside the APK that someone else wrote is listed in
+[THIRD_PARTY.md](THIRD_PARTY.md), and shown in the app under
+Settings > About > Licence.
 
 ## Licence and provenance
 
