@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:g1_extended/models/g1/battery.dart';
 import 'package:g1_extended/screens/settings/about_screen.dart';
+import 'package:g1_extended/screens/settings/custom_cards_screen.dart';
 import 'package:g1_extended/screens/settings/dashboard_screen.dart';
 import 'package:g1_extended/screens/settings/notifications_screen.dart';
 import 'package:g1_extended/screens/settings/display_settings_screen.dart';
@@ -278,6 +279,12 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
         title: 'Dashboard',
         subtitle: 'What shows on your glasses timeline.',
         builder: (_) => const DashboardSettingsPage(),
+      ),
+      _SettingsEntry(
+        icon: Icons.edit_note_outlined,
+        title: 'My cards',
+        subtitle: 'Your own lines on the glasses.',
+        builder: (_) => const CustomCardsScreen(),
       ),
       _SettingsEntry(
         icon: Icons.notifications_none,

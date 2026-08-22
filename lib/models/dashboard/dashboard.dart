@@ -4,6 +4,7 @@ import 'package:g1_extended/models/dashboard/daily.dart';
 import 'package:g1_extended/models/dashboard/stop.dart';
 import 'package:g1_extended/models/dashboard/dashboard_widget.dart';
 import 'package:g1_extended/models/g1/note.dart';
+import 'package:g1_extended/services/custom_cards_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -34,7 +35,10 @@ class GlassesDashboard {
 
   List<DashboardItem> items = [];
 
+  /// Was empty: the extension point existed and nothing used it. Custom
+  /// cards are what the wearer writes themselves, so they come first.
   List<DashboardWidget> installedWidgets = [
+    CustomCardsService.singleton,
   ];
 
   bool _initialized = false;

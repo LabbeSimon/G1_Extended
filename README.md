@@ -18,6 +18,7 @@ No account. No telemetry. Nothing leaves your phone.
 - Optional live speed readout from GPS
 - Live captions from the glasses microphone
 - A teleprompter that follows your voice, or a set pace, or your thumb
+- Your own lines on the lens, built from live values or a URL you choose
 - Dictation: hold a temple touchpad, speak, see the text on the lens
 
 **Voice**
