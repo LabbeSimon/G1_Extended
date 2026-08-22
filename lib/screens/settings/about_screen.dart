@@ -160,6 +160,21 @@ class _AboutScreenState extends State<AboutScreen> {
               mode: LaunchMode.externalApplication,
             ),
           ),
+          ListTile(
+            leading: const Icon(Icons.gavel_outlined),
+            title: const Text('Licence'),
+            subtitle: const Text('BSD 2-Clause'),
+            onTap: () => showLicensePage(
+              context: context,
+              applicationName: 'G1 Extended',
+              applicationVersion: _version,
+              applicationLegalese:
+                  'BSD 2-Clause. Copyright (c) 2024, even-realities.\n\n'
+                  'Derived from AGiXT/mobile, with the AI assistant and '
+                  'everything unrelated to the glasses removed. The Bluetooth '
+                  'layer and the LC3 decoder are inherited work.',
+            ),
+          ),
           if (_developer) ...[
             const Divider(),
             const Padding(
