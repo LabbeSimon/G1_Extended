@@ -1,6 +1,6 @@
 # G1 Extended
 
-A companion app for [Even Realities G1](https://www.evenrealities.com) smart glasses.
+An Android companion app for [Even Realities G1](https://www.evenrealities.com) smart glasses.
 No account. No telemetry. Nothing leaves your phone.
 
 ## What it does
@@ -36,6 +36,7 @@ that was not about the glasses taken out:
 | Solana wallet integration | Nothing to do with glasses |
 | Remote command execution | The server could read contacts, send SMS, take photos, read files |
 | Wear OS companion app | Not a G1 |
+| The iOS project | Never compiled, and could not work: notification access, the background service, the app list and the offline speech model are all Android-only |
 | Android digital assistant | Existed only to launch the AI |
 | Discord build webhook | Sent commit messages and usernames to a third-party chat |
 
@@ -90,6 +91,19 @@ storeFile=../app/keystore/release.jks
 
 `Even Realities G1 BLE Protocol.txt` documents the BLE commands this app uses.
 
-## Licence
+## Licence and provenance
 
-See [LICENSE](LICENSE). Upstream work belongs to the AGiXT authors.
+BSD 2-Clause. See [LICENSE](LICENSE), whose copyright notice must travel with
+any copy of this code or of a binary built from it.
+
+The lineage, since this repository is no longer marked as a fork and nothing
+else records it:
+
+- the copyright notice names **even-realities**
+- **[AGiXT/mobile](https://github.com/AGiXT/mobile)** built the AI assistant on
+  top of it, starting May 2025
+- this repository removed that assistant and everything else unrelated to the
+  glasses
+
+Roughly 12 000 of the surviving lines are inherited, mostly the BLE layer and
+the LC3 decoder. That work is not mine and the licence is theirs.

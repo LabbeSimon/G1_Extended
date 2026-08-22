@@ -2,8 +2,9 @@
 
 Contributions written with the help of AI agents are **accepted** here.
 
-That was not true while the fork was being carved out of
-[AGiXT/mobile](https://github.com/AGiXT/mobile). Removing 41 000 lines
+That was not true while this was being carved out of
+[AGiXT/mobile](https://github.com/AGiXT/mobile), which this repository began
+as a fork of. Removing 41 000 lines
 touches everything at once, and an agent working in the middle of it would
 have been reasoning about a codebase that no longer existed by the time it
 finished. The heavy lifting is done, so that objection is gone.
