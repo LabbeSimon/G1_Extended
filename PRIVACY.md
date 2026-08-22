@@ -21,9 +21,9 @@ named, on your device, and none of it is uploaded anywhere.
 | Notification access | Mirroring your phone notifications onto the glasses | No |
 | Calendar | Showing the day's agenda on the glasses | No |
 
-## The only two network requests
+## The only three network requests
 
-The app contacts exactly two hosts, both optional and neither operated by us.
+The app contacts three hosts. All three are optional, and none is operated by us.
 
 **1. `api.open-meteo.com`** — the weather forecast, only if you enable the
 weather widget. The request contains your latitude and longitude **rounded to
@@ -39,8 +39,17 @@ wake word. It is a plain file download. No audio and no data about you is sent,
 then or ever. After that download, speech recognition runs entirely on your
 phone.
 
-If you use neither the weather widget nor glasses dictation, the app makes no
-network requests at all.
+**3. `api.github.com`** — an update check, at most once every 12 hours, and
+only while "Check for updates" is on in Settings > About. It is an
+unauthenticated `GET` for the latest release number of this repository. No
+account, no device identifier and nothing about your usage is sent; as with any
+web request, GitHub sees the connecting IP address. Nothing is downloaded or
+installed automatically: if a newer version exists the app shows a banner and,
+if you tap it, opens the release page in your browser. Turn the switch off and
+the request is never made.
+
+With the weather widget off, glasses dictation unused and update checks
+disabled, the app makes no network requests at all.
 
 ## Audio
 
