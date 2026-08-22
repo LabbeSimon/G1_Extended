@@ -3,6 +3,7 @@ import 'package:g1_extended/models/g1/battery.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'dart:async';
+import '../../services/battery_frame_log.dart';
 import '../../services/bluetooth_reciever.dart';
 import '../../utils/constants.dart';
 
@@ -184,6 +185,8 @@ class Glass {
       );
 
       // Parse battery info using the protocol parser
+      BatteryFrameLog.singleton.record(side, data);
+
       final batteryInfo = G1BatteryInfo.fromResponse(data, side);
       if (batteryInfo != null) {
         debugPrint('[$side Glass] Battery parsed: ${batteryInfo.toString()}');

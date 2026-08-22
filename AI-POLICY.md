@@ -36,9 +36,15 @@ three network requests, each optional and user-visible:
 | `api.github.com` | Update check, if left enabled |
 
 Every one of them is optional, carries nothing about the user, and can be
-turned off. Anything that adds a fourth on weaker terms is rejected on sight — analytics, crash reporting,
-"anonymous" usage statistics, remote configuration, an account system. Speech
-recognition runs on the device and stays there.
+turned off. Anything that adds a fourth on weaker terms is rejected on sight —
+analytics, crash reporting, "anonymous" usage statistics, remote
+configuration, an account system. Speech recognition runs on the device and
+stays there.
+
+If you need data out of the app to debug something, the answer is the
+diagnostic report: a JSON file the user generates deliberately, sees the
+contents of beforehand, and sends where they choose. Never a request the app
+makes on its own behalf.
 
 ## Human review
 

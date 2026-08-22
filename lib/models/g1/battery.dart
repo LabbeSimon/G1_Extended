@@ -15,8 +15,17 @@ class G1BatteryInfo {
     required this.timestamp,
   });
 
-  /// Parse battery response according to protocol:
-  /// Response: [0x2C, 0x66, batteryPercentage, voltage, charging, ...]
+  /// Parses `2C 66 <percentage> ...`.
+  ///
+  /// Only the percentage is trustworthy. The protocol document lists "in
+  /// case, arms closed, charging, voltage" after it, but its own sample bytes
+  /// contradict that: the last three are the firmware version, and the byte
+  /// this used to read as a charging flag holds 0x5d on an arm reporting 0%
+  /// and 0x80 on one reporting 100%. Reading it as a boolean claimed the empty
+  /// arm was charging and the full one was not.
+  ///
+  /// Charging is therefore reported as unknown until real frames captured in
+  /// known states say otherwise. See BatteryFrameLog.
   static G1BatteryInfo? fromResponse(List<int> data, GlassSide side) {
     if (data.length < 4) {
       return null;
@@ -33,16 +42,12 @@ class G1BatteryInfo {
     // Ensure percentage is within valid range and accurate
     final percentage = rawPercentage.clamp(0, 100);
 
-    // Voltage is typically spread across multiple bytes, but for simplicity we'll use one byte
     final voltage = data.length > 3 ? data[3] : 0;
-
-    // Charging status from the protocol example
-    final isCharging = data.length > 4 ? (data[4] & 0x01) == 1 : false;
 
     return G1BatteryInfo(
       percentage: percentage,
       voltage: voltage,
-      isCharging: isCharging,
+      isCharging: false,
       side: side,
       timestamp: DateTime.now(),
     );
