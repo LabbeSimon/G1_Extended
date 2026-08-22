@@ -272,6 +272,34 @@ class OpenMeteoWeatherService {
   static double coarsen(double degrees) =>
       (degrees * 100).roundToDouble() / 100;
 
+  /// One day of the forecast, for the "weather" voice command.
+  ///
+  /// The current reading answers "how warm is it"; a week answers "should I
+  /// take a coat on Thursday", which is the question people actually ask.
+  Future<List<DailyForecast>?> getWeekForecast() async {
+    final position = await _getCurrentPosition();
+    if (position == null) return null;
+
+    final url = Uri.parse(
+      '$_baseUrl?latitude=${coarsen(position.latitude)}'
+      '&longitude=${coarsen(position.longitude)}'
+      '&daily=weather_code,temperature_2m_max,temperature_2m_min'
+      '&timezone=auto&forecast_days=7',
+    );
+
+    try {
+      final response = await http.get(url).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) {
+        debugPrint('Forecast returned HTTP ${response.statusCode}');
+        return null;
+      }
+      return DailyForecast.parse(jsonDecode(response.body));
+    } catch (e) {
+      debugPrint('Could not fetch the forecast: $e');
+      return null;
+    }
+  }
+
   Future<WeatherData?> _fetchWeatherFromAPI(
       double latitude, double longitude) async {
     try {
@@ -351,5 +379,54 @@ class OpenMeteoWeatherService {
     } catch (e) {
       debugPrint('Error clearing cache: $e');
     }
+  }
+}
+
+
+/// One day of an Open-Meteo daily forecast.
+class DailyForecast {
+  final DateTime date;
+  final int weatherCode;
+  final double high;
+  final double low;
+
+  const DailyForecast({
+    required this.date,
+    required this.weatherCode,
+    required this.high,
+    required this.low,
+  });
+
+  /// Reads the parallel arrays Open-Meteo returns, stopping at the shortest
+  /// so a truncated reply produces fewer days rather than an exception.
+  static List<DailyForecast>? parse(Object? body) {
+    if (body is! Map) return null;
+    final daily = body['daily'];
+    if (daily is! Map) return null;
+
+    final times = daily['time'];
+    final codes = daily['weather_code'];
+    final highs = daily['temperature_2m_max'];
+    final lows = daily['temperature_2m_min'];
+
+    if (times is! List || codes is! List || highs is! List || lows is! List) {
+      return null;
+    }
+
+    final count = [times.length, codes.length, highs.length, lows.length]
+        .reduce((a, b) => a < b ? a : b);
+
+    final days = <DailyForecast>[];
+    for (var i = 0; i < count; i++) {
+      final date = DateTime.tryParse(times[i].toString());
+      if (date == null) continue;
+      days.add(DailyForecast(
+        date: date,
+        weatherCode: (codes[i] as num?)?.toInt() ?? 0,
+        high: (highs[i] as num?)?.toDouble() ?? 0,
+        low: (lows[i] as num?)?.toDouble() ?? 0,
+      ));
+    }
+    return days;
   }
 }
