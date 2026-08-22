@@ -12,7 +12,7 @@ class CurrentDashboard extends StatefulWidget {
 }
 
 class _CurrentDashboardState extends State<CurrentDashboard> {
-  GlassesDashboard agixtDashboard = GlassesDashboard();
+  GlassesDashboard glassesDashboard = GlassesDashboard();
 
   List<Note> _dashboardItems = [];
 
@@ -38,7 +38,7 @@ class _CurrentDashboardState extends State<CurrentDashboard> {
   }
 
   Future<void> _refreshData() async {
-    _dashboardItems = await agixtDashboard.generateDashboardItems();
+    _dashboardItems = await glassesDashboard.generateDashboardItems();
     _selectedIndex = 0;
     setState(() {});
   }

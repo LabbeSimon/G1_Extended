@@ -12,27 +12,27 @@ class StopPage extends StatefulWidget {
 }
 
 class StopPageState extends State<StopPage> {
-  late LazyBox<StopItem> _agixtStopBox;
+  late LazyBox<StopItem> _stopBox;
   StopsManager stopsManager = StopsManager();
 
   @override
   void initState() {
     super.initState();
-    _agixtStopBox = Hive.lazyBox<StopItem>('agixtStopBox');
+    _stopBox = Hive.lazyBox<StopItem>('stopBox');
   }
 
   Future<void> _sortBox() async {
     final List<StopItem> items = [];
-    for (int i = 0; i < _agixtStopBox.length; i++) {
-      final item = await _agixtStopBox.getAt(i);
+    for (int i = 0; i < _stopBox.length; i++) {
+      final item = await _stopBox.getAt(i);
       if (item != null) {
         items.add(item);
       }
     }
 
     items.sort((a, b) => a.time.compareTo(b.time));
-    await _agixtStopBox.clear();
-    await _agixtStopBox.addAll(items);
+    await _stopBox.clear();
+    await _stopBox.addAll(items);
 
     stopsManager.reload();
   }
@@ -44,7 +44,7 @@ class StopPageState extends State<StopPage> {
         return _AddItemDialog(
           onAdd: (title, time) async {
             final newItem = StopItem(title: title, time: time);
-            await _agixtStopBox.add(newItem);
+            await _stopBox.add(newItem);
             await _sortBox();
             setState(() {});
           },
@@ -54,7 +54,7 @@ class StopPageState extends State<StopPage> {
   }
 
   void _editItem(int index) async {
-    final item = await _agixtStopBox.getAt(index);
+    final item = await _stopBox.getAt(index);
     if (!mounted) {
       return;
     }
@@ -70,7 +70,7 @@ class StopPageState extends State<StopPage> {
                 time: time,
                 uuid: item.uuid,
               );
-              await _agixtStopBox.putAt(index, newItem);
+              await _stopBox.putAt(index, newItem);
               await _sortBox();
               setState(() {});
             },
@@ -97,7 +97,7 @@ class StopPageState extends State<StopPage> {
             TextButton(
               onPressed: () async {
                 final navigator = Navigator.of(context);
-                await _agixtStopBox.deleteAt(index);
+                await _stopBox.deleteAt(index);
                 await _sortBox();
                 if (!mounted) {
                   return;
@@ -115,8 +115,8 @@ class StopPageState extends State<StopPage> {
 
   Future<List<StopItem>> _getItems() async {
     final List<StopItem> items = [];
-    for (int i = 0; i < _agixtStopBox.length; i++) {
-      final item = await _agixtStopBox.getAt(i);
+    for (int i = 0; i < _stopBox.length; i++) {
+      final item = await _stopBox.getAt(i);
       if (item != null) {
         items.add(item);
       }
