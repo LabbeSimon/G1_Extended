@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -23,6 +25,7 @@ class _BatteryCaptureScreenState extends State<BatteryCaptureScreen> {
   final BatteryFrameLog _log = BatteryFrameLog.singleton;
 
   bool _redacted = true;
+  StreamSubscription<int>? _counter;
 
   /// The states worth capturing, in the order that isolates one variable
   /// at a time.
@@ -106,12 +109,25 @@ class _BatteryCaptureScreenState extends State<BatteryCaptureScreen> {
     DiagnosticReport.singleton.isRedacted().then((value) {
       if (mounted) setState(() => _redacted = value);
     });
+    _counter = _log.frameCount.listen((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _counter?.cancel();
+    // Recording keeps the radio busy every couple of seconds; leaving the
+    // screen is as clear a sign as any that the user is done.
+    _log.setEnabled(false);
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final frames = _log.frames;
     final varying = _log.varyingPositions();
+    final states = _log.capturedStates();
 
     return Scaffold(
       appBar: AppBar(
@@ -146,13 +162,31 @@ class _BatteryCaptureScreenState extends State<BatteryCaptureScreen> {
       ),
       body: ListView(
         children: [
-          SwitchListTile(
-            value: _log.enabled,
-            title: const Text('Record battery frames'),
-            subtitle: const Text(
-              'Everything stays on the phone. Nothing is sent anywhere.',
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: FilledButton.icon(
+              onPressed: () => setState(
+                () => _log.setEnabled(!_log.enabled),
+              ),
+              icon: Icon(_log.enabled
+                  ? Icons.stop_circle_outlined
+                  : Icons.fiber_manual_record),
+              label: Text(_log.enabled
+                  ? 'Stop recording  ·  ${frames.length} frames'
+                  : 'Start recording'),
             ),
-            onChanged: (value) => setState(() => _log.enabled = value),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              _log.enabled
+                  ? 'Asking the glasses every '
+                      '${BatteryFrameLog.pollInterval.inSeconds} s. Hold a '
+                      'state for a few seconds, then pick the next one below.'
+                  : 'The glasses only answer when asked, so recording polls '
+                      'them continuously. Everything stays on the phone.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ),
           SwitchListTile(
             value: _redacted,
@@ -196,23 +230,27 @@ class _BatteryCaptureScreenState extends State<BatteryCaptureScreen> {
           ),
           const Divider(height: 32),
 
-          if (varying.isNotEmpty) ...[
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text(
-                'Byte positions that changed across the capture. A byte that '
-                'never moves cannot be the case battery.',
-                style: TextStyle(fontSize: 12),
-              ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              states.length < 2
+                  ? 'States captured: ${states.length}. Comparing frames only '
+                      'means something across different states — capture at '
+                      'least two, changing one thing between them.'
+                  : 'States captured: ${states.join(', ')}.\n\nBytes below '
+                      'are the ones that moved when the state changed. A byte '
+                      'that never moves cannot be the case battery.',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
-            for (final entry in varying.entries)
+          ),
+          for (final entry in varying.entries)
+            if (entry.value.isNotEmpty)
               ListTile(
                 dense: true,
-                title: Text('${entry.key}: ${entry.value.join(', ')}'),
-                subtitle: Text('${entry.value.length} byte(s) varying'),
+                title: Text('${entry.key}: bytes ${entry.value.join(', ')}'),
+                subtitle: Text('${entry.value.length} moved between states'),
               ),
-            const Divider(height: 32),
-          ],
+          const Divider(height: 32),
 
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
