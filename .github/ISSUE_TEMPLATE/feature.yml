@@ -1,0 +1,31 @@
+name: Something is missing
+description: An idea for the app or the glasses
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: |
+        The situation, not the solution. Knowing what you are actually trying
+        to achieve often turns up a better answer than the one you had in
+        mind — and sometimes one that already exists.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you had in mind
+    validations:
+      required: true
+
+  - type: textarea
+    id: protocol
+    attributes:
+      label: Protocol notes, if this needs the glasses to do something new
+      description: |
+        `Even Realities G1 BLE Protocol.txt` documents what is known. Commands
+        it marks `??` are undocumented: if you have captured frames showing
+        how the official app does it, that is the difference between a
+        feature and a guess.

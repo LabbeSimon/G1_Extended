@@ -1,0 +1,74 @@
+name: Something is broken
+description: The app or the glasses do not behave as they should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Most of what goes wrong here is invisible from the code: it happens on
+        a particular phone, with a particular firmware, in a state nobody
+        anticipated. The more of that you can capture, the shorter the round
+        trip.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to get there
+      description: |
+        Step by step, from opening the app. "It crashes sometimes" is a much
+        harder starting point than "it crashes when I tap Download in Voice
+        settings".
+      placeholder: |
+        1. Open Settings > Voice
+        2. Tap Download on the speech model
+        3. The app closes
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Settings > About, at the top.
+      placeholder: "1.0.3 (2)"
+    validations:
+      required: true
+
+  - type: input
+    id: phone
+    attributes:
+      label: Phone and Android version
+      placeholder: "Pixel 7, Android 14"
+
+  - type: input
+    id: firmware
+    attributes:
+      label: Glasses firmware, if you know it
+      placeholder: "1.6.6"
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostic report
+      description: |
+        Tap the version ten times in Settings > About to reveal developer
+        options, then Battery frame capture > the share icon. The file leaves
+        out anything identifying by default, and the app lists its contents
+        before writing it. Drop the JSON here.
+      render: json
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you send
+      options:
+        - label: I am on the latest release
+        - label: I checked the existing issues

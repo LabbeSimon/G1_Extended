@@ -1,5 +1,12 @@
 # G1 Extended
 
+[![Build](https://github.com/LabbeSimon/G1_Extended/actions/workflows/build_apk.yml/badge.svg)](https://github.com/LabbeSimon/G1_Extended/actions/workflows/build_apk.yml)
+[![Release](https://img.shields.io/github/v/release/LabbeSimon/G1_Extended?label=release)](https://github.com/LabbeSimon/G1_Extended/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/LabbeSimon/G1_Extended/total?label=downloads)](https://github.com/LabbeSimon/G1_Extended/releases)
+[![Licence](https://img.shields.io/badge/licence-BSD--2--Clause-blue)](LICENSE)
+[![Android](https://img.shields.io/badge/android-7.0%2B-brightgreen)](#build)
+[![Telemetry](https://img.shields.io/badge/telemetry-none-brightgreen)](PRIVACY.md)
+
 An Android companion app for [Even Realities G1](https://www.evenrealities.com) smart glasses.
 No account. No telemetry. Nothing leaves your phone.
 
@@ -56,11 +63,40 @@ optional:
 No account, no telemetry, three optional network requests. The full statement is
 in [PRIVACY.md](PRIVACY.md).
 
+## By the numbers
+
+Counted from the working tree, not estimated.
+
+| | |
+|---|---|
+| Dart | 18 800 lines across 100 files |
+| Native C and C++ | 26 300 lines — the LC3 decoder and noise suppression, inherited |
+| Tests | 215, in 26 files |
+| Static analysis | 0 issues; CI fails on a single info-level hint |
+| Android permissions | 18, down from 33 |
+| Dependencies | 29, down from 43 |
+| Network requests | 3, every one optional and switchable off |
+| APK | 56 MB, arm64 and armeabi-v7a |
+
+Roughly 12 000 of the surviving Dart lines are inherited from
+[AGiXT/mobile](https://github.com/AGiXT/mobile), mostly the Bluetooth layer.
+The 35 commits since the fork removed 41 000 lines and added the glasses
+features listed above.
+
+The badges above are rendered by GitHub when you read this page. They are not
+part of the app and the app never contacts those hosts — see
+[PRIVACY.md](PRIVACY.md) for the three it does contact.
+
 ## Contributing
 
-AI-assisted contributions are accepted. See [AI-POLICY.md](AI-POLICY.md) for
-what is expected, and for the one rule that is not negotiable: no accounts,
-no telemetry, no phoning home.
+Fork, branch, pull request — see [CONTRIBUTING.md](CONTRIBUTING.md). Bug
+reports go through [issues](https://github.com/LabbeSimon/G1_Extended/issues),
+and the template asks for a diagnostic report because almost everything that
+has broken here compiled cleanly and passed its tests first.
+
+AI-assisted contributions are accepted; [AI-POLICY.md](AI-POLICY.md) says what
+is expected of them, and states the one rule that is not negotiable: no
+accounts, no telemetry, no phoning home.
 
 ## Build
 
