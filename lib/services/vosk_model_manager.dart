@@ -101,6 +101,21 @@ class VoskModelManager {
   /// True when the model is on disk and does not need downloading.
   Future<bool> isModelInstalled() async => await installedModelPath() != null;
 
+  /// Fetches and unpacks the model without handing it to the native loader.
+  ///
+  /// Downloading and loading used to be the same call, which meant the
+  /// download button ended by asking native code to parse 50 MB — and if that
+  /// dies, it takes the process with it and no Dart catch runs. Someone
+  /// tapping "download" would simply watch the app vanish. Separating them
+  /// means the download can only ever fail politely; loading happens later,
+  /// when speech is actually used, where a failure is recoverable.
+  ///
+  /// Returns true when a complete model is on disk afterwards.
+  Future<bool> ensureDownloaded() async {
+    if (await isModelInstalled()) return true;
+    return await _download() != null;
+  }
+
   /// Loads the model, downloading it first if [allowDownload] is set.
   ///
   /// Concurrent calls share a single load: callers never race to download the

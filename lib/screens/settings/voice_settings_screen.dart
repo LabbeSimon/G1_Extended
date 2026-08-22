@@ -66,7 +66,9 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
 
   Future<void> _downloadModel() async {
     setState(() => _downloading = true);
-    await _models.load();
+    // Download only. The model is handed to the native loader the first time
+    // speech actually needs it, not here.
+    await _models.ensureDownloaded();
     final installed = await _models.isModelInstalled();
     final size = installed ? await _wakeWord.getModelSize() : 0;
     if (!mounted) return;
@@ -107,6 +109,18 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
           _header('Microphone'),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              'The phone microphone needs nothing downloaded: Android has its '
+              'own recogniser and it is the more accurate of the two. The '
+              'offline model below exists only because that recogniser will '
+              'not accept recorded audio, which is all the glasses can give '
+              'it — so it is needed for the glasses microphone, and for '
+              'nothing else.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ),
           RadioGroup<bool>(
             groupValue: _useGlassesMic,
             onChanged: (value) => _setUseGlassesMic(value ?? false),
@@ -152,7 +166,9 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
           _header('Offline speech model'),
           ListTile(
             title: const Text('Vosk small English'),
-            subtitle: Text(_modelSizeLabel),
+            subtitle: Text(_useGlassesMic
+                ? _modelSizeLabel
+                : '$_modelSizeLabel · not needed for the phone microphone'),
             trailing: _downloading
                 ? SizedBox(
                     width: 24,
