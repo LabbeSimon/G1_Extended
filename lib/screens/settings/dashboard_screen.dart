@@ -3,6 +3,13 @@ import 'package:g1_extended/services/time_sync.dart';
 import 'package:g1_extended/utils/ui_perfs.dart';
 import 'package:flutter/material.dart';
 
+import 'package:g1_extended/screens/calendars_screen.dart';
+import 'package:g1_extended/screens/checklist_screen.dart';
+import 'package:g1_extended/screens/daily_screen.dart';
+import 'package:g1_extended/screens/settings/custom_cards_screen.dart';
+import 'package:g1_extended/screens/stop_screen.dart';
+import 'package:g1_extended/theme/app_theme.dart';
+
 class DashboardSettingsPage extends StatefulWidget {
   const DashboardSettingsPage({super.key});
 
@@ -161,96 +168,126 @@ class DashboardSettingsPageState extends State<DashboardSettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Dashboard Settings'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16.0),
-              margin: const EdgeInsets.only(bottom: 24.0),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8.0),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.info_outline,
-                    color: Colors.blue.shade700,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'These settings apply to your Even Realities G1 glasses dashboard.',
-                      style: TextStyle(
-                        color: Colors.blue.shade700,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+      appBar: AppBar(title: const Text('Dashboard')),
+      body: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Text(
+              'What the glasses show, and how. The four note slots are shared '
+              'between everything below, newest and soonest first.',
+              style: TextStyle(fontSize: 12),
             ),
-            SwitchListTile(
-              title: Text(_is24HourFormat
-                  ? '24-Hour Time Format'
-                  : '12-Hour Time Format'),
-              subtitle: _isUpdatingTime
-                  ? const Row(
-                      children: [
-                        SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2)),
-                        SizedBox(width: 8),
-                        Text('Updating glasses...'),
-                      ],
-                    )
-                  : null,
-              value: _is24HourFormat,
-              onChanged: _isUpdatingTime
-                  ? null
-                  : (bool value) {
-                      setState(() {
-                        _is24HourFormat = value;
-                      });
-                      _saveSettingsAndTriggerUpdate();
-                    },
+          ),
+
+          _header('What it shows'),
+          _entry(
+            icon: Icons.event_outlined,
+            title: 'Calendars',
+            subtitle: 'Choose which calendars appear on the glasses.',
+            builder: (_) => const CalendarsPage(),
+          ),
+          _entry(
+            icon: Icons.repeat,
+            title: 'Routines',
+            subtitle: 'Things that happen at the same time every day.',
+            builder: (_) => const DailyPage(),
+          ),
+          _entry(
+            icon: Icons.alarm,
+            title: 'Reminders',
+            subtitle: 'One-off prompts at a set time.',
+            builder: (_) => const StopPage(),
+          ),
+          _entry(
+            icon: Icons.checklist_outlined,
+            title: 'Checklists',
+            subtitle: 'Lists you can tick off from the glasses.',
+            builder: (_) => const ChecklistPage(),
+          ),
+          _entry(
+            icon: Icons.edit_note_outlined,
+            title: 'My cards',
+            subtitle: 'Your own lines, from live values or a web address.',
+            builder: (_) => const CustomCardsScreen(),
+          ),
+          const Divider(height: 32),
+
+          _header('How it reads'),
+          SwitchListTile(
+            value: _is24HourFormat,
+            title: const Text('24-hour clock'),
+            subtitle: Text(_is24HourFormat ? '14:30' : '2:30 PM'),
+            onChanged: _isUpdatingTime
+                ? null
+                : (value) {
+                    setState(() => _is24HourFormat = value);
+                    _saveSettingsAndTriggerUpdate();
+                  },
+            secondary: _isUpdatingTime
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.schedule),
+          ),
+          SwitchListTile(
+            value: _isFahrenheit,
+            title: const Text('Fahrenheit'),
+            subtitle: Text(_isFahrenheit ? '70 °F' : '21 °C'),
+            onChanged: _isUpdatingTemperature
+                ? null
+                : (value) {
+                    setState(() => _isFahrenheit = value);
+                    _saveTemperatureSettingsAndTriggerUpdate();
+                  },
+            secondary: _isUpdatingTemperature
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.thermostat),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 24),
+            child: Text(
+              'The layout itself — full, dual or minimal, and which pane sits '
+              'beside the clock — is under Display.',
+              style: TextStyle(fontSize: 12, color: AppColors.inkFaint),
             ),
-            SwitchListTile(
-              title: Text(_isFahrenheit ? 'Fahrenheit' : 'Celsius'),
-              subtitle: _isUpdatingTemperature
-                  ? const Row(
-                      children: [
-                        SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2)),
-                        SizedBox(width: 8),
-                        Text('Updating glasses...'),
-                      ],
-                    )
-                  : null,
-              value: _isFahrenheit,
-              onChanged: _isUpdatingTemperature
-                  ? null
-                  : (bool value) {
-                      setState(() {
-                        _isFahrenheit = value;
-                      });
-                      _saveTemperatureSettingsAndTriggerUpdate();
-                    },
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+
+  Widget _header(String text) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Text(
+          text.toUpperCase(),
+          style: const TextStyle(
+            fontSize: 12,
+            letterSpacing: 1.2,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+
+  Widget _entry({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required WidgetBuilder builder,
+  }) =>
+      ListTile(
+        leading: Icon(icon),
+        title: Text(title),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_right, size: 20),
+        onTap: () =>
+            Navigator.push(context, MaterialPageRoute(builder: builder)),
+      );
 }

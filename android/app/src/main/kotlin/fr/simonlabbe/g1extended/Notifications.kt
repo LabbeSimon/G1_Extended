@@ -34,7 +34,7 @@ object Notifications {
         println("creating notification for background service");
         return NotificationCompat
             .Builder(context, CHANNEL_ID_BACKGROUND_SERVICE)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.app_logo)
             .setContentTitle("G1 Extended")
             .setContentText("Maintaining glasses connection and processing commands.")
             .setPriority(NotificationCompat.PRIORITY_MAX)

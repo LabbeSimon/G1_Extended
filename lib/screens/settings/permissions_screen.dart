@@ -120,6 +120,20 @@ class _PermissionsSettingsPageState extends State<PermissionsSettingsPage> {
 
     var anyFailures = false;
 
+    // Notification access first, and deliberately outside the loop below.
+    //
+    // It is not a runtime permission: Android will not show a dialog for it,
+    // it opens a settings page instead. Left to the ordinary flow the user
+    // gets a string of "allow?" prompts, none of which is the one that
+    // actually matters here, and comes away thinking they granted everything.
+    if (!_notificationAccess) {
+      await NotificationListenerService.requestPermission();
+      final granted =
+          await NotificationListenerService.isPermissionGranted();
+      if (mounted) setState(() => _notificationAccess = granted);
+      if (!granted) anyFailures = true;
+    }
+
     for (final definition in _definitions) {
       // Only request required permissions
       if (!_requiredPermissions.contains(definition.id)) {
@@ -163,6 +177,20 @@ class _PermissionsSettingsPageState extends State<PermissionsSettingsPage> {
     });
 
     var anyFailures = false;
+
+    // Notification access first, and deliberately outside the loop below.
+    //
+    // It is not a runtime permission: Android will not show a dialog for it,
+    // it opens a settings page instead. Left to the ordinary flow the user
+    // gets a string of "allow?" prompts, none of which is the one that
+    // actually matters here, and comes away thinking they granted everything.
+    if (!_notificationAccess) {
+      await NotificationListenerService.requestPermission();
+      final granted =
+          await NotificationListenerService.isPermissionGranted();
+      if (mounted) setState(() => _notificationAccess = granted);
+      if (!granted) anyFailures = true;
+    }
 
     for (final definition in _definitions) {
       final summary = _summaries[definition.id];
