@@ -1,9 +1,8 @@
 import 'dart:async';
-import 'package:agixt/services/bluetooth_manager.dart';
-import 'package:agixt/services/bluetooth_reciever.dart';
-import 'package:agixt/services/watch_service.dart';
-import 'package:agixt/services/wake_word_service.dart';
-import 'package:agixt/utils/lc3.dart';
+import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/bluetooth_reciever.dart';
+import 'package:g1_extended/services/wake_word_service.dart';
+import 'package:g1_extended/utils/lc3.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:path_provider/path_provider.dart';
@@ -13,12 +12,11 @@ import 'dart:io';
 /// Enum for voice input sources
 enum VoiceInputSource {
   glasses, // Even Realities G1 glasses microphone
-  watch, // Pixel Watch microphone
   phone, // Phone's built-in microphone
 }
 
-/// Service that manages voice input from multiple sources
-/// Priority: Glasses > Watch > Phone
+/// Service that manages voice input from the glasses or the phone.
+/// Priority: Glasses > Phone
 class VoiceInputService {
   static final VoiceInputService singleton = VoiceInputService._internal();
   factory VoiceInputService() => singleton;
@@ -26,7 +24,6 @@ class VoiceInputService {
 
   // Dependencies
   final BluetoothManager _bluetoothManager = BluetoothManager.singleton;
-  final WatchService _watchService = WatchService.singleton;
   final WakeWordService _wakeWordService = WakeWordService.singleton;
 
   // Phone audio recorder
@@ -74,7 +71,7 @@ class VoiceInputService {
     // Initialize phone recorder
     await _initializeRecorder();
 
-    // Note: Glasses audio is handled by BluetoothReciever.voiceCollectorAI
+    // Note: Glasses audio is handled by BluetoothReciever.voiceCollector
     // No additional setup needed here
 
     // Note: Wake word callback is handled by AIService which coordinates
@@ -98,7 +95,7 @@ class VoiceInputService {
     }
   }
 
-  // Note: Glasses audio is collected by BluetoothReciever.voiceCollectorAI
+  // Note: Glasses audio is collected by BluetoothReciever.voiceCollector
   // when the mic is enabled. We get the data via getAllDataAndReset() in
   // _stopGlassesRecording().
 
@@ -113,11 +110,6 @@ class VoiceInputService {
       return VoiceInputSource.glasses;
     }
 
-    // Check watch second (fallback)
-    if (_watchService.isConnected) {
-      return VoiceInputSource.watch;
-    }
-
     // Phone is always available
     return VoiceInputSource.phone;
   }
@@ -127,8 +119,6 @@ class VoiceInputService {
     switch (source) {
       case VoiceInputSource.glasses:
         return _bluetoothManager.isConnected;
-      case VoiceInputSource.watch:
-        return _watchService.isConnected;
       case VoiceInputSource.phone:
         return true;
     }
@@ -188,8 +178,6 @@ class VoiceInputService {
       switch (actualSource) {
         case VoiceInputSource.glasses:
           return await _startGlassesRecording(maxDuration);
-        case VoiceInputSource.watch:
-          return await _startWatchRecording(maxDuration);
         case VoiceInputSource.phone:
           return await _startPhoneRecording(maxDuration);
       }
@@ -215,9 +203,9 @@ class VoiceInputService {
   Future<bool> _startGlassesRecording(Duration maxDuration) async {
     try {
       // Reset voice collector buffer before starting
-      _bluetoothReciever.voiceCollectorAI.reset();
-      _bluetoothReciever.voiceCollectorAI.isRecording = true;
-      debugPrint('VoiceInputService: voiceCollectorAI.isRecording set to true');
+      _bluetoothReciever.voiceCollector.reset();
+      _bluetoothReciever.voiceCollector.isRecording = true;
+      debugPrint('VoiceInputService: voiceCollector.isRecording set to true');
 
       // Enable microphone on glasses
       await _bluetoothManager.setMicrophone(true);
@@ -244,27 +232,7 @@ class VoiceInputService {
       return true;
     } catch (e) {
       debugPrint('VoiceInputService: Error starting glasses recording: $e');
-      _bluetoothReciever.voiceCollectorAI.isRecording = false;
-      return false;
-    }
-  }
-
-  /// Start recording from watch microphone
-  Future<bool> _startWatchRecording(Duration maxDuration) async {
-    try {
-      final audioData = await _watchService.startRecording(
-        maxDuration: maxDuration,
-        sampleRate: 16000,
-      );
-
-      if (audioData != null) {
-        await _handleRecordingComplete(audioData);
-        return true;
-      }
-
-      return false;
-    } catch (e) {
-      debugPrint('VoiceInputService: Error starting watch recording: $e');
+      _bluetoothReciever.voiceCollector.isRecording = false;
       return false;
     }
   }
@@ -327,10 +295,6 @@ class VoiceInputService {
           debugPrint(
               'VoiceInputService: _stopGlassesRecording returned ${audioData?.length ?? 0} bytes');
           break;
-        case VoiceInputSource.watch:
-          await _watchService.stopRecording();
-          // Audio data is returned via callback
-          break;
         case VoiceInputSource.phone:
           audioData = await _stopPhoneRecording();
           break;
@@ -352,7 +316,6 @@ class VoiceInputService {
     debugPrint(
         'VoiceInputService: Emitting state - status=$status, audioData=${audioData?.length ?? 0} bytes');
 
-    // Use 'complete' status when we have audio data so AIService processes it
     _stateController.add(
       VoiceInputState(
         isRecording: false,
@@ -376,8 +339,8 @@ class VoiceInputService {
     try {
       // Stop recording and disable mic
       debugPrint(
-          'VoiceInputService: Setting voiceCollectorAI.isRecording = false');
-      _bluetoothReciever.voiceCollectorAI.isRecording = false;
+          'VoiceInputService: Setting voiceCollector.isRecording = false');
+      _bluetoothReciever.voiceCollector.isRecording = false;
 
       debugPrint('VoiceInputService: Disabling glasses mic');
       await _bluetoothManager.setMicrophone(false);
@@ -385,7 +348,7 @@ class VoiceInputService {
       // Get all collected voice data (LC3 encoded)
       debugPrint('VoiceInputService: Getting voice data from collector');
       final lc3Data =
-          await _bluetoothReciever.voiceCollectorAI.getAllDataAndReset();
+          await _bluetoothReciever.voiceCollector.getAllDataAndReset();
 
       if (lc3Data.isEmpty) {
         debugPrint(
@@ -410,7 +373,7 @@ class VoiceInputService {
       return pcmData;
     } catch (e) {
       debugPrint('VoiceInputService: Error stopping glasses recording: $e');
-      _bluetoothReciever.voiceCollectorAI.isRecording = false;
+      _bluetoothReciever.voiceCollector.isRecording = false;
       return null;
     }
   }
@@ -436,27 +399,6 @@ class VoiceInputService {
     }
   }
 
-  /// Handle recording complete callback
-  Future<void> _handleRecordingComplete(Uint8List? audioData) async {
-    _isRecording = false;
-    final source = _activeSource;
-    _activeSource = null;
-
-    _stateController.add(
-      VoiceInputState(
-        isRecording: false,
-        source: source,
-        status: VoiceInputStatus.complete,
-        audioData: audioData,
-      ),
-    );
-
-    // Resume wake word detection
-    if (_useWakeWord) {
-      await _wakeWordService.resume();
-    }
-  }
-
   /// Get a snapshot of the current buffered audio without stopping recording.
   /// Returns decoded PCM data from the glasses, or null if not recording from glasses.
   Future<Uint8List?> getAudioSnapshot() async {
@@ -465,7 +407,7 @@ class VoiceInputService {
     }
     try {
       final lc3Data =
-          await _bluetoothReciever.voiceCollectorAI.getBufferedDataSnapshot();
+          await _bluetoothReciever.voiceCollector.getBufferedDataSnapshot();
       if (lc3Data.isEmpty) return null;
       final pcmData = await LC3.decodeLC3(Uint8List.fromList(lc3Data));
       return pcmData.isEmpty ? null : pcmData;
@@ -479,11 +421,9 @@ class VoiceInputService {
   static String getSourceDisplayName(VoiceInputSource source) {
     switch (source) {
       case VoiceInputSource.glasses:
-        return 'Even Realities Glasses';
-      case VoiceInputSource.watch:
-        return 'Pixel Watch';
+        return 'Glasses microphone';
       case VoiceInputSource.phone:
-        return 'Phone Microphone';
+        return 'Phone microphone';
     }
   }
 

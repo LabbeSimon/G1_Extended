@@ -1,191 +1,95 @@
-name: Build and Deploy
+name: Build APK
+
 on:
   push:
     branches:
       - "**"
+  pull_request:
+  workflow_dispatch:
+
 permissions:
   contents: write
-jobs:
-  tag:
-    name: Create Tag
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    outputs:
-      new_tag: ${{ steps.next_tag_version.outputs.new_tag }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Increment tag version
-        uses: mathieudutour/github-tag-action@v6.2
-        id: next_tag_version
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          release_branches: main
-          create_annotated_tag: true
 
+jobs:
   build:
-    name: Build APK (${{ matrix.flavor.name }})
-    if: github.ref == 'refs/heads/main'
+    name: Build APK
     runs-on: ubuntu-latest
-    needs: [tag]
-    strategy:
-      fail-fast: false
-      matrix:
-        flavor:
-          - name: agixt
-            env:
-              DISPLAY_NAME: AGiXT
-              AGIXT_SERVER: https://api.agixt.com
-              APP_URI: https://agixt.com
-          - name: nursext
-            env:
-              DISPLAY_NAME: NurseXT
-              AGIXT_SERVER: https://api.nursext.com
-              APP_URI: https://nursext.com
-          - name: xtsystems
-            env:
-              DISPLAY_NAME: XT Systems
-              AGIXT_SERVER: https://api.xt.systems
-              APP_URI: https://xt.systems
-          - name: boltremote
-            env:
-              DISPLAY_NAME: BoltRemote
-              AGIXT_SERVER: https://api.boltremote.com
-              APP_URI: https://boltremote.com
-          - name: ultraestimate
-            env:
-              DISPLAY_NAME: UltraEstimate
-              AGIXT_SERVER: https://api.ultraestimate.com
-              APP_URI: https://ultraestimate.com
-          - name: joshxt
-            env:
-              DISPLAY_NAME: AGiXT Dev
-              AGIXT_SERVER: https://apijosh.devxt.com
-              APP_URI: https://josh.devxt.com
-    env:
-      DISPLAY_NAME: ${{ matrix.flavor.env.DISPLAY_NAME }}
-      AGIXT_SERVER: ${{ matrix.flavor.env.AGIXT_SERVER }}
-      APP_URI: ${{ matrix.flavor.env.APP_URI }}
-      APP_FLAVOR: ${{ matrix.flavor.name }}
     steps:
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          android: false
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: true
-          tool-cache: false
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: zulu
           java-version: '17'
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-      - name: Setup Android NDK and CMake
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.0.11902837" "cmake;3.22.1"
+          cache: true
+
       - name: Setup Gradle cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+          restore-keys: ${{ runner.os }}-gradle-
+
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
       - name: Run tests
         run: flutter test
-      - name: Build Android release
-        run: |
-          flutter build apk --release \
-            --dart-define=APP_NAME="${DISPLAY_NAME}" \
-            --dart-define=AGIXT_SERVER="${AGIXT_SERVER}" \
-            --dart-define=APP_URI="${APP_URI}"
+
+      - name: Build release APK
+        run: flutter build apk --release
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
-        id: upload_artifact
         with:
-          name: ${{ matrix.flavor.name }}.apk
+          name: g1-extended-apk
           path: build/app/outputs/flutter-apk/app-release.apk
-      - name: Send APK to Discord
-        if: always()
-        continue-on-error: true
-        run: |
-          GITHUB_USERNAME="${{ github.actor }}"
-          if [ "$GITHUB_USERNAME" = "Josh-XT" ]; then
-            DISCORD_NAME="<@381837595522367488>"
-          elif [ "$GITHUB_USERNAME" = "birdup000" ]; then
-            DISCORD_NAME="<@856308374567256074>"
-          elif [ "$GITHUB_USERNAME" = "Nick-XT" ]; then
-            DISCORD_NAME="<@381908912951001088>"
-          elif [ "$GITHUB_USERNAME" = "Luke-XT" ]; then
-            DISCORD_NAME="<@334703813967740938>"
-          else
-            DISCORD_NAME="**$GITHUB_USERNAME**"
-          fi
-          BRANCH_NAME=$(echo ${{ github.ref }} | awk -F'/' '{print $NF}')
-          VERSION="${{ needs.tag.outputs.new_tag }}"
-          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/${{ steps.upload_artifact.outputs.artifact-id }}"
-          JOB_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          COMMIT_MESSAGE=$(echo "${{ github.event.head_commit.message }}" | tr '\n' ' ' | sed 's/"/\\"/g')
-          FILE_PATH="build/app/outputs/flutter-apk/app-release.apk"
-          if [ -f "$FILE_PATH" ]; then
-            FILE_SIZE=$(stat -c%s "$FILE_PATH")
-            if [ $FILE_SIZE -gt 0 ]; then
-              MESSAGE="✅ Build successful for **${{ github.repository }}** (${{ matrix.flavor.name }}.apk) on branch **$BRANCH_NAME** at commit ${{ github.sha }}\n**$COMMIT_MESSAGE** by ${DISCORD_NAME} \nDownload the APK here: $ARTIFACT_URL"
-            else
-              MESSAGE="❌ Build failed for **${{ github.repository }}** (${{ matrix.flavor.name }}.apk) on branch **$BRANCH_NAME** at commit ${{ github.sha }}\n**$COMMIT_MESSAGE** by ${DISCORD_NAME} \nView the build logs here: $JOB_URL"
-            fi
-          else
-            MESSAGE="❌ Build failed for **${{ github.repository }}** (${{ matrix.flavor.name }}.apk) on branch **$BRANCH_NAME** at commit ${{ github.sha }}\n**$COMMIT_MESSAGE** by ${DISCORD_NAME} \nView the build logs here: $JOB_URL"
-          fi
-          curl -H "Content-Type:application/json" -d "{\"content\":\"$MESSAGE\"}" "${{ secrets.DISCORD_WEBHOOK }}"
+          if-no-files-found: error
 
   release:
-    name: Create Release and Upload APKs
-    needs: [tag, build]
+    name: Publish release
+    needs: [build]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - name: Create Release
-        id: create_release
-        uses: softprops/action-gh-release@v2
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          tag_name: ${{ needs.tag.outputs.new_tag }}
-          name: ${{ needs.tag.outputs.new_tag }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Download all APKs from build
+          fetch-depth: 0
+
+      - name: Increment tag version
+        id: tag
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          release_branches: main
+          create_annotated_tag: true
+
+      - name: Download APK
         uses: actions/download-artifact@v4
         with:
-          path: apks
-      - name: Upload all APKs to release
-        run: |
-          for flavor_dir in apks/*/; do
-            flavor_name=$(basename "$flavor_dir")
-            apk_file="$flavor_dir/app-release.apk"
-            if [ -f "$apk_file" ]; then
-              cp "$apk_file" "/tmp/$flavor_name"
-              echo "Uploading /tmp/$flavor_name to release..."
-              gh release upload "${{ needs.tag.outputs.new_tag }}" "/tmp/$flavor_name" --clobber --repo ${{ github.repository }}
-            fi
-          done
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: g1-extended-apk
+          path: apk
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.new_tag }}
+          name: ${{ steps.tag.outputs.new_tag }}
+          files: apk/app-release.apk
+          generate_release_notes: true
+          token: ${{ secrets.GITHUB_TOKEN }}

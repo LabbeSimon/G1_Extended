@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'package:agixt/services/ai_service.dart';
-import 'package:agixt/services/bluetooth_manager.dart';
-import 'package:agixt/services/bluetooth_reciever.dart';
-import 'package:agixt/services/location_service.dart';
-import 'package:agixt/utils/battery_optimization_helper.dart';
+import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/bluetooth_reciever.dart';
+import 'package:g1_extended/utils/battery_optimization_helper.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -16,7 +14,6 @@ class BluetoothBackgroundService {
   static Timer? _connectionMonitorTimer;
   static BluetoothManager? _bluetoothManager;
   static BluetoothReciever? _bluetoothReceiver;
-  static AIService? _aiService;
   static bool _isRunning = false;
 
   /// Initialize and start the background service
@@ -30,7 +27,7 @@ class BluetoothBackgroundService {
             FlutterLocalNotificationsPlugin();
         const AndroidNotificationChannel channel = AndroidNotificationChannel(
           _channelId,
-          'AGiXT Glasses Connection',
+          'G1 Extended',
           description: 'Maintains connection to your glasses in the background',
           importance: Importance
               .max, // Changed from high to max for better background processing
@@ -62,7 +59,7 @@ class BluetoothBackgroundService {
           autoStart: false,
           isForegroundMode: true,
           notificationChannelId: _channelId,
-          initialNotificationTitle: 'AGiXT Glasses Connection',
+          initialNotificationTitle: 'G1 Extended',
           initialNotificationContent: 'Connected to glasses',
           foregroundServiceNotificationId: _notificationId,
           autoStartOnBoot: false,
@@ -109,13 +106,13 @@ class BluetoothBackgroundService {
 
       await flutterLocalNotificationsPlugin.show(
         _notificationId,
-        'AGiXT Glasses Connection',
+        'G1 Extended',
         status,
         const NotificationDetails(
           android: AndroidNotificationDetails(
             _channelId,
-            'AGiXT Glasses Connection',
-            icon: 'agixt_logo',
+            'G1 Extended',
+            icon: 'app_logo',
             ongoing: true,
             importance: Importance.max,
             priority: Priority.max,
@@ -146,9 +143,6 @@ class BluetoothBackgroundService {
             'BluetoothBackgroundService: Service already running, ignoring start request');
         return;
       }
-
-      // Check location services and handle accordingly
-      await _handleLocationAndBatteryOptimization();
 
       final service = FlutterBackgroundService();
       await service.startService();
@@ -222,19 +216,10 @@ class BluetoothBackgroundService {
 
     _isRunning = true;
 
-    // Check if location services are enabled and request battery optimization exemption
-    await _handleLocationAndBatteryOptimization();
-
     // Initialize Bluetooth Manager and Receiver with error handling
     try {
       _bluetoothManager = BluetoothManager.singleton;
       await _bluetoothManager!.initialize();
-
-      // Initialize AIService for background operations
-      _aiService = AIService.singleton;
-      _aiService!.setBackgroundMode(true);
-      debugPrint(
-          'BluetoothBackgroundService: AIService initialized for background mode');
 
       // Initialize Bluetooth Receiver to handle voice commands
       _bluetoothReceiver = BluetoothReciever.singleton;
@@ -370,9 +355,6 @@ class BluetoothBackgroundService {
         } else {
           debugPrint('BluetoothBackgroundService: Connection status OK');
         }
-
-        // Also check if location services status changed and handle accordingly
-        await _handleLocationAndBatteryOptimization();
       } catch (e) {
         debugPrint('BluetoothBackgroundService: Connection monitor error: $e');
       }
@@ -403,13 +385,13 @@ class BluetoothBackgroundService {
               FlutterLocalNotificationsPlugin();
           await flutterLocalNotificationsPlugin.show(
             _notificationId,
-            'AGiXT Glasses Connection',
+            'G1 Extended',
             status,
             const NotificationDetails(
               android: AndroidNotificationDetails(
                 _channelId,
-                'AGiXT Glasses Connection',
-                icon: 'agixt_logo',
+                'G1 Extended',
+                icon: 'app_logo',
                 ongoing: true,
                 importance: Importance
                     .max, // Changed from high to max for better persistence
@@ -447,12 +429,6 @@ class BluetoothBackgroundService {
       _bluetoothManager!.setExternalHeartbeatManaged(false);
     }
 
-    // Clean up AIService background mode
-    if (_aiService != null) {
-      _aiService!.setBackgroundMode(false);
-      _aiService = null;
-    }
-
     // Clean up Bluetooth receiver
     _bluetoothReceiver?.dispose();
     _bluetoothReceiver = null;
@@ -476,51 +452,6 @@ class BluetoothBackgroundService {
     } catch (e) {
       debugPrint(
           'BluetoothBackgroundService: Error checking battery optimization: $e');
-    }
-  }
-
-  /// Check if location services are enabled and request battery optimization exemption
-  static Future<void> _handleLocationAndBatteryOptimization() async {
-    try {
-      // First check if location services are enabled
-      final isLocationEnabled = await _isLocationServicesEnabled();
-
-      if (isLocationEnabled) {
-        debugPrint(
-            'BluetoothBackgroundService: Location services are enabled, requesting battery optimization exemption');
-
-        // Request battery optimization exemption to maintain service when location is enabled
-        final isOptimizationDisabled =
-            await BatteryOptimizationHelper.isBatteryOptimizationDisabled();
-
-        if (!isOptimizationDisabled) {
-          debugPrint(
-              'BluetoothBackgroundService: Battery optimization is enabled, this may affect service performance with location enabled');
-          debugPrint(
-              'BluetoothBackgroundService: ${BatteryOptimizationHelper.getBatteryOptimizationExplanation()}');
-        } else {
-          debugPrint(
-              'BluetoothBackgroundService: Battery optimization is disabled, service should work properly with location enabled');
-        }
-      } else {
-        debugPrint(
-            'BluetoothBackgroundService: Location services are disabled');
-      }
-    } catch (e) {
-      debugPrint(
-          'BluetoothBackgroundService: Error checking location and battery optimization: $e');
-    }
-  }
-
-  /// Check if location services are enabled using LocationService
-  static Future<bool> _isLocationServicesEnabled() async {
-    try {
-      final locationService = LocationService();
-      return await locationService.isLocationEnabled();
-    } catch (e) {
-      debugPrint(
-          'BluetoothBackgroundService: Error checking location services: $e');
-      return false;
     }
   }
 }

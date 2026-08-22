@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:agixt/models/g1/setup.dart';
-import 'package:agixt/services/bluetooth_manager.dart';
+import 'package:g1_extended/models/g1/setup.dart';
+import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:android_package_manager/android_package_manager.dart';
 import 'package:hive/hive.dart';
@@ -31,7 +31,7 @@ class NotificationSettingsPageState extends State<NotificationSettingsPage> {
   void initState() {
     super.initState();
     fetchApps();
-    selectedAppsBox = Hive.box('agixtNotificationApps');
+    selectedAppsBox = Hive.box('notificationApps');
     searchController.addListener(_filterApps);
   }
 

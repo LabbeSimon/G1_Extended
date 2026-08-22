@@ -16,25 +16,10 @@ if (keystorePropertiesFile.exists()) {
     useReleaseKeys = keystoreFile != null && keystoreFile.exists()
 }
 
-// Load dApp Store keystore properties from external file (separate signing key required)
-def dappStoreKeystorePropertiesFile = rootProject.file("dappstore-keystore.properties")
-def dappStoreKeystoreProperties = new Properties()
-def useDappStoreKeys = false
-if (dappStoreKeystorePropertiesFile.exists()) {
-    dappStoreKeystoreProperties.load(new FileInputStream(dappStoreKeystorePropertiesFile))
-    def dappStoreKeystoreFile = dappStoreKeystoreProperties['storeFile'] ? file(dappStoreKeystoreProperties['storeFile']) : null
-    useDappStoreKeys = dappStoreKeystoreFile != null && dappStoreKeystoreFile.exists()
-}
-
-// Read APP_FLAVOR from environment to set a unique applicationId per flavor.
-// This allows all flavor APKs to be installed side-by-side on the same device.
-// Defaults to 'agixt' for local development when the env var is not set.
-def appFlavor = System.getenv('APP_FLAVOR') ?: 'agixt'
-// Use DISPLAY_NAME instead of APP_NAME to avoid collision with gradlew's APP_NAME="Gradle"
-def appDisplayName = System.getenv('DISPLAY_NAME') ?: 'AGiXT'
+def appDisplayName = "G1 Extended"
 
 android {
-    namespace = "dev.agixt.agixt"
+    namespace = "fr.simonlabbe.g1extended"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "27.0.11902837"
 
@@ -50,15 +35,6 @@ android {
                 keyPassword keystoreProperties['keyPassword']
                 storeFile file(keystoreProperties['storeFile'])
                 storePassword keystoreProperties['storePassword']
-            }
-        }
-        dappStore {
-            // Separate signing config for Solana dApp Store (must differ from Google Play)
-            if (useDappStoreKeys) {
-                keyAlias dappStoreKeystoreProperties['keyAlias']
-                keyPassword dappStoreKeystoreProperties['keyPassword']
-                storeFile file(dappStoreKeystoreProperties['storeFile'])
-                storePassword dappStoreKeystoreProperties['storePassword']
             }
         }
     }
@@ -82,7 +58,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "dev.agixt.${appFlavor}"
+        applicationId = "fr.simonlabbe.g1extended"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 24 // minimum SDK version for speech_to_text
@@ -99,7 +75,6 @@ android {
 
         // Add the required manifest placeholders
         manifestPlaceholders = [
-            'appAuthRedirectScheme': appFlavor,
             'applicationName': 'io.flutter.app.FlutterApplication'
         ]
     }
@@ -112,11 +87,6 @@ android {
             minifyEnabled true
             shrinkResources true
         }
-        dappStoreRelease {
-            // dApp Store build: uses separate signing key, outputs APK
-            initWith release
-            signingConfig useDappStoreKeys ? signingConfigs.dappStore : signingConfigs.debug
-        }
     }
 }
 
@@ -126,14 +96,8 @@ flutter {
 
 dependencies {
   coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:1.2.2'
-  // FFmpeg dependencies have been removed as we now use native speech recognition
-  
-  // Wearable Data Layer API for Pixel Watch / Wear OS connectivity
-  implementation 'com.google.android.gms:play-services-wearable:18.1.0'
-  
   // Kotlin coroutines for async operations
   implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
-  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3'
 }
 
 subprojects {

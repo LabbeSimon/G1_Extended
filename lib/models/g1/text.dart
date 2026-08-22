@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import 'package:agixt/models/g1/commands.dart';
-import 'package:agixt/models/g1/even_ai.dart';
+import 'package:g1_extended/models/g1/commands.dart';
+import 'package:g1_extended/models/g1/even_ai.dart';
 import 'package:flutter/foundation.dart';
 
 // Define AIStatus and ScreenAction constants

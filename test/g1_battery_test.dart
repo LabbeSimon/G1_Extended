@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:agixt/models/g1/battery.dart';
-import 'package:agixt/models/g1/glass.dart';
+import 'package:g1_extended/models/g1/battery.dart';
+import 'package:g1_extended/models/g1/glass.dart';
 
 void main() {
   group('G1 Battery Tests', () {

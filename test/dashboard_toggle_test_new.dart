@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:agixt/utils/ui_perfs.dart';
+import 'package:g1_extended/utils/ui_perfs.dart';
 
 void main() {
   group('Dashboard Settings Temperature Toggle Tests', () {

@@ -1,9 +1,9 @@
-import 'package:agixt/models/g1/glass.dart';
-import 'package:agixt/models/g1/commands.dart';
-import 'package:agixt/services/ai_service.dart';
-import 'package:agixt/services/bluetooth_manager.dart';
-import 'package:agixt/services/whisper.dart';
-import 'package:agixt/utils/lc3.dart';
+import 'package:g1_extended/models/g1/glass.dart';
+import 'package:g1_extended/models/g1/commands.dart';
+import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/dictation_service.dart';
+import 'package:g1_extended/services/speech_recognition_service.dart';
+import 'package:g1_extended/utils/lc3.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mutex/mutex.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // Added import
@@ -17,7 +17,7 @@ const int RESPONSE_FAILURE = 0xCA;
 class BluetoothReciever {
   static final BluetoothReciever singleton = BluetoothReciever._internal();
 
-  final voiceCollectorAI = VoiceDataCollector();
+  final voiceCollector = VoiceDataCollector();
 
   // Speech to text setup
   final SpeechToText _speechToText = SpeechToText();
@@ -92,13 +92,10 @@ class BluetoothReciever {
       _isListening = false; // Recognition finished
       if (_lastWords.isNotEmpty) {
         debugPrint('Final transcription: $_lastWords');
-        // Use appropriate AIService method based on background mode
-        final aiService = AIService.singleton;
-        if (aiService.isBackgroundMode) {
-          await aiService.processVoiceCommandBackground(_lastWords);
-        } else {
-          await aiService.processVoiceCommand(_lastWords);
-        }
+        await DictationService.singleton.record(
+          _lastWords,
+          source: DictationSource.phone,
+        );
       } else {
         debugPrint('Final transcription is empty.');
       }
@@ -116,11 +113,14 @@ class BluetoothReciever {
     }
   }
 
-  // Helper to check if local transcription is configured
-  Future<bool> _isLocalTranscriptionEnabled() async {
+  /// Which microphone the touchpad dictates through.
+  ///
+  /// The phone microphone uses the platform recogniser: more accurate, no
+  /// model to download. The glasses microphone is hands-free but goes through
+  /// the offline Vosk model. Both stay on the device.
+  Future<bool> _useGlassesMicrophone() async {
     final prefs = await SharedPreferences.getInstance();
-    final remoteUrl = prefs.getString('whisper_api_url');
-    return remoteUrl == null || remoteUrl.isEmpty;
+    return prefs.getBool('use_glasses_microphone') ?? false;
   }
 
   Future<void> receiveHandler(GlassSide side, List<int> data) async {
@@ -172,123 +172,134 @@ class BluetoothReciever {
     }
   }
 
+  /// True while a touchpad-initiated capture is running.
+  bool _isCapturing = false;
+
+  /// Start capturing speech after a touchpad press.
+  Future<void> _beginDictation(GlassSide side) async {
+    if (_isCapturing) {
+      debugPrint('[$side] Capture already running');
+      return;
+    }
+    _isCapturing = true;
+
+    final bt = BluetoothManager();
+
+    if (await _useGlassesMicrophone()) {
+      debugPrint('[$side] Capturing through the glasses microphone');
+      voiceCollector.reset();
+      voiceCollector.isRecording = true;
+    } else {
+      debugPrint('[$side] Capturing through the phone microphone');
+      if (!_speechEnabled) await _initSpeech();
+      if (_speechEnabled) {
+        _startListening();
+      } else {
+        debugPrint('[$side] Platform recogniser unavailable, capture aborted');
+        _isCapturing = false;
+        return;
+      }
+    }
+
+    // The glasses need the mic opened either way: it drives the on-screen
+    // recording indicator the wearer sees.
+    await bt.setMicrophone(true);
+  }
+
+  /// Stop capturing, transcribe what was said and hand it to the dictation log.
+  Future<void> _finishDictation(GlassSide side) async {
+    if (!_isCapturing) {
+      debugPrint('[$side] No capture in progress');
+      return;
+    }
+    _isCapturing = false;
+
+    final bt = BluetoothManager();
+
+    if (!await _useGlassesMicrophone()) {
+      // The platform recogniser reports its own result through _onSpeechResult.
+      _stopListening();
+      await bt.setMicrophone(false);
+      return;
+    }
+
+    voiceCollector.isRecording = false;
+    await bt.setMicrophone(false);
+
+    final encoded = await voiceCollector.getAllDataAndReset();
+    if (encoded.isEmpty) {
+      debugPrint('[$side] No audio captured');
+      return;
+    }
+
+    final pcm = await LC3.decodeLC3(Uint8List.fromList(encoded));
+    if (pcm.isEmpty) {
+      debugPrint('[$side] LC3 decoding produced no samples');
+      return;
+    }
+
+    final startedAt = DateTime.now();
+    try {
+      final transcript =
+          await SpeechRecognitionService.singleton.transcribeBytes(pcm);
+      final elapsed = DateTime.now().difference(startedAt);
+      debugPrint(
+        '[$side] Transcribed ${pcm.length} bytes in ${elapsed.inMilliseconds}ms: "$transcript"',
+      );
+      await DictationService.singleton.record(transcript);
+    } on SpeechModelMissingException {
+      debugPrint('[$side] Offline speech model missing');
+      await bt.sendPriorityText(
+        'Speech model not installed.\nSettings > Voice to download it.',
+      );
+    } catch (e) {
+      debugPrint('[$side] Transcription failed: $e');
+    }
+  }
+
   void handleEvenAICommand(GlassSide side, int subcmd) async {
     final bt = BluetoothManager();
     switch (subcmd) {
       case 0:
         debugPrint('[$side] Exit to dashboard manually');
         await bt.setMicrophone(false);
-        voiceCollectorAI.isRecording = false;
-        voiceCollectorAI.reset();
+        voiceCollector.isRecording = false;
+        voiceCollector.reset();
         break;
       case 1:
         debugPrint(
           '[$side] Page ${side == GlassSide.left ? 'up' : 'down'} control',
         );
         await bt.setMicrophone(false);
-        voiceCollectorAI.isRecording = false;
+        voiceCollector.isRecording = false;
         break;
       case 23:
-        // Subcmd 23 (0x17) = TouchPad pressed and held
+        // Subcmd 23 (0x17) = TouchPad pressed and held.
+        // Left temple holds to dictate; right temple toggles a running capture.
         if (side == GlassSide.right) {
-          // Right side: toggle conversation recording with diarization
-          debugPrint('[$side] Right touchpad press, toggling conversation recording');
-          await AIService.singleton.handleSideButtonPress();
-        } else {
-          // Left side: start AI chat recording (hold-to-record)
-          debugPrint('[$side] Start AGiXT AI Chat');
-          if (await _isLocalTranscriptionEnabled()) {
-            debugPrint('[$side] Using local speech_to_text');
-            if (!_speechEnabled) {
-              debugPrint('Speech not enabled, attempting init...');
-              await _initSpeech();
-            }
-            if (_speechEnabled) {
-              _startListening();
-            } else {
-              debugPrint('Speech could not be enabled, cannot start listener.');
-            }
-            await bt.setMicrophone(true);
+          if (_isCapturing) {
+            await _finishDictation(side);
           } else {
-            debugPrint('[$side] Using remote Whisper, starting recording buffer');
-            voiceCollectorAI.reset();
-            voiceCollectorAI.isRecording = true;
-            await bt.setMicrophone(true);
+            await _beginDictation(side);
           }
+        } else {
+          await _beginDictation(side);
         }
         break;
+
       case 24:
-        // Subcmd 24 (0x18) = TouchPad pressed and released
-        if (side == GlassSide.right) {
-          // Right side: ignore release event — conversation toggle is handled
-          // entirely by the press event (subcmd 23) or quick note handler.
-          debugPrint('[$side] Right touchpad release, ignoring (toggle on press)');
+        // Subcmd 24 (0x18) = TouchPad pressed and released.
+        // Only the left temple is hold-to-record; the right one toggles on
+        // press, so its release carries no meaning.
+        if (side == GlassSide.left) {
+          await _finishDictation(side);
         } else {
-          // Left side: stop recording, transcribe, and send for chat completion
-          debugPrint('[$side] Stop AGiXT recording');
-          if (await _isLocalTranscriptionEnabled()) {
-            debugPrint('[$side] Stopping local speech_to_text listener');
-            _stopListening();
-            await bt.setMicrophone(false);
-          } else {
-            debugPrint('[$side] Stopping remote Whisper recording buffer');
-            voiceCollectorAI.isRecording = false;
-            await bt.setMicrophone(false);
-
-            List<int> completeVoiceData =
-                await voiceCollectorAI.getAllDataAndReset();
-            if (completeVoiceData.isEmpty) {
-              debugPrint('[$side] No voice data collected for remote Whisper');
-              return;
-            }
-            debugPrint(
-              '[$side] Voice data collected for remote: ${completeVoiceData.length} bytes',
-            );
-
-            final pcm = await LC3.decodeLC3(
-              Uint8List.fromList(completeVoiceData),
-            );
-            debugPrint(
-              '[$side] Voice data decoded for remote: ${pcm.length} bytes',
-            );
-
-            if (pcm.isEmpty) {
-              debugPrint(
-                '[$side] Decoded PCM data is empty, skipping transcription.',
-              );
-              return;
-            }
-
-            final startTime = DateTime.now();
-            try {
-              final transcription =
-                  await (await WhisperService.service()).transcribe(pcm);
-              final endTime = DateTime.now();
-
-              debugPrint('[$side] Remote Transcription: $transcription');
-              debugPrint(
-                '[$side] Remote Transcription took: ${endTime.difference(startTime).inSeconds} seconds',
-              );
-
-              if (transcription.isNotEmpty) {
-                final aiService = AIService.singleton;
-                if (aiService.isBackgroundMode) {
-                  await aiService.processVoiceCommandBackground(transcription);
-                } else {
-                  await aiService.processVoiceCommand(transcription);
-                }
-              } else {
-                debugPrint('[$side] Remote transcription was empty.');
-              }
-            } catch (e) {
-              debugPrint('[$side] Error during remote transcription: $e');
-            }
-          }
+          debugPrint('[$side] Right touchpad released, toggle handled on press');
         }
         break;
 
       default:
-        debugPrint('[$side] Unknown AGiXT subcommand: $subcmd');
+        debugPrint('[$side] Unknown Even AI subcommand: $subcmd');
     }
   }
 
@@ -314,27 +325,26 @@ class BluetoothReciever {
       '[$side] Received voice data chunk: seq=$seq, length=${voiceData.length}',
     );
 
-    final isLocalEnabled = await _isLocalTranscriptionEnabled();
-    final isRecording = voiceCollectorAI.isRecording;
+    final usingGlassesMic = await _useGlassesMicrophone();
+    final isRecording = voiceCollector.isRecording;
     debugPrint(
-        '[$side] Voice data: isLocalEnabled=$isLocalEnabled, voiceCollectorAI.isRecording=$isRecording');
+        '[$side] Voice data: usingGlassesMic=$usingGlassesMic, isRecording=$isRecording');
 
-    // Only add to buffer if using remote whisper (i.e., local is NOT enabled)
-    if (!isLocalEnabled && isRecording) {
+    // Only buffer when the glasses microphone is the active source.
+    if (usingGlassesMic && isRecording) {
       debugPrint('[$side] Adding voice chunk to collector');
-      voiceCollectorAI.addChunk(seq, voiceData);
-    } else if (isLocalEnabled) {
-      // If local, we don't buffer here, speech_to_text uses the mic directly.
-      // The logic in handleEvenAICommand case 23/24 handles mic enabling/disabling.
-      // No action needed here for the voice data itself when using local STT.
-      debugPrint('[$side] Local transcription enabled, not buffering');
+      voiceCollector.addChunk(seq, voiceData);
+    } else if (!usingGlassesMic) {
+      // The phone microphone feeds the platform recogniser directly, so the
+      // glasses stream is not buffered at all in that mode.
+      debugPrint('[$side] Phone microphone in use, not buffering');
     } else {
       debugPrint('[$side] Not recording, discarding voice data');
     }
 
     // This check seems redundant now as stop command (24) handles mic disabling
     // final bt = BluetoothManager();
-    // if (!voiceCollectorAI.isRecording && ! _isListening) { // Check both states
+    // if (!voiceCollector.isRecording && ! _isListening) { // Check both states
     //   bt.setMicrophone(false);
     // }
   }
