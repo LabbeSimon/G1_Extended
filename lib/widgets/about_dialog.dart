@@ -15,14 +15,14 @@ void showCustomAboutDialog(BuildContext context) async {
       applicationName: "G1 Extended",
       applicationVersion: version,
       applicationIcon: Image.asset(
-        'assets/icons/agixt.png',
+        'assets/icons/app_icon.png',
         width: 56,
         height: 56,
       ),
       children: [
         OutlinedButton(
           onPressed: () => launchUrlString(
-            "https://github.com/meyskens/agixt",
+            "https://github.com/LabbeSimon/G1_Extended",
             mode: LaunchMode.externalApplication,
           ),
           child: Row(
@@ -30,20 +30,6 @@ void showCustomAboutDialog(BuildContext context) async {
               Icon(Icons.code),
               const SizedBox(width: 10),
               Text("Source Code"),
-            ],
-          ),
-        ),
-        const SizedBox(height: 2),
-        OutlinedButton(
-          onPressed: () => launchUrlString(
-            "https://ko-fi.com/agixtme",
-            mode: LaunchMode.externalApplication,
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.coffee),
-              const SizedBox(width: 10),
-              Text("Buy me a coffee"),
             ],
           ),
         ),

@@ -72,7 +72,7 @@
             android:value="2" />
 
         <service
-            android:name="fr.simonlabbe.g1extended.background.BackgroundService"
+            android:name="fr.simonlabbe.g1extended.BackgroundService"
             android:enabled="true"
             android:exported="false" />
 
