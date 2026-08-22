@@ -58,6 +58,25 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: ${{ runner.os }}-gradle-
 
+      # The signing key lives in repository secrets, never in the repository.
+      # Without them the build still runs and produces a debug-signed APK,
+      # so a fork or a pull request is not blocked by a key it cannot have.
+      - name: Restore the signing key
+        if: env.KEYSTORE_BASE64 != ''
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p android/app/keystore
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/keystore/release.jks
+          cat > android/keystore.properties <<EOF
+          storePassword=$KEYSTORE_PASSWORD
+          keyPassword=$KEYSTORE_PASSWORD
+          keyAlias=release
+          storeFile=../app/keystore/release.jks
+          EOF
+
       - name: Install dependencies
         run: flutter pub get
 
@@ -73,6 +92,15 @@ jobs:
       # Surfaces the real error as a GitHub annotation. Without this a failed
       # Gradle build shows up only as "Process completed with exit code 1",
       # and the cause stays buried in the step log.
+      - name: Confirm how the APK was signed
+        if: always()
+        run: |
+          if [ -f android/app/keystore/release.jks ]; then
+            echo "Signing with the release key."
+          else
+            echo "::warning::No signing key available, this APK is debug-signed and cannot be published."
+          fi
+
       - name: Build release APK
         run: |
           set -o pipefail
@@ -89,6 +117,11 @@ jobs:
             done
             exit 1
           fi
+
+      # A key on a runner outlives the job otherwise, and runners are reused.
+      - name: Remove the signing key
+        if: always()
+        run: rm -f android/app/keystore/release.jks android/keystore.properties
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
