@@ -26,11 +26,25 @@ class GlassesSettingsService {
 
   // ---------------------------------------------------------------- reading
 
-  Future<BrightnessSetting?> readBrightness() => _ask(
-        BrightnessSetting.buildGetCommand(),
-        SettingsCommands.getBrightness,
-        BrightnessSetting.parseResponse,
-      );
+  /// Reads the brightness the glasses are actually using, and caches it.
+  ///
+  /// The cache used to be written only when the app *set* a value, which made
+  /// it a record of what this app had done rather than of what the hardware
+  /// was doing. Anyone who had turned automatic brightness on from the
+  /// official app, or reinstalled this one, got the default — off — until
+  /// they opened the brightness screen, which asks the glasses directly.
+  Future<BrightnessSetting?> readBrightness() async {
+    final setting = await _ask(
+      BrightnessSetting.buildGetCommand(),
+      SettingsCommands.getBrightness,
+      BrightnessSetting.parseResponse,
+    );
+    if (setting != null) {
+      await _remember('glasses_brightness', setting.level);
+      await _remember('glasses_brightness_auto', setting.auto);
+    }
+    return setting;
+  }
 
   Future<HeadUpAngle?> readHeadUpAngle() => _ask(
         HeadUpAngle.buildGetCommand(),
