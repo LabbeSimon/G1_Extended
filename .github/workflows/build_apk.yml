@@ -32,6 +32,13 @@ jobs:
           channel: stable
           cache: true
 
+      # build.gradle pins these to compile the native LC3 decoder used by
+      # the glasses microphone. Runners do not ship this exact NDK.
+      - name: Setup Android NDK and CMake
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.0.11902837" "cmake;3.22.1"
+
       - name: Setup Gradle cache
         uses: actions/cache@v4
         with:

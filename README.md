@@ -43,6 +43,12 @@ requests, both optional:
 - `api.open-meteo.com` for the weather widget, if you enable it
 - `alphacephei.com` once, to download the offline speech model
 
+## Contributing
+
+AI-assisted contributions are accepted. See [AI-POLICY.md](AI-POLICY.md) for
+what is expected, and for the one rule that is not negotiable: no accounts,
+no telemetry, no phoning home.
+
 ## Build
 
 ```
