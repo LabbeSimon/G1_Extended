@@ -16,7 +16,7 @@ named, on your device, and none of it is uploaded anywhere.
 | Access | Used for | Leaves the device |
 |---|---|---|
 | Bluetooth | Pairing and talking to the glasses | No |
-| Location | Android requires it to scan for Bluetooth devices, and the weather widget needs a rough position | Only a coordinate rounded to ~1 km, see below |
+| Location | Android requires it to scan for Bluetooth devices, the weather widget needs a rough position, and the optional speed readout reads GPS | Only a coordinate rounded to ~1 km, for the weather. Never for speed |
 | Microphone | Dictation, live captions and the optional wake word | No |
 | Notification access | Mirroring your phone notifications onto the glasses | No |
 | Calendar | Showing the day's agenda on the glasses | No |
@@ -50,6 +50,14 @@ the request is never made.
 
 With the weather widget off, glasses dictation unused and update checks
 disabled, the app makes no network requests at all.
+
+## Speed
+
+The optional speed readout turns GPS into a number of km/h on your phone and
+draws that number on the lens. No position, no track, no history: nothing is
+stored and nothing is sent. It is off by default, and while it is on the app
+holds a foreground service so Android keeps delivering fixes with the screen
+locked — otherwise the readout would freeze the moment you pocket the phone.
 
 ## Audio
 

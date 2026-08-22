@@ -18,6 +18,7 @@ import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/glasses_settings_service.dart';
 import 'package:g1_extended/services/open_meteo_weather_service.dart';
 import 'package:g1_extended/theme/app_theme.dart';
+import 'package:g1_extended/widgets/battery_gauge.dart';
 import 'package:g1_extended/widgets/bento.dart';
 import 'package:g1_extended/widgets/update_banner.dart';
 
@@ -296,20 +297,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 14),
-                  Readout(
-                    value: battery.leftBattery == null
-                        ? '--%'
-                        : '${battery.leftBattery!.percentage}%',
-                    icon: Icons.battery_std_outlined,
-                    muted: !connected,
-                  ),
-                  const SizedBox(height: 6),
-                  Readout(
-                    value: battery.rightBattery == null
-                        ? '--%'
-                        : '${battery.rightBattery!.percentage}%',
-                    icon: Icons.battery_std_outlined,
-                    muted: !connected,
+                  GlassesBattery(
+                    left: battery.leftBattery?.percentage,
+                    right: battery.rightBattery?.percentage,
+                    charging: battery.isAnyCharging,
                   ),
                   const SizedBox(height: 16),
                   Text(

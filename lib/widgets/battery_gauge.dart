@@ -166,3 +166,72 @@ class _BatteryPainter extends CustomPainter {
       old.charging != charging ||
       old.hollow != hollow;
 }
+
+
+/// The pair's battery, as one reading unless the two temples disagree.
+///
+/// Showing both sides all the time is noise: they discharge together, so two
+/// gauges repeat the same number twice. What matters is how long you have
+/// left, which is the emptier side. The pair only splits apart when they have
+/// genuinely drifted — one temple left out of the case, say — because that is
+/// the moment the difference is worth knowing about.
+class GlassesBattery extends StatelessWidget {
+  const GlassesBattery({
+    super.key,
+    required this.left,
+    required this.right,
+    this.charging = false,
+    this.gaugeWidth = 26,
+  });
+
+  final int? left;
+  final int? right;
+  final bool charging;
+  final double gaugeWidth;
+
+  /// Below this the two sides are treated as one reading.
+  static const int splitThreshold = 10;
+
+  /// True when the two sides are far enough apart to be worth showing apart.
+  static bool shouldSplit(int? left, int? right) {
+    if (left == null || right == null) return false;
+    return (left - right).abs() >= splitThreshold;
+  }
+
+  /// The side that runs out first, which is the one that matters.
+  static int? lowest(int? left, int? right) {
+    if (left == null) return right;
+    if (right == null) return left;
+    return left < right ? left : right;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!shouldSplit(left, right)) {
+      return BatteryGauge(
+        percentage: lowest(left, right),
+        charging: charging,
+        width: gaugeWidth,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        BatteryGauge(
+          label: 'L',
+          percentage: left,
+          charging: charging,
+          width: gaugeWidth,
+        ),
+        const SizedBox(height: 8),
+        BatteryGauge(
+          label: 'R',
+          percentage: right,
+          charging: charging,
+          width: gaugeWidth,
+        ),
+      ],
+    );
+  }
+}

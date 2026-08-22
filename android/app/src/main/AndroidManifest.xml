@@ -15,6 +15,11 @@
     <!-- Staying connected while the phone is in a pocket. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- Only for the speedometer, which is off by default. Android will not
+         deliver GPS fixes to a backgrounded app without it, and a speed
+         readout that stops when the screen locks is worthless. The reading is
+         turned into a number on the phone; no position is ever transmitted. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -82,7 +87,7 @@
 
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
-            android:foregroundServiceType="connectedDevice" />
+            android:foregroundServiceType="connectedDevice|location" />
 
         <service
             android:label="notifications"

@@ -7,6 +7,7 @@ import 'package:g1_extended/screens/settings/about_screen.dart';
 import 'package:g1_extended/screens/settings/dashboard_screen.dart';
 import 'package:g1_extended/screens/settings/notifications_screen.dart';
 import 'package:g1_extended/screens/settings/display_settings_screen.dart';
+import 'package:g1_extended/screens/settings/speedometer_screen.dart';
 import 'package:g1_extended/screens/settings/voice_settings_screen.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/theme/app_theme.dart';
@@ -207,16 +208,10 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
                 ),
                 const SizedBox(height: 18),
                 if (_isConnected) ...[
-                  BatteryGauge(
-                    label: 'L',
-                    percentage: left?.percentage,
-                    charging: left?.isCharging ?? charging,
-                  ),
-                  const SizedBox(height: 8),
-                  BatteryGauge(
-                    label: 'R',
-                    percentage: right?.percentage,
-                    charging: right?.isCharging ?? charging,
+                  GlassesBattery(
+                    left: left?.percentage,
+                    right: right?.percentage,
+                    charging: charging,
                   ),
                   const SizedBox(height: 10),
                   Text(
@@ -295,6 +290,12 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
         title: 'Voice',
         subtitle: 'Wake word, microphone, offline speech model.',
         builder: (_) => const VoiceSettingsScreen(),
+      ),
+      _SettingsEntry(
+        icon: Icons.speed_outlined,
+        title: 'Speed',
+        subtitle: 'Live speed readout on the lens.',
+        builder: (_) => const SpeedometerScreen(),
       ),
       _SettingsEntry(
         icon: Icons.info_outline,
