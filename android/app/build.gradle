@@ -21,7 +21,10 @@ def appDisplayName = "G1 Extended"
 android {
     namespace = "fr.simonlabbe.g1extended"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = "27.0.11902837"
+    // The native LC3 decoder builds against whatever NDK is available.
+    // CI sets ANDROID_NDK_VERSION to the one already on the runner, which
+    // avoids a 1.7 GB download that used to exhaust the runner's disk.
+    ndkVersion = System.getenv('ANDROID_NDK_VERSION') ?: "27.0.11902837"
 
     // Add signing configs for release builds
     signingConfigs {
@@ -74,8 +77,11 @@ android {
         resValue "string", "app_name", appDisplayName
 
         // Add the required manifest placeholders
+        // io.flutter.app.FlutterApplication belonged to the v1 embedding and no
+        // longer exists. App is this project's own Application subclass; it
+        // registers the lifecycle callbacks BackgroundService depends on.
         manifestPlaceholders = [
-            'applicationName': 'io.flutter.app.FlutterApplication'
+            'applicationName': 'fr.simonlabbe.g1extended.App'
         ]
     }
 

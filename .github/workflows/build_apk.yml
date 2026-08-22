@@ -32,12 +32,19 @@ jobs:
           channel: stable
           cache: true
 
-      # build.gradle pins these to compile the native LC3 decoder used by
-      # the glasses microphone. Runners do not ship this exact NDK.
-      - name: Setup Android NDK and CMake
+      # The native LC3 decoder needs an NDK. Downloading a pinned one costs
+      # 1.7 GB and used to fill the runner's disk, so build against the NDK
+      # the image already ships and let build.gradle pick it up.
+      - name: Use the preinstalled Android NDK
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.0.11902837" "cmake;3.22.1"
+          set -euo pipefail
+          NDK_HOME="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-}}"
+          if [ -z "$NDK_HOME" ] || [ ! -d "$NDK_HOME" ]; then
+            echo "No preinstalled NDK found on this runner." >&2
+            exit 1
+          fi
+          echo "ANDROID_NDK_VERSION=$(basename "$NDK_HOME")" >> "$GITHUB_ENV"
+          echo "Building against NDK $(basename "$NDK_HOME")"
 
       - name: Setup Gradle cache
         uses: actions/cache@v4
@@ -57,8 +64,25 @@ jobs:
       - name: Run tests
         run: flutter test
 
+      - name: Disk space before build
+        run: df -h /
+
+      # Surfaces the real error as a GitHub annotation. Without this a failed
+      # Gradle build shows up only as "Process completed with exit code 1",
+      # and the cause stays buried in the step log.
       - name: Build release APK
-        run: flutter build apk --release
+        run: |
+          set -o pipefail
+          if ! flutter build apk --release 2>&1 | tee build.log; then
+            echo "::error::APK build failed. Last 40 lines follow."
+            tail -40 build.log | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            df -h / | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            exit 1
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
