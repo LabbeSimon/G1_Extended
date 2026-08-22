@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:g1_extended/screens/settings/battery_capture_screen.dart';
+import 'package:g1_extended/screens/settings/debug_screen.dart';
+import 'package:g1_extended/services/developer_mode.dart';
 import 'package:g1_extended/services/update_service.dart';
 import 'package:g1_extended/theme/app_theme.dart';
 
@@ -19,6 +22,7 @@ class _AboutScreenState extends State<AboutScreen> {
   String _version = '…';
   bool _autoCheck = true;
   bool _checking = false;
+  bool _developer = false;
 
   @override
   void initState() {
@@ -29,10 +33,12 @@ class _AboutScreenState extends State<AboutScreen> {
   Future<void> _load() async {
     final info = await PackageInfo.fromPlatform();
     final enabled = await UpdateService.singleton.isEnabled();
+    final developer = await DeveloperMode.singleton.isEnabled();
     if (!mounted) return;
     setState(() {
       _version = '${info.version} (${info.buildNumber})';
       _autoCheck = enabled;
+      _developer = developer;
     });
   }
 
@@ -75,6 +81,29 @@ class _AboutScreenState extends State<AboutScreen> {
     }
   }
 
+  /// Ten taps on the version, the way Android does it.
+  Future<void> _tapVersion() async {
+    final outcome = await DeveloperMode.singleton.registerTap();
+    if (!mounted) return;
+
+    if (outcome.unlocked) setState(() => _developer = true);
+
+    final message = outcome.message;
+    if (message != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(message),
+          duration: const Duration(milliseconds: 900),
+        ));
+    }
+  }
+
+  Future<void> _disableDeveloper() async {
+    await DeveloperMode.singleton.setEnabled(false);
+    if (mounted) setState(() => _developer = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -85,6 +114,7 @@ class _AboutScreenState extends State<AboutScreen> {
           ListTile(
             title: const Text('G1 Extended'),
             subtitle: Text('Version $_version'),
+            onTap: _tapVersion,
           ),
           const Divider(),
 
@@ -130,6 +160,49 @@ class _AboutScreenState extends State<AboutScreen> {
               mode: LaunchMode.externalApplication,
             ),
           ),
+          if (_developer) ...[
+            const Divider(),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 20, 16, 8),
+              child: Text(
+                'DEVELOPER OPTIONS',
+                style: TextStyle(
+                  fontSize: 12,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.battery_unknown_outlined),
+              title: const Text('Battery frame capture'),
+              subtitle: const Text(
+                'Record raw protocol frames and export them as JSON.',
+              ),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const BatteryCaptureScreen(),
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.bug_report_outlined),
+              title: const Text('Protocol test bench'),
+              subtitle: const Text(
+                'Send text, notifications, images and layouts by hand.',
+              ),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const DebugPage()),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.lock_outline),
+              title: const Text('Turn off developer options'),
+              onTap: _disableDeveloper,
+            ),
+          ],
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
             child: Text(

@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/widgets.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:g1_extended/models/g1/glass.dart';
 import 'package:g1_extended/services/battery_frame_log.dart';
@@ -21,9 +23,30 @@ class DiagnosticReport {
   static final DiagnosticReport singleton = DiagnosticReport._internal();
   factory DiagnosticReport() => singleton;
 
+  static const String _redactKey = 'diagnostics_redact';
+
+  /// Whether identifying details are left out of the report.
+  ///
+  /// On by default. The one genuinely identifying thing here is the BLE name
+  /// of each temple, which carries the pair's serial number: a report shared
+  /// in public would tie a person to a specific pair of glasses. The operating
+  /// system build string is close behind, being narrow enough to help
+  /// fingerprint a device. Neither is needed to decode a protocol frame, so
+  /// the default is to omit them and let anyone who does need them opt in.
+  Future<bool> isRedacted() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_redactKey) ?? true;
+  }
+
+  Future<void> setRedacted(bool redacted) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_redactKey, redacted);
+  }
+
   /// Everything the report will contain, as a map, so a screen can show the
   /// user exactly what they are about to share.
   Future<Map<String, dynamic>> build() async {
+    final redacted = await isRedacted();
     final info = await PackageInfo.fromPlatform();
     final bluetooth = BluetoothManager.singleton;
     final log = BatteryFrameLog.singleton;
@@ -32,20 +55,23 @@ class DiagnosticReport {
       'report': {
         'generatedAt': DateTime.now().toIso8601String(),
         'schema': 1,
+        'redacted': redacted,
       },
       'app': {
         'version': info.version,
         'build': info.buildNumber,
-        'package': info.packageName,
+        if (!redacted) 'package': info.packageName,
       },
       'platform': {
         'os': Platform.operatingSystem,
-        'osVersion': Platform.operatingSystemVersion,
+        // Everything below narrows the report to one device. Useful when you
+        // are debugging your own phone, and nobody else's business.
+        if (!redacted) ...await _deviceDetails(),
       },
       'glasses': {
         'connected': bluetooth.isConnected,
-        'left': _describe(bluetooth.leftGlass),
-        'right': _describe(bluetooth.rightGlass),
+        'left': _describe(bluetooth.leftGlass, redacted: redacted),
+        'right': _describe(bluetooth.rightGlass, redacted: redacted),
         'battery': {
           'left': bluetooth.batteryStatus.leftBattery?.percentage,
           'right': bluetooth.batteryStatus.rightBattery?.percentage,
@@ -70,10 +96,49 @@ class DiagnosticReport {
     };
   }
 
-  Map<String, dynamic>? _describe(Glass? glass) {
+  /// Model, Android build and screen geometry. Any one of them narrows a
+  /// report to a handful of devices; together they identify one.
+  Future<Map<String, dynamic>> _deviceDetails() async {
+    final details = <String, dynamic>{
+      'osVersion': Platform.operatingSystemVersion,
+    };
+
+    try {
+      if (Platform.isAndroid) {
+        final android = await DeviceInfoPlugin().androidInfo;
+        details.addAll({
+          'manufacturer': android.manufacturer,
+          'model': android.model,
+          'device': android.device,
+          'sdkInt': android.version.sdkInt,
+          'release': android.version.release,
+        });
+      }
+    } catch (e) {
+      debugPrint('DiagnosticReport: could not read device info: $e');
+    }
+
+    try {
+      final view = WidgetsBinding.instance.platformDispatcher.views.first;
+      final size = view.physicalSize / view.devicePixelRatio;
+      details['screen'] = {
+        'width': size.width.round(),
+        'height': size.height.round(),
+        'devicePixelRatio': view.devicePixelRatio,
+      };
+    } catch (e) {
+      debugPrint('DiagnosticReport: could not read screen metrics: $e');
+    }
+
+    return details;
+  }
+
+  /// The BLE name carries the pair's serial number, so it is the first thing
+  /// to go when the report is redacted.
+  Map<String, dynamic>? _describe(Glass? glass, {required bool redacted}) {
     if (glass == null) return null;
     return {
-      'name': glass.name,
+      if (!redacted) 'name': glass.name,
       'connected': glass.isConnected == true,
     };
   }
