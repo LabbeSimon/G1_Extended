@@ -5,6 +5,8 @@ import 'package:hive/hive.dart';
 
 import 'package:g1_extended/services/assistant_service.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/voice_command_runner.dart';
+import 'package:g1_extended/services/voice_commands.dart';
 
 /// A single piece of dictated text, kept on the device.
 class Dictation {
@@ -72,6 +74,15 @@ class DictationService {
       return;
     }
 
+    // Anything the phone can do itself is done here rather than sent to a
+    // model: it is faster, works without a network, and replying to a message
+    // is not something a model could do at all.
+    final command = VoiceCommands.parse(trimmed);
+    if (command != null) {
+      await _runCommand(command);
+      return;
+    }
+
     if (await AssistantService.singleton.isConfigured()) {
       await _askAssistant(trimmed);
       return;
@@ -93,6 +104,23 @@ class DictationService {
 
     await _persist(entry);
     if (!_controller.isClosed) _controller.add(entry);
+  }
+
+  Future<void> _runCommand(VoiceCommandMatch command) async {
+    final outcome = await VoiceCommandRunner.singleton.run(command);
+    if (outcome.isEmpty) return;
+
+    try {
+      await BluetoothManager.singleton.sendPriorityText(outcome);
+    } catch (e) {
+      debugPrint('DictationService: could not show the outcome: $e');
+    }
+
+    await _persist(Dictation(
+      text: outcome,
+      capturedAt: DateTime.now(),
+      source: DictationSource.glasses,
+    ));
   }
 
   /// Sends the transcript on and shows the answer.
