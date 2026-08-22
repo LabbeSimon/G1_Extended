@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 
-import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -43,11 +44,45 @@ class VoskModelManager {
 
   VoskFlutterPlugin get plugin => _vosk;
 
-  /// Returns the model path if it is already on disk, `null` otherwise.
+  /// Marks an extraction in progress. A directory under this name is never
+  /// handed to the native loader.
+  static const String _stagingPrefix = '.incomplete-';
+
+  /// Returns the model path if a *complete* model is on disk.
+  ///
+  /// Completeness matters more than it sounds. A half-extracted model looks
+  /// installed, and handing it to the native loader crashes the process
+  /// rather than throwing — so one interrupted download would poison every
+  /// launch afterwards, with no way for Dart to catch it. Extraction
+  /// therefore happens under a staging name and is renamed into place only
+  /// once finished, which makes the final directory's existence proof that
+  /// it is whole.
   Future<String?> installedModelPath() async {
     final appDir = await getApplicationDocumentsDirectory();
     final modelDir = Directory('${appDir.path}/vosk-models/$modelName');
-    return await modelDir.exists() ? modelDir.path : null;
+    if (!await modelDir.exists()) return null;
+
+    // A model missing its acoustic data is not a model.
+    if (!await Directory('${modelDir.path}/am').exists()) {
+      debugPrint('VoskModelManager: incomplete model on disk, removing it');
+      await modelDir.delete(recursive: true);
+      return null;
+    }
+
+    return modelDir.path;
+  }
+
+  /// Clears anything a previous run left half-written.
+  Future<void> _clearStaging(Directory modelsDir) async {
+    if (!await modelsDir.exists()) return;
+
+    await for (final entry in modelsDir.list()) {
+      final name = entry.path.split('/').last;
+      if (name.startsWith(_stagingPrefix) || name.endsWith('.zip')) {
+        debugPrint('VoskModelManager: clearing leftover $name');
+        await entry.delete(recursive: true);
+      }
+    }
   }
 
   /// True when the model is on disk and does not need downloading.
@@ -93,6 +128,7 @@ class VoskModelManager {
       final appDir = await getApplicationDocumentsDirectory();
       final modelsDir = Directory('${appDir.path}/vosk-models');
       await modelsDir.create(recursive: true);
+      await _clearStaging(modelsDir);
 
       final response = await client.send(http.Request('GET', Uri.parse(modelUrl)));
       if (response.statusCode != 200) {
@@ -111,26 +147,84 @@ class VoskModelManager {
       }
       await sink.close();
 
-      final archive = ZipDecoder().decodeBytes(await zipFile.readAsBytes());
-      for (final entry in archive) {
-        final target = '${modelsDir.path}/${entry.name}';
-        if (entry.isFile) {
-          await File(target).create(recursive: true);
-          await File(target).writeAsBytes(entry.content as List<int>);
-        } else {
-          await Directory(target).create(recursive: true);
-        }
-      }
-      await zipFile.delete();
+      // Extraction runs on its own isolate, streamed entry by entry, into a
+      // staging directory.
+      //
+      // Reading the archive with decodeBytes held the whole 40 MB zip in
+      // memory and then decompressed each entry on top of it, on the main
+      // isolate. The model contains single files of tens of megabytes, so
+      // peak usage went far past what Android grants an app: the process was
+      // killed, which looked from the outside like the app crashing whenever
+      // anyone touched speech recognition.
+      final staging = Directory('${modelsDir.path}/$_stagingPrefix$modelName');
+      final zipPath = zipFile.path;
+      final stagingPath = staging.path;
 
-      _setProgress(1.0);
-      return '${modelsDir.path}/$modelName';
+      try {
+        await Isolate.run(() => _extract(zipPath, stagingPath));
+        await zipFile.delete();
+
+        // The archive contains a single top-level directory named after the
+        // model; the staging directory therefore holds it one level down.
+        final extracted = Directory('$stagingPath/$modelName');
+        final source = await extracted.exists() ? extracted : staging;
+
+        final destination = Directory('${modelsDir.path}/$modelName');
+        if (await destination.exists()) {
+          await destination.delete(recursive: true);
+        }
+
+        // Rename is what makes this safe: the final directory appears whole
+        // or not at all.
+        await source.rename(destination.path);
+        if (await staging.exists()) await staging.delete(recursive: true);
+
+        _setProgress(1.0);
+        return destination.path;
+      } catch (e) {
+        debugPrint('VoskModelManager: extraction failed: $e');
+        if (await staging.exists()) await staging.delete(recursive: true);
+        if (await zipFile.exists()) await zipFile.delete();
+        return null;
+      }
     } catch (e) {
       debugPrint('VoskModelManager: download failed: $e');
       return null;
     } finally {
       client.close();
       _isDownloading = false;
+    }
+  }
+
+  /// Unpacks the archive without ever holding it whole.
+  ///
+  /// Runs on a background isolate, so it neither blocks the interface nor
+  /// counts against the main isolate's heap. Static because an isolate entry
+  /// point cannot close over `this`.
+  static void _extract(String zipPath, String destination) {
+    final input = InputFileStream(zipPath);
+    try {
+      final archive = ZipDecoder().decodeBuffer(input);
+
+      for (final entry in archive) {
+        final target = '$destination/${entry.name}';
+
+        if (!entry.isFile) {
+          Directory(target).createSync(recursive: true);
+          continue;
+        }
+
+        Directory(File(target).parent.path).createSync(recursive: true);
+        final output = OutputFileStream(target);
+        try {
+          // Streams the entry straight to disk rather than materialising it.
+          entry.writeContent(output);
+        } finally {
+          output.closeSync();
+        }
+      }
+    } finally {
+      input.closeSync();
     }
   }
 

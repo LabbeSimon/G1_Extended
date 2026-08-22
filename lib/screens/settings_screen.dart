@@ -35,6 +35,9 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
   void initState() {
     super.initState();
     _loadGlassesDisplayPreference();
+    if (BluetoothManager.singleton.isConnected) {
+      BluetoothManager.singleton.requestBatteryInfo().ignore();
+    }
     _startBatteryStatusTracking();
     _startConnectionStatusTracking();
   }

@@ -917,6 +917,15 @@ class BluetoothManager {
       return;
     }
 
+    // Battery was asked for twice just after connecting and never again, so
+    // a session that outlived those two requests had nothing to show, and an
+    // app opened later showed a reading from whenever it last connected.
+    try {
+      await requestBatteryInfo();
+    } catch (e) {
+      debugPrint('Error refreshing battery: $e');
+    }
+
     // Synchronize time and weather with glasses
     try {
       await TimeSync.updateTimeAndWeather();

@@ -64,6 +64,12 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadWeather();
     _loadNextEvent();
     _loadGlassesState();
+
+    // Ask straight away rather than waiting for the next sync: opening the
+    // app is exactly when someone wants to know the level.
+    if (_bluetooth.isConnected) {
+      _bluetooth.requestBatteryInfo().ignore();
+    }
   }
 
   /// Reads brightness and silent mode back from the glasses, so the tiles
