@@ -14,6 +14,7 @@ import 'package:g1_extended/services/dashboard_controller.dart';
 import 'package:g1_extended/models/g1/note.dart';
 import 'package:g1_extended/models/g1/notification.dart';
 import 'package:g1_extended/models/g1/text.dart';
+import 'package:g1_extended/services/navigation_service.dart';
 import 'package:g1_extended/services/notifications_listener.dart';
 import 'package:g1_extended/services/stops_manager.dart';
 import 'package:g1_extended/services/open_meteo_weather_service.dart';
@@ -788,6 +789,13 @@ class BluetoothManager {
     debugPrint(
       'Received notification: ${notification.toString()} from ${notification.packageName}',
     );
+
+    // Turn-by-turn directions take a different path: they are rewritten
+    // several times a second and must not be treated as ordinary alerts.
+    if (isConnected && await NavigationService.singleton.handle(notification)) {
+      return;
+    }
+
     if (isConnected) {
       // Check if the app is in the user's notification whitelist
       final packageName = notification.packageName ?? '';

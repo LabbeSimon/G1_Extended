@@ -2,6 +2,7 @@ import 'package:android_package_manager/android_package_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
+import 'package:g1_extended/services/navigation_service.dart';
 import 'package:g1_extended/theme/app_theme.dart';
 
 /// Which apps may put a notification on the glasses.
@@ -24,6 +25,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   Map<String, String> _names = {};
   String _query = '';
   bool _loading = true;
+  bool _navigation = true;
 
   @override
   void initState() {
@@ -33,6 +35,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
   Future<void> _load() async {
     _blocklist = Hive.box('notificationBlocklist');
+    _navigation = await NavigationService.singleton.isEnabled();
 
     try {
       final manager = AndroidPackageManager();
@@ -110,6 +113,20 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                SwitchListTile(
+                  value: _navigation,
+                  title: const Text('Turn-by-turn directions'),
+                  subtitle: const Text(
+                    'Reads the instruction your navigation app already shows '
+                    'and puts it on the lens. Google Maps, Waze, Organic Maps '
+                    'and OsmAnd.',
+                  ),
+                  onChanged: (value) async {
+                    await NavigationService.singleton.setEnabled(value);
+                    if (mounted) setState(() => _navigation = value);
+                  },
+                ),
+                const Divider(),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                   child: Text(
