@@ -107,22 +107,25 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
           _header('Microphone'),
-          RadioListTile<bool>(
-            value: false,
+          RadioGroup<bool>(
             groupValue: _useGlassesMic,
-            onChanged: (v) => _setUseGlassesMic(v ?? false),
-            title: const Text('Phone microphone'),
-            subtitle: const Text(
-              'Uses the system recogniser. More accurate, nothing to download.',
-            ),
-          ),
-          RadioListTile<bool>(
-            value: true,
-            groupValue: _useGlassesMic,
-            onChanged: (v) => _setUseGlassesMic(v ?? true),
-            title: const Text('Glasses microphone'),
-            subtitle: const Text(
-              'Hands free. Needs the offline model below.',
+            onChanged: (value) => _setUseGlassesMic(value ?? false),
+            child: const Column(
+              children: [
+                RadioListTile<bool>(
+                  value: false,
+                  title: Text('Phone microphone'),
+                  subtitle: Text(
+                    'Uses the system recogniser. More accurate, nothing to '
+                    'download.',
+                  ),
+                ),
+                RadioListTile<bool>(
+                  value: true,
+                  title: Text('Glasses microphone'),
+                  subtitle: Text('Hands free. Needs the offline model below.'),
+                ),
+              ],
             ),
           ),
           const Divider(),

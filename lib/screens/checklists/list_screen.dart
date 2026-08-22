@@ -110,11 +110,9 @@ class ChecklistItemsScreenState extends State<ChecklistItemsScreen> {
     );
   }
 
+  /// [newIndex] already accounts for the item being lifted out of the list,
+  /// so no off-by-one correction is needed here.
   void _onReorder(int oldIndex, int newIndex) async {
-    if (newIndex > oldIndex) {
-      newIndex -= 1;
-    }
-
     setState(() {
       final item = widget.checklist.items.removeAt(oldIndex);
       widget.checklist.items.insert(newIndex, item);
@@ -130,7 +128,7 @@ class ChecklistItemsScreenState extends State<ChecklistItemsScreen> {
         actions: [IconButton(icon: Icon(Icons.add), onPressed: _addItem)],
       ),
       body: ReorderableListView(
-        onReorder: _onReorder,
+        onReorderItem: _onReorder,
         children: [
           for (int index = 0; index < widget.checklist.items.length; index++)
             ListTile(

@@ -5,11 +5,17 @@ import 'package:intl/intl.dart';
 
 import 'package:g1_extended/models/dashboard/dashboard.dart';
 import 'package:g1_extended/models/g1/battery.dart';
+import 'package:g1_extended/models/g1/glasses_settings.dart';
 import 'package:g1_extended/screens/checklist_screen.dart';
+import 'package:g1_extended/screens/dictation_history_screen.dart';
+import 'package:g1_extended/screens/quick_note_screen.dart';
+import 'package:g1_extended/screens/settings/display_settings_screen.dart';
+import 'package:g1_extended/screens/teleprompter_screen.dart';
 import 'package:g1_extended/screens/live_captions_screen.dart';
 import 'package:g1_extended/screens/settings/dashboard_screen.dart';
 import 'package:g1_extended/screens/settings_screen.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/glasses_settings_service.dart';
 import 'package:g1_extended/services/open_meteo_weather_service.dart';
 import 'package:g1_extended/theme/app_theme.dart';
 import 'package:g1_extended/widgets/bento.dart';
@@ -34,6 +40,11 @@ class _HomeScreenState extends State<HomeScreen> {
   WeatherData? _weather;
   String? _nextEvent;
   bool _silentMode = false;
+  int _brightness = 0;
+  bool _autoBrightness = false;
+
+  String get _brightnessLabel =>
+      _autoBrightness ? 'Auto' : '${(_brightness / BrightnessSetting.maxLevel * 100).round()}%';
 
   @override
   void initState() {
@@ -50,6 +61,35 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _loadWeather();
     _loadNextEvent();
+    _loadGlassesState();
+  }
+
+  /// Reads brightness and silent mode back from the glasses, so the tiles
+  /// show what the hardware is actually doing rather than what we last sent.
+  Future<void> _loadGlassesState() async {
+    final settings = GlassesSettingsService.singleton;
+    final cached = await settings.cachedValues();
+
+    if (mounted) {
+      setState(() {
+        _brightness = cached['brightness']! as int;
+        _autoBrightness = cached['brightnessAuto']! as bool;
+      });
+    }
+
+    if (!_bluetooth.isConnected) return;
+
+    final brightness = await settings.readBrightness();
+    final silent = await settings.readSilentMode();
+
+    if (!mounted) return;
+    setState(() {
+      if (brightness != null) {
+        _brightness = brightness.level;
+        _autoBrightness = brightness.auto;
+      }
+      if (silent != null) _silentMode = silent;
+    });
   }
 
   @override
@@ -91,7 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _toggleSilentMode() async {
     if (!_bluetooth.isConnected) return;
     final next = !_silentMode;
-    await _bluetooth.setSilentMode(next);
+    await GlassesSettingsService.singleton.setSilentMode(next);
     if (mounted) setState(() => _silentMode = next);
   }
 
@@ -285,9 +325,15 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Expanded(
                   child: BentoTile(
-                    icon: Icons.brightness_medium_outlined,
-                    label: 'Display',
-                    onTap: _openGlassesSettings,
+                    icon: _autoBrightness
+                        ? Icons.brightness_auto_outlined
+                        : Icons.brightness_medium_outlined,
+                    label: _brightnessLabel,
+                    onTap: () => Navigator.of(context)
+                        .push(MaterialPageRoute(
+                          builder: (_) => const DisplaySettingsScreen(),
+                        ))
+                        .then((_) => _loadGlassesState()),
                   ),
                 ),
                 const SizedBox(height: AppMetrics.gutter),
@@ -310,9 +356,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildActionGrid() {
     final actions = <_Action>[
       _Action(
-        icon: Icons.description_outlined,
-        label: 'Checklists',
-        builder: (_) => const ChecklistPage(),
+        icon: Icons.edit_note_outlined,
+        label: 'Quick note',
+        builder: (_) => const QuickNoteScreen(),
       ),
       _Action(
         icon: Icons.subtitles_outlined,
@@ -320,14 +366,24 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (_) => const LiveCaptionsScreen(),
       ),
       _Action(
+        icon: Icons.format_list_numbered,
+        label: 'Teleprompter',
+        builder: (_) => const TeleprompterScreen(),
+      ),
+      _Action(
+        icon: Icons.mic_none_outlined,
+        label: 'Dictation',
+        builder: (_) => const DictationHistoryScreen(),
+      ),
+      _Action(
+        icon: Icons.checklist_outlined,
+        label: 'Checklists',
+        builder: (_) => const ChecklistPage(),
+      ),
+      _Action(
         icon: Icons.view_agenda_outlined,
         label: 'Dashboard',
         builder: (_) => const DashboardSettingsPage(),
-      ),
-      _Action(
-        icon: Icons.format_list_numbered,
-        label: 'Teleprompter',
-        builder: null,
       ),
     ];
 
