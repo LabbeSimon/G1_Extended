@@ -6,6 +6,9 @@ import 'dart:typed_data';
 /// Everything here is a pure builder or parser: no I/O, so it is testable
 /// without a pair of glasses on the desk.
 abstract final class SettingsCommands {
+  static const int dashboard = 0x06;
+  static const int setDebugMode = 0xF4;
+
   static const int setBrightness = 0x01;
   static const int getBrightness = 0x29;
 
@@ -226,4 +229,71 @@ abstract final class DeviceInfo {
 abstract final class ClearScreen {
   static Uint8List buildCommand() =>
       Uint8List.fromList([SettingsCommands.clearScreen]);
+}
+
+
+/// How the glasses lay out their dashboard.
+///
+/// The original code carried this as three opaque byte arrays. Decoded against
+/// the protocol they are `06 07 00 <seq> 06 <mode> <pane>`: the dashboard
+/// command, a total length of seven, a pad, a sequence number, the "set mode"
+/// subcommand, then the layout and the pane that fills it.
+enum DashboardMode {
+  full(0x00, 'Full'),
+  dual(0x01, 'Dual'),
+  minimal(0x02, 'Minimal');
+
+  const DashboardMode(this.id, this.label);
+
+  final int id;
+  final String label;
+
+  /// Minimal has no room for a second pane, so the choice is hidden there.
+  bool get hasSecondaryPane => this != DashboardMode.minimal;
+}
+
+/// What fills the second pane on the Full and Dual layouts.
+enum DashboardPane {
+  notes(0x00, 'Notes'),
+  stock(0x01, 'Stock graph'),
+  news(0x02, 'News'),
+  calendar(0x03, 'Calendar'),
+  navigation(0x04, 'Navigation'),
+  empty(0x05, 'Empty');
+
+  const DashboardPane(this.id, this.label);
+
+  final int id;
+  final String label;
+}
+
+/// Builds the dashboard layout command.
+abstract final class DashboardLayoutCommand {
+  /// Total packet length, counted by the protocol including the header.
+  static const int _length = 0x07;
+
+  static Uint8List build({
+    required DashboardMode mode,
+    required DashboardPane pane,
+    required int sequence,
+  }) {
+    return Uint8List.fromList([
+      SettingsCommands.dashboard,
+      _length,
+      0x00, // pad
+      sequence & 0xFF,
+      0x06, // subcommand: set dashboard mode
+      mode.id,
+      mode.hasSecondaryPane ? pane.id : DashboardPane.empty.id,
+    ]);
+  }
+}
+
+/// Some settings, height and depth among them, are only accepted while the
+/// glasses are in debug mode. Turning it on is a single byte.
+abstract final class DebugMode {
+  static Uint8List buildSetCommand(bool enabled) => Uint8List.fromList([
+        SettingsCommands.setDebugMode,
+        enabled ? 0x01 : 0x00,
+      ]);
 }

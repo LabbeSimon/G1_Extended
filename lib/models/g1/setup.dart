@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:g1_extended/models/g1/commands.dart';
-import 'package:hive/hive.dart';
 
 class G1Setup {
   bool calendarEnable;
@@ -11,23 +10,17 @@ class G1Setup {
   bool iosMailEnable;
   App app;
 
+  /// The glasses keep their own allowlist, which used to be filled from the
+  /// same box the phone filters with. Two filters over one setting is how you
+  /// end up with notifications that vanish for reasons nobody can explain, so
+  /// the firmware filter is switched off and the phone decides alone.
   static G1Setup generateSetup() {
-    final appBox = Hive.box('notificationApps');
-    final selectedMap = appBox.toMap();
-    selectedMap.removeWhere((k, v) => !v);
-    final selected = selectedMap.keys.toList();
-
-    final appList = <AppItem>[];
-    for (var app in selected) {
-      appList.add(AppItem(id: app, name: app));
-    }
-
     return G1Setup(
       calendarEnable: true,
       callEnable: true,
       msgEnable: true,
       iosMailEnable: true,
-      app: App(list: appList, enable: true),
+      app: App(list: const [], enable: false),
     );
   }
 

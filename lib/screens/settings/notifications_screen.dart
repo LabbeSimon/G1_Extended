@@ -1,177 +1,169 @@
-import 'dart:typed_data';
-
-import 'package:g1_extended/models/g1/setup.dart';
-import 'package:g1_extended/services/bluetooth_manager.dart';
-import 'package:flutter/material.dart';
 import 'package:android_package_manager/android_package_manager.dart';
+import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
+import 'package:g1_extended/theme/app_theme.dart';
+
+/// Which apps may put a notification on the glasses.
+///
+/// Everything is allowed by default; this screen is for taking apps away.
+/// The box stores only the exclusions, so an app installed later is allowed
+/// without the user having to come back here.
 class NotificationSettingsPage extends StatefulWidget {
   const NotificationSettingsPage({super.key});
 
   @override
-  NotificationSettingsPageState createState() =>
-      NotificationSettingsPageState();
+  State<NotificationSettingsPage> createState() =>
+      _NotificationSettingsPageState();
 }
 
-class NotificationSettingsPageState extends State<NotificationSettingsPage> {
-  List<ApplicationInfo> apps = [];
-  List<ApplicationInfo> selectedApps = [];
-  List<ApplicationInfo> filteredApps = [];
-  List<String> selectedPkgNames = [];
-  Map<String, Uint8List> icons = {};
-  Map<String, String> labels = {};
+class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
+  late Box _blocklist;
 
+  List<ApplicationInfo> _apps = [];
+  Map<String, String> _names = {};
+  String _query = '';
   bool _loading = true;
-
-  late Box selectedAppsBox;
-  TextEditingController searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    fetchApps();
-    selectedAppsBox = Hive.box('notificationApps');
-    searchController.addListener(_filterApps);
+    _load();
   }
 
-  void fetchApps() async {
-    List<ApplicationInfo> installedApps =
-        await AndroidPackageManager().getInstalledApplications() ?? [];
+  Future<void> _load() async {
+    _blocklist = Hive.box('notificationBlocklist');
 
-    // fetch all icons
-    for (var app in installedApps) {
-      if (app.packageName == null) continue;
-      icons[app.packageName!] = await app.getAppIcon() ?? Uint8List(0);
-      labels[app.packageName!] = await app.getAppLabel() ?? '';
-    }
+    try {
+      final manager = AndroidPackageManager();
+      final installed = await manager.getInstalledApplications() ?? [];
 
-    final selected = selectedAppsBox.toMap();
-    selected.removeWhere((k, v) => !v);
-
-    final newSelectedApps = <ApplicationInfo>[];
-
-    for (var app in installedApps) {
-      if (selected.containsKey(app.packageName)) {
-        newSelectedApps.add(app);
+      final names = <String, String>{};
+      for (final app in installed) {
+        final package = app.packageName;
+        if (package == null) continue;
+        names[package] = await manager.getApplicationLabel(
+              packageName: package,
+            ) ??
+            package;
       }
-    }
 
-    setState(() {
-      apps = installedApps;
-      selectedApps = newSelectedApps;
-      selectedPkgNames = selected.keys.map((e) => e.toString()).toList();
-      filteredApps = installedApps;
-      _loading = false;
-    });
+      installed.sort((a, b) => (names[a.packageName] ?? '')
+          .toLowerCase()
+          .compareTo((names[b.packageName] ?? '').toLowerCase()));
+
+      if (!mounted) return;
+      setState(() {
+        _apps = installed;
+        _names = names;
+        _loading = false;
+      });
+    } catch (e) {
+      debugPrint('NotificationSettings: could not list apps: $e');
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
-  void _filterApps() {
-    final query = searchController.text.toLowerCase();
-    setState(() {
-      filteredApps = apps.where((app) {
-        final label = labels[app.packageName]?.toLowerCase() ?? '';
-        return label.contains(query);
-      }).toList();
-    });
+  bool _isAllowed(String package) =>
+      _blocklist.get(package, defaultValue: false) != true;
+
+  Future<void> _setAllowed(String package, bool allowed) async {
+    if (allowed) {
+      await _blocklist.delete(package);
+    } else {
+      await _blocklist.put(package, true);
+    }
+    setState(() {});
   }
 
-  void _handleAppToggle(ApplicationInfo app, bool state) async {
-    setState(() {
-      if (state) {
-        selectedApps.add(app);
-        selectedPkgNames.add(app.packageName ?? '');
-      } else {
-        selectedApps.remove(app);
-        selectedPkgNames.remove(app.packageName);
-      }
-    });
+  Future<void> _allowAll() async {
+    await _blocklist.clear();
+    setState(() {});
+  }
 
-    selectedAppsBox.put(app.packageName, state);
-
-    final bt = BluetoothManager();
-    final setup = await G1Setup.generateSetup().constructSetup();
-    for (var command in setup) {
-      await bt.sendCommandToGlasses(command);
-    }
+  List<ApplicationInfo> get _visible {
+    if (_query.isEmpty) return _apps;
+    final query = _query.toLowerCase();
+    return _apps.where((app) {
+      final name = (_names[app.packageName] ?? '').toLowerCase();
+      return name.contains(query) ||
+          (app.packageName ?? '').toLowerCase().contains(query);
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return Scaffold(
-        appBar: AppBar(
-          title: Text('Notification Settings'),
-        ),
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
+    final excluded = _blocklist.keys.length;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('Notification Settings'),
+        title: const Text('Notifications'),
+        actions: [
+          if (excluded > 0)
+            TextButton(
+              onPressed: _allowAll,
+              child: const Text('Allow all'),
+            ),
+        ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text('Apps that show notifications on the G1',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                ),
-                ...selectedApps.map((appInfo) {
-                  return ListTile(
-                    leading: Image.memory(
-                        icons[appInfo.packageName] ?? Uint8List(0)),
-                    title: Text(labels[appInfo.packageName] ?? ''),
-                    subtitle: Text(appInfo.packageName ?? ''),
-                    trailing: Checkbox(
-                      value: selectedPkgNames.contains(appInfo.packageName),
-                      onChanged: (value) =>
-                          _handleAppToggle(appInfo, value ?? false),
-                    ),
-                  );
-                }),
-                Divider(),
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text('System Apps',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: Text(
+                    excluded == 0
+                        ? 'Every app reaches the glasses. Turn one off to '
+                            'exclude it.'
+                        : '$excluded app${excluded > 1 ? 's' : ''} excluded. '
+                            'Everything else reaches the glasses.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.all(8.0),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                   child: TextField(
-                    controller: searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search apps...',
-                      border: InputBorder.none,
+                    onChanged: (value) => setState(() => _query = value),
+                    decoration: const InputDecoration(
+                      hintText: 'Search apps',
+                      prefixIcon: Icon(Icons.search, size: 20),
+                      isDense: true,
+                      border: OutlineInputBorder(),
                     ),
                   ),
                 ),
-                ...filteredApps.map((appInfo) {
-                  return ListTile(
-                    leading: Image.memory(
-                        icons[appInfo.packageName] ?? Uint8List(0)),
-                    title: Text(labels[appInfo.packageName] ?? ''),
-                    subtitle: Text(appInfo.packageName ?? ''),
-                    trailing: Checkbox(
-                      value: selectedAppsBox.get(appInfo.packageName,
-                          defaultValue: false),
-                      onChanged: (value) =>
-                          _handleAppToggle(appInfo, value ?? false),
-                    ),
-                  );
-                }),
+                Expanded(
+                  child: _visible.isEmpty
+                      ? const Center(child: Text('No app matches'))
+                      : ListView.builder(
+                          itemCount: _visible.length,
+                          itemBuilder: (context, index) {
+                            final app = _visible[index];
+                            final package = app.packageName ?? '';
+                            return SwitchListTile(
+                              value: _isAllowed(package),
+                              onChanged: (value) => _setAllowed(package, value),
+                              title: Text(
+                                _names[package] ?? package,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(
+                                package,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.inkFaint,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
               ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }

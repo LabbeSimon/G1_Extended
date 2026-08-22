@@ -93,6 +93,7 @@ class GlassesSettingsService {
   }) async {
     final sequence = _displaySequence = (_displaySequence + 1) & 0xFF;
 
+    await setDebugMode(true);
     try {
       await _sendRight(
         position.buildSetCommand(sequence: sequence, preview: true),
@@ -102,10 +103,32 @@ class GlassesSettingsService {
       await _sendRight(
         position.buildSetCommand(sequence: sequence, preview: false),
       );
+      await setDebugMode(false);
     }
 
     await _remember('glasses_display_height', position.height);
     await _remember('glasses_display_depth', position.depth);
+  }
+
+  /// Sets the dashboard layout and what fills its second pane.
+  Future<void> setDashboardLayout({
+    required DashboardMode mode,
+    required DashboardPane pane,
+  }) async {
+    _displaySequence = (_displaySequence + 1) & 0xFF;
+    await _sendBoth(DashboardLayoutCommand.build(
+      mode: mode,
+      pane: pane,
+      sequence: _displaySequence,
+    ));
+    await _remember('dashboard_mode', mode.index);
+    await _remember('dashboard_pane', pane.index);
+  }
+
+  /// Height and depth are only accepted while the glasses are in debug mode,
+  /// so it is turned on for the length of the change and off again after.
+  Future<void> setDebugMode(bool enabled) async {
+    await _sendBoth(DebugMode.buildSetCommand(enabled));
   }
 
   Future<void> setWearDetection(bool enabled) async {
@@ -115,6 +138,19 @@ class GlassesSettingsService {
 
   Future<void> setSilentMode(bool enabled) async {
     await _sendBoth(SilentMode.buildSetCommand(enabled));
+  }
+
+  /// Puts every glasses-side setting back where it started.
+  Future<void> restoreDefaults() async {
+    await setBrightness(const BrightnessSetting(level: 20, auto: false));
+    await setHeadUpAngle(const HeadUpAngle(30));
+    await setWearDetection(true);
+    await setSilentMode(false);
+    await setDashboardLayout(
+      mode: DashboardMode.dual,
+      pane: DashboardPane.notes,
+    );
+    await setDisplayPosition(const DisplayPosition(height: 4, depth: 5));
   }
 
   Future<void> clearScreen() async {
@@ -138,6 +174,8 @@ class GlassesSettingsService {
       'displayHeight': prefs.getInt('glasses_display_height') ?? 4,
       'displayDepth': prefs.getInt('glasses_display_depth') ?? 5,
       'wearDetection': prefs.getBool('glasses_wear_detection') ?? true,
+      'dashboardMode': prefs.getInt('dashboard_mode') ?? DashboardMode.dual.index,
+      'dashboardPane': prefs.getInt('dashboard_pane') ?? DashboardPane.notes.index,
     };
   }
 

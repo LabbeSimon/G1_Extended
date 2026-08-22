@@ -15,6 +15,7 @@ import 'package:g1_extended/models/dashboard/stop.dart';
 import 'package:g1_extended/screens/home_screen.dart';
 import 'package:g1_extended/services/bluetooth_background_service.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/quick_notes_service.dart';
 import 'package:g1_extended/services/stops_manager.dart';
 import 'package:g1_extended/services/voice_pipeline.dart';
 import 'package:g1_extended/theme/app_theme.dart';
@@ -52,6 +53,7 @@ void main() async {
       BluetoothBackgroundService.requestBatteryOptimizationExemption,
     );
     await _step('bluetooth', BluetoothManager.singleton.initialize);
+    await _step('quick notes', QuickNotesService.singleton.start);
     await _step('voice pipeline', VoicePipeline.singleton.start);
     await _step('legacy service', _startLegacyBackgroundService);
 

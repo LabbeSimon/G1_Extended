@@ -797,18 +797,14 @@ class BluetoothManager {
       }
 
       try {
-        final appBox = Hive.box('notificationApps');
-        final isWhitelisted = appBox.get(packageName, defaultValue: false) == true;
-        if (!isWhitelisted) {
-          debugPrint(
-            'Notification from $packageName not in whitelist, skipping',
-          );
+        // Everything reaches the glasses unless the user excluded the app.
+        final blocklist = Hive.box('notificationBlocklist');
+        if (blocklist.get(packageName, defaultValue: false) == true) {
+          debugPrint('Notifications from $packageName are excluded, skipping');
           return;
         }
       } catch (e) {
-        // Box not opened yet — skip filtering and allow the notification through
-        // The glasses firmware has its own allowlist via G1Setup as a fallback
-        debugPrint('Could not check notification whitelist: $e, allowing notification');
+        debugPrint('Could not read the notification blocklist: $e, allowing');
       }
 
       NCSNotification ncsNotification = NCSNotification(
