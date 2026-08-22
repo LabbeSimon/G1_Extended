@@ -28,9 +28,9 @@
     <!-- Dictation and wake word, both recognised on the device. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
-    <!-- Reminders fire at a set time. -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Reminders are driven by in-process timers, not by the alarm manager,
+         so no exact-alarm permission is needed. USE_EXACT_ALARM in particular
+         is restricted by Google Play to clock and calendar apps. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- Downloading the offline speech model, and the weather forecast.
