@@ -1,20 +1,17 @@
 import 'dart:io';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 /// Logical groups of permissions that map to user-facing features.
+/// Only what the manifest actually declares. Offering to grant a permission
+/// the app does not request produces a dialog that cannot succeed.
 enum AppPermission {
   bluetooth,
   location,
   notifications,
   calendar,
   microphone,
-  storage,
   batteryOptimization,
-  contacts,
-  sms,
-  phone,
 }
 
 /// Metadata describing a logical permission group.
@@ -63,15 +60,6 @@ class PermissionSummary {
 }
 
 class PermissionManager {
-  static final List<Permission> _android13MediaPermissions =
-      List<Permission>.unmodifiable(<Permission>[
-    Permission.photos,
-    Permission.videos,
-    Permission.audio,
-  ]);
-
-  static int? _cachedAndroidSdkInt;
-
   static final List<PermissionDefinition> _definitions = [
     const PermissionDefinition(
       id: AppPermission.bluetooth,
@@ -90,7 +78,8 @@ class PermissionManager {
       id: AppPermission.location,
       title: 'Location',
       description:
-          'Lets the app deliver local weather and location-aware AI responses when you ask for them.',
+          'Android requires it to scan for Bluetooth devices. Also used for '
+          'local weather and, if you enable it, the speed readout.',
       permissions: [
         Permission.location,
       ],
@@ -100,7 +89,8 @@ class PermissionManager {
       id: AppPermission.notifications,
       title: 'Notifications',
       description:
-          'Allows alerts and messages to show on your phone and glasses at the right moment.',
+          'Lets the app show its own alerts. Forwarding your notifications to '
+          'the glasses is a separate switch, below.',
       permissions: [
         Permission.notification,
       ],
@@ -128,17 +118,6 @@ class PermissionManager {
       requiredForCoreFlow: false,
     ),
     const PermissionDefinition(
-      id: AppPermission.storage,
-      title: 'Media & Files',
-      description:
-          'Allows saving exports and working with shared images, audio, or documents.',
-      permissions: [
-        Permission.storage,
-      ],
-      requiredForCoreFlow: false,
-      androidOnly: true,
-    ),
-    const PermissionDefinition(
       id: AppPermission.batteryOptimization,
       title: 'Battery Optimization',
       description:
@@ -148,35 +127,6 @@ class PermissionManager {
       ],
       requiredForCoreFlow: false,
       androidOnly: true,
-    ),
-    const PermissionDefinition(
-      id: AppPermission.contacts,
-      title: 'Contacts',
-      description:
-          'Allows the AI assistant to find contacts when you ask to send messages or make calls.',
-      permissions: [
-        Permission.contacts,
-      ],
-      requiredForCoreFlow: false,
-    ),
-    const PermissionDefinition(
-      id: AppPermission.sms,
-      title: 'SMS Messages',
-      description:
-          'Enables the AI assistant to send text messages on your behalf when you ask. Opens your default messaging app.',
-      permissions: [],
-      requiredForCoreFlow: false,
-      androidOnly: true,
-    ),
-    const PermissionDefinition(
-      id: AppPermission.phone,
-      title: 'Phone Calls',
-      description:
-          'Allows the AI assistant to initiate phone calls when you request.',
-      permissions: [
-        Permission.phone,
-      ],
-      requiredForCoreFlow: false,
     ),
   ];
 
@@ -282,34 +232,15 @@ class PermissionManager {
   static Future<List<Permission>> _effectivePermissions(
     PermissionDefinition definition,
   ) async {
-    if (definition.id == AppPermission.storage && Platform.isAndroid) {
-      final sdkInt = await _getAndroidSdkInt();
-      if (sdkInt != null && sdkInt >= 33) {
-        return _android13MediaPermissions;
-      }
-    }
 
     return definition.permissions;
   }
 
-  static Future<int?> _getAndroidSdkInt() async {
-    if (!Platform.isAndroid) {
-      return null;
-    }
-
-    if (_cachedAndroidSdkInt != null) {
-      return _cachedAndroidSdkInt;
-    }
-
-    try {
-      final info = await DeviceInfoPlugin().androidInfo;
-      _cachedAndroidSdkInt = info.version.sdkInt;
-    } catch (error) {
-      debugPrint(
-          'PermissionManager: Failed to read Android SDK version: $error');
-    }
-
-    return _cachedAndroidSdkInt;
+  /// The human-readable name of a permission group.
+  static String titleFor(AppPermission id) {
+    return _definitions
+        .firstWhere((definition) => definition.id == id)
+        .title;
   }
 
   static Future<bool> isGroupGranted(AppPermission id) async {

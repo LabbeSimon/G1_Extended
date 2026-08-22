@@ -140,6 +140,42 @@ class GlassesSettingsService {
     await _sendBoth(SilentMode.buildSetCommand(enabled));
   }
 
+  /// Runs the head-up zero calibration.
+  ///
+  /// The wearer is asked, on the lens, to look straight ahead and confirm on
+  /// the touchpad. This waits for that confirmation, then closes the flow.
+  ///
+  /// Returns true when the wearer confirmed, false on timeout or refusal.
+  /// The closing command is sent either way: leaving the glasses in
+  /// calibration mode would keep the dashboard locked.
+  Future<bool> calibrateZeroAngle({
+    Duration waitForWearer = const Duration(seconds: 45),
+  }) async {
+    if (!_bluetooth.isConnected) return false;
+
+    await _sendBoth(ZeroCalibration.buildPrelude());
+    await Future.delayed(const Duration(milliseconds: 120));
+
+    await _sendRight(ZeroCalibration.buildDashboardLock());
+    await Future.delayed(const Duration(milliseconds: 120));
+
+    // Registered before sending, or a quick wearer could confirm before
+    // anyone is listening.
+    final confirmation = _receiver.awaitReply(
+      SettingsCommands.flow,
+      timeout: waitForWearer,
+    );
+
+    await _sendBoth(ZeroCalibration.buildBegin());
+
+    try {
+      final reply = await confirmation;
+      return reply != null && ZeroCalibration.isAcknowledgement(reply);
+    } finally {
+      await _sendBoth(ZeroCalibration.buildFinish());
+    }
+  }
+
   /// Puts every glasses-side setting back where it started.
   Future<void> restoreDefaults() async {
     await setBrightness(const BrightnessSetting(level: 20, auto: false));
