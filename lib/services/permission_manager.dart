@@ -1,4 +1,6 @@
 import 'dart:io';
+
+import 'package:device_calendar/device_calendar.dart';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -40,12 +42,23 @@ class PermissionSummary {
   PermissionSummary({
     required this.definition,
     required this.statuses,
+    this.delegatedGranted,
   });
 
   final PermissionDefinition definition;
   final Map<Permission, PermissionStatus> statuses;
 
+  /// Set for groups a plugin handles itself, where permission_handler has no
+  /// suitable constant. Null for the ordinary case.
+  final bool? delegatedGranted;
+
   bool get allGranted {
+    final delegated = delegatedGranted;
+    if (delegated != null) return delegated;
+
+    // An empty status map used to read as "granted", which is right for a
+    // platform that does not need the permission and wrong for one that
+    // simply failed to report.
     if (statuses.isEmpty) {
       return true;
     }
@@ -53,10 +66,12 @@ class PermissionSummary {
   }
 
   bool get anyPermanentlyDenied =>
+      delegatedGranted == null &&
       statuses.values.any((status) => status.isPermanentlyDenied);
 
-  bool get anyDenied =>
-      statuses.values.any((status) => status.isDenied || status.isRestricted);
+  bool get anyDenied => delegatedGranted != null
+      ? !delegatedGranted!
+      : statuses.values.any((s) => s.isDenied || s.isRestricted);
 }
 
 class PermissionManager {
@@ -101,10 +116,14 @@ class PermissionManager {
       title: 'Calendar',
       description:
           'Used when you connect calendars so events and reminders appear across devices.',
-      permissions: [
-        Permission.calendarFullAccess,
-        Permission.calendarWriteOnly,
-      ],
+      // permission_handler has no read-only calendar permission on Android:
+      // both of its calendar constants map to READ_CALENDAR *and*
+      // WRITE_CALENDAR. This app only reads, so it declares only
+      // READ_CALENDAR — and asking for either constant then requests a
+      // permission the manifest does not declare, which Android refuses
+      // without ever showing a dialog. device_calendar asks for the right
+      // one, so the calendar group defers to it.
+      permissions: [],
       requiredForCoreFlow: false,
     ),
     const PermissionDefinition(
@@ -150,9 +169,43 @@ class PermissionManager {
     return _definitions.firstWhere((definition) => definition.id == id);
   }
 
+  /// Groups with no permission_handler permission behind them, handled by
+  /// the plugin that actually needs the access.
+  static bool _isDelegated(AppPermission id) =>
+      id == AppPermission.calendar;
+
+  static Future<bool> _calendarGranted() async {
+    try {
+      final result = await DeviceCalendarPlugin().hasPermissions();
+      return result.data == true;
+    } catch (e) {
+      debugPrint('PermissionManager: could not read calendar access: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> _requestCalendar() async {
+    try {
+      final result = await DeviceCalendarPlugin().requestPermissions();
+      return result.data == true;
+    } catch (e) {
+      debugPrint('PermissionManager: could not request calendar access: $e');
+      return false;
+    }
+  }
+
   static Future<PermissionSummary> getSummary(AppPermission id) async {
     final definition = definitionOf(id);
     final Map<Permission, PermissionStatus> statuses = {};
+
+    if (_isDelegated(id)) {
+      return PermissionSummary(
+        definition: definition,
+        statuses: {},
+        delegatedGranted: await _calendarGranted(),
+      );
+    }
+
     final permissions = await _effectivePermissions(definition);
 
     if (!Platform.isAndroid && !Platform.isIOS) {
@@ -182,6 +235,15 @@ class PermissionManager {
   }
 
   static Future<PermissionSummary> requestPermissions(AppPermission id) async {
+    if (_isDelegated(id)) {
+      final granted = await _requestCalendar();
+      return PermissionSummary(
+        definition: definitionOf(id),
+        statuses: {},
+        delegatedGranted: granted,
+      );
+    }
+
     final definition = definitionOf(id);
     final Map<Permission, PermissionStatus> statuses = {};
 
@@ -220,6 +282,10 @@ class PermissionManager {
   }
 
   static Future<bool> ensureGranted(AppPermission id) async {
+    if (_isDelegated(id)) {
+      return await _calendarGranted() || await _requestCalendar();
+    }
+
     final summary = await getSummary(id);
     if (summary.allGranted) {
       return true;
@@ -244,6 +310,8 @@ class PermissionManager {
   }
 
   static Future<bool> isGroupGranted(AppPermission id) async {
+    if (_isDelegated(id)) return _calendarGranted();
+
     final summary = await getSummary(id);
     return summary.allGranted;
   }

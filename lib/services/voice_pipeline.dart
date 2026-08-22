@@ -34,6 +34,9 @@ class VoicePipeline {
     _started = true;
 
     await _input.initialize();
+
+    // initialize() no longer touches the model, so this is cheap and cannot
+    // take the app down with it.
     await _wakeWord.initialize();
 
     _wakeWord.setOnWakeWordDetected((confidence, source) {

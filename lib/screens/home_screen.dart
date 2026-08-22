@@ -34,7 +34,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with WidgetsBindingObserver {
   final BluetoothManager _bluetooth = BluetoothManager.singleton;
 
   StreamSubscription<bool>? _connectionSubscription;
@@ -52,8 +53,24 @@ class _HomeScreenState extends State<HomeScreen> {
       _autoBrightness ? 'Auto' : '${(_brightness / BrightnessSetting.maxLevel * 100).round()}%';
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+
+    // Whatever the user just did in system settings, this is the moment to
+    // act on it: notification access may now be granted, and the banner may
+    // now be wrong.
+    _bluetooth.retryNotificationListener();
+    _permissionBanner.currentState?.refresh();
+    _loadNextEvent();
+  }
+
+  final GlobalKey<PermissionBannerState> _permissionBanner =
+      GlobalKey<PermissionBannerState>();
+
+  @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _clock = Timer.periodic(const Duration(seconds: 20), (_) {
       if (mounted) setState(() => _now = DateTime.now());
@@ -122,6 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _clock?.cancel();
     _connectionSubscription?.cancel();
     _batterySubscription?.cancel();
@@ -177,7 +195,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               _buildHeader(),
               const SizedBox(height: 12),
-              const PermissionBanner(),
+              PermissionBanner(key: _permissionBanner),
               const UpdateBanner(),
               _buildHero(),
               const SizedBox(height: AppMetrics.gutter),

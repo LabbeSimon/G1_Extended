@@ -19,10 +19,10 @@ class PermissionBanner extends StatefulWidget {
   const PermissionBanner({super.key});
 
   @override
-  State<PermissionBanner> createState() => _PermissionBannerState();
+  State<PermissionBanner> createState() => PermissionBannerState();
 }
 
-class _PermissionBannerState extends State<PermissionBanner> {
+class PermissionBannerState extends State<PermissionBanner> {
   /// What the app genuinely cannot work without, in the order it matters.
   static const List<AppPermission> _essential = [
     AppPermission.bluetooth,

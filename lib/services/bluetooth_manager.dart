@@ -53,12 +53,28 @@ class BluetoothManager {
       onData: _handleAndroidNotification,
     );
 
+    // Not awaited here: this runs from the constructor. It is retried
+    // whenever the app comes back to the foreground.
     notificationListener!.startListening();
 
     // The displayTranscription channel was served by the iOS Swift layer only.
     // On Android nothing emits it, so the handler is gone; dictation reaches
     // the glasses through DictationService instead.
   }
+
+  /// Tries again to receive notifications.
+  ///
+  /// Access is granted on a system settings page, so the app is in the
+  /// background at the moment it happens and has no way to be told. Coming
+  /// back to the foreground is the signal.
+  Future<bool> retryNotificationListener() async {
+    final listener = notificationListener;
+    if (listener == null) return false;
+    return listener.startListening();
+  }
+
+  bool get isReceivingNotifications =>
+      notificationListener?.isListening ?? false;
 
   GlassesDashboard glassesDashboard = GlassesDashboard();
   DashboardController dashboardController = DashboardController();
@@ -68,6 +84,17 @@ class BluetoothManager {
   int _priorityTextVersion = 0;
 
   Timer? _syncTimer;
+
+  /// Battery has its own timer on purpose.
+  ///
+  /// It used to be refreshed inside _sync, which the background service
+  /// cancels when it takes over the heartbeat — so in the configuration the
+  /// app actually runs in, the level was read twice just after connecting and
+  /// never again. Keeping it separate means it survives whoever owns the
+  /// heartbeat.
+  Timer? _batteryTimer;
+
+  static const Duration _batteryInterval = Duration(seconds: 90);
 
   Glass? leftGlass;
   Glass? rightGlass;
@@ -209,6 +236,18 @@ class BluetoothManager {
     _syncTimer ??= Timer.periodic(const Duration(minutes: 1), (timer) {
       _sync();
     });
+    _startBatteryTimer();
+  }
+
+  void _startBatteryTimer() {
+    _batteryTimer ??= Timer.periodic(_batteryInterval, (_) async {
+      if (!isConnected) return;
+      try {
+        await requestBatteryInfo();
+      } catch (e) {
+        debugPrint('Error refreshing battery: $e');
+      }
+    });
   }
 
   /// Set whether heartbeat is managed externally (by background service)
@@ -223,6 +262,10 @@ class BluetoothManager {
       });
     }
 
+    // The battery timer is not part of the heartbeat and keeps running
+    // whoever owns it.
+    _startBatteryTimer();
+
     // Propagate to glasses
     leftGlass?.setExternalHeartbeatManaged(managed);
     rightGlass?.setExternalHeartbeatManaged(managed);
@@ -230,6 +273,8 @@ class BluetoothManager {
 
   /// Clean up all resources and connections
   Future<void> dispose() async {
+    _batteryTimer?.cancel();
+    _batteryTimer = null;
     // Stop battery monitoring
     _stopBatteryMonitoring();
 
@@ -920,15 +965,6 @@ class BluetoothManager {
   Future<void> _sync() async {
     if (!isConnected) {
       return;
-    }
-
-    // Battery was asked for twice just after connecting and never again, so
-    // a session that outlived those two requests had nothing to show, and an
-    // app opened later showed a reading from whenever it last connected.
-    try {
-      await requestBatteryInfo();
-    } catch (e) {
-      debugPrint('Error refreshing battery: $e');
     }
 
     // Synchronize time and weather with glasses

@@ -130,6 +130,25 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
           ),
           const Divider(),
 
+          if (_models.suspectedBadModel) ...[
+            ListTile(
+              leading: const Icon(Icons.warning_amber_outlined),
+              title: const Text('The speech model would not load'),
+              subtitle: const Text(
+                'It was left in a state that stopped the app from starting, '
+                'so it is no longer loaded automatically. Remove it and '
+                'download it again.',
+              ),
+              trailing: TextButton(
+                onPressed: () async {
+                  await _models.discardSuspectModel();
+                  await _load();
+                },
+                child: const Text('Remove'),
+              ),
+            ),
+            const Divider(),
+          ],
           _header('Offline speech model'),
           ListTile(
             title: const Text('Vosk small English'),

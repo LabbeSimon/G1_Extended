@@ -35,6 +35,19 @@ class VoskModelManager {
   final StreamController<double> _progressController =
       StreamController<double>.broadcast();
 
+  /// Set on disk before handing a model to the native loader, cleared once it
+  /// comes back.
+  ///
+  /// Loading happens in native code: if it dies there, no Dart catch runs and
+  /// nothing records what happened. The app then reopens, loads the same
+  /// model, and dies again — a loop the user cannot break without clearing
+  /// the app's data. A marker that survives the crash is the only way to
+  /// notice on the next launch that this exact model killed us last time.
+  static const String _loadAttemptMarker = 'load-in-progress';
+
+  /// True when the previous attempt to load the model did not return.
+  bool suspectedBadModel = false;
+
   /// Emits download progress between 0.0 and 1.0.
   Stream<double> get downloadProgress => _progressController.stream;
 
@@ -108,14 +121,32 @@ class VoskModelManager {
       if (path == null) return null;
     }
 
+    final marker = File('$path/$_loadAttemptMarker');
+
+    if (await marker.exists()) {
+      // Last time we got this far, the process did not come back.
+      debugPrint('VoskModelManager: previous load never returned, refusing');
+      suspectedBadModel = true;
+      return null;
+    }
+
     try {
+      await marker.create(recursive: true);
       _model = await _vosk.createModel(path);
       debugPrint('VoskModelManager: model loaded from $path');
       return _model;
     } catch (e) {
       debugPrint('VoskModelManager: failed to load model: $e');
       return null;
+    } finally {
+      if (await marker.exists()) await marker.delete();
     }
+  }
+
+  /// Throws away a model that has been refusing to load.
+  Future<void> discardSuspectModel() async {
+    suspectedBadModel = false;
+    await deleteModel();
   }
 
   Future<String?> _download() async {

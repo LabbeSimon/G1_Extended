@@ -83,9 +83,13 @@ class WakeWordService {
     _wakeWord = prefs.getString('wake_word') ?? 'computer';
     _sensitivity = prefs.getDouble('wake_word_sensitivity') ?? 0.5;
 
-    // Load the model if it is already on disk. If it is not, it gets
-    // downloaded the first time the user enables the wake word.
-    await _ensureModel();
+    // Deliberately not loaded here.
+    //
+    // Handing a 50 MB model to a native loader during start-up means that any
+    // failure in that loader takes the whole app down before it draws
+    // anything, on every launch, with no way for the user to get back in and
+    // turn the feature off. It is loaded when the wake word is switched on,
+    // where a failure is recoverable and visible.
 
     _isInitialized = true;
     debugPrint('WakeWordService: Initialized = $_isInitialized');
