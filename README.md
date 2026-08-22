@@ -79,13 +79,22 @@ git push origin v1.1.0
 
 ## Signing
 
-`android/keystore.properties` and `android/app/keystore/` are gitignored.
-Release builds fall back to the debug key when no keystore is present.
-Create your own:
+`android/keystore.properties` and `android/app/keystore/` are gitignored, and
+CI deletes the key it restores as soon as the build ends. Without a key the
+build still succeeds and produces a debug-signed APK, so a fork or a pull
+request is never blocked — but a debug-signed APK must not be published.
+
+That last point is the one that bites. Android ties an app's identity to its
+signature: an APK signed with one key cannot be updated by an APK signed with
+another. Publish once with the debug key and every later release becomes an
+uninstall-and-lose-your-data affair. Sign properly before the first release,
+and keep that key somewhere you will still have it in five years.
+
+To create one:
 
 ```
-keytool -genkey -v -keystore android/app/keystore/release.jks \
-  -keyalg RSA -keysize 2048 -validity 10000 -alias release
+keytool -genkeypair -v -keystore android/app/keystore/release.jks \
+  -alias release -keyalg RSA -keysize 4096 -validity 10000
 ```
 
 Then write `android/keystore.properties`:
@@ -96,6 +105,9 @@ keyPassword=...
 keyAlias=release
 storeFile=../app/keystore/release.jks
 ```
+
+For CI, add two repository secrets: `KEYSTORE_BASE64`, the keystore as
+`base64 -w0`, and `KEYSTORE_PASSWORD`.
 
 ## Protocol
 
