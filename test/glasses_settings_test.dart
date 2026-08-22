@@ -125,4 +125,68 @@ void main() {
       expect(DeviceInfo.buildHardResetCommand(), [0x23, 0x72]);
     });
   });
+
+  group('DashboardLayoutCommand', () {
+    test('reproduces the byte sequence the original code hard-coded', () {
+      // Legacy constants were [0x06,0x07,0x00] + [seq,0x06,mode,pane].
+      expect(
+        DashboardLayoutCommand.build(
+          mode: DashboardMode.full,
+          pane: DashboardPane.notes,
+          sequence: 0x08,
+        ),
+        [0x06, 0x07, 0x00, 0x08, 0x06, 0x00, 0x00],
+      );
+      expect(
+        DashboardLayoutCommand.build(
+          mode: DashboardMode.dual,
+          pane: DashboardPane.notes,
+          sequence: 0x1E,
+        ),
+        [0x06, 0x07, 0x00, 0x1E, 0x06, 0x01, 0x00],
+      );
+      expect(
+        DashboardLayoutCommand.build(
+          mode: DashboardMode.minimal,
+          pane: DashboardPane.notes,
+          sequence: 0x31,
+        ),
+        [0x06, 0x07, 0x00, 0x31, 0x06, 0x02, 0x05],
+      );
+    });
+
+    test('declares a length matching the packet it produces', () {
+      final command = DashboardLayoutCommand.build(
+        mode: DashboardMode.dual,
+        pane: DashboardPane.calendar,
+        sequence: 1,
+      );
+      expect(command[1], command.length);
+    });
+
+    test('forces an empty pane on minimal, which has no room for one', () {
+      final command = DashboardLayoutCommand.build(
+        mode: DashboardMode.minimal,
+        pane: DashboardPane.calendar,
+        sequence: 1,
+      );
+      expect(command[6], DashboardPane.empty.id);
+    });
+
+    test('wraps the sequence into a byte', () {
+      final command = DashboardLayoutCommand.build(
+        mode: DashboardMode.full,
+        pane: DashboardPane.news,
+        sequence: 260,
+      );
+      expect(command[3], 260 & 0xFF);
+    });
+  });
+
+  group('DebugMode', () {
+    test('is a single byte either way', () {
+      expect(DebugMode.buildSetCommand(true), [0xF4, 0x01]);
+      expect(DebugMode.buildSetCommand(false), [0xF4, 0x00]);
+    });
+  });
 }

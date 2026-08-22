@@ -47,7 +47,7 @@ class GlassesDashboard {
     await Hive.openBox<DailyItem>('dailyBox');
     await Hive.openBox<DashboardCalendar>('calendarBox');
     await Hive.openBox<Checklist>('checklistBox');
-    await Hive.openBox('notificationApps');
+    await Hive.openBox('notificationBlocklist');
     try {
       await Hive.openLazyBox<StopItem>('stopBox');
     } catch (e) {

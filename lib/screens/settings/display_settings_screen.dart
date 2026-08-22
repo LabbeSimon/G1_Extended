@@ -25,6 +25,8 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
   int _height = 4;
   int _depth = 5;
   bool _wearDetection = true;
+  DashboardMode _mode = DashboardMode.dual;
+  DashboardPane _pane = DashboardPane.notes;
 
   bool get _connected => BluetoothManager.singleton.isConnected;
 
@@ -46,6 +48,8 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
       _height = cached['displayHeight']! as int;
       _depth = cached['displayDepth']! as int;
       _wearDetection = cached['wearDetection']! as bool;
+      _mode = DashboardMode.values[cached['dashboardMode']! as int];
+      _pane = DashboardPane.values[cached['dashboardPane']! as int];
       _loading = false;
     });
 
@@ -86,6 +90,39 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
     } finally {
       if (mounted) setState(() => _applyingPosition = false);
     }
+  }
+
+  Future<void> _restoreDefaults() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore defaults?'),
+        content: const Text(
+          'Brightness, layout, position, head-up angle and wear detection go '
+          'back to their starting values.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+
+    if (!(confirmed ?? false)) return;
+
+    setState(() => _applyingPosition = true);
+    try {
+      await _settings.restoreDefaults();
+    } finally {
+      if (mounted) setState(() => _applyingPosition = false);
+    }
+    await _load();
   }
 
   @override
@@ -135,6 +172,51 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
           ),
           const Divider(),
 
+          _header('Layout'),
+          ListTile(
+            title: const Text('Dashboard'),
+            subtitle: Text(_mode.label),
+            trailing: DropdownButton<DashboardMode>(
+              value: _mode,
+              underline: const SizedBox.shrink(),
+              items: [
+                for (final mode in DashboardMode.values)
+                  DropdownMenuItem(value: mode, child: Text(mode.label)),
+              ],
+              onChanged: (mode) {
+                if (mode == null) return;
+                setState(() => _mode = mode);
+                _settings.setDashboardLayout(mode: mode, pane: _pane);
+              },
+            ),
+          ),
+          if (_mode.hasSecondaryPane)
+            ListTile(
+              title: const Text('Second pane'),
+              subtitle: Text(_pane.label),
+              trailing: DropdownButton<DashboardPane>(
+                value: _pane,
+                underline: const SizedBox.shrink(),
+                items: [
+                  for (final pane in DashboardPane.values)
+                    DropdownMenuItem(value: pane, child: Text(pane.label)),
+                ],
+                onChanged: (pane) {
+                  if (pane == null) return;
+                  setState(() => _pane = pane);
+                  _settings.setDashboardLayout(mode: _mode, pane: pane);
+                },
+              ),
+            ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              'Minimal shows the time alone. Full and Dual add a second pane.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ),
+          const Divider(),
+
           _header('Position in the lens'),
           ListTile(
             title: const Text('Height'),
@@ -174,8 +256,10 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Text(
-              'The glasses show the new position for a few seconds before '
-              'committing to it.',
+              'The glasses only accept these two while in debug mode, which '
+              'is switched on for the length of the change and off again '
+              'afterwards. They show the new position for a few seconds '
+              'before committing to it.',
               style: TextStyle(fontSize: 12),
             ),
           ),
@@ -222,6 +306,13 @@ class _DisplaySettingsScreenState extends State<DisplaySettingsScreen> {
             title: const Text('Clear the display'),
             enabled: _connected,
             onTap: _settings.clearScreen,
+          ),
+          ListTile(
+            leading: const Icon(Icons.restart_alt),
+            title: const Text('Restore defaults'),
+            subtitle: const Text('Every setting on this screen.'),
+            enabled: _connected && !_applyingPosition,
+            onTap: _connected ? _restoreDefaults : null,
           ),
         ],
       ),

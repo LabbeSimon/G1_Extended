@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
 
-import 'package:g1_extended/models/g1/note.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/quick_notes_service.dart';
 
 /// The four note slots the glasses keep on device.
 ///
@@ -17,13 +16,9 @@ class QuickNoteScreen extends StatefulWidget {
 }
 
 class _QuickNoteScreenState extends State<QuickNoteScreen> {
-  /// The hardware exposes exactly four slots, numbered 1 to 4.
-  static const int _slotCount = 4;
-  static const String _boxName = 'quickNotes';
+  final QuickNotesService _notes = QuickNotesService.singleton;
 
-  final BluetoothManager _bluetooth = BluetoothManager.singleton;
-
-  Box? _box;
+  bool _ready = false;
   int _slot = 1;
   final TextEditingController _title = TextEditingController();
   final TextEditingController _body = TextEditingController();
@@ -42,28 +37,21 @@ class _QuickNoteScreenState extends State<QuickNoteScreen> {
   }
 
   Future<void> _open() async {
-    final box =
-        Hive.isBoxOpen(_boxName) ? Hive.box(_boxName) : await Hive.openBox(_boxName);
-    if (!mounted) return;
-    setState(() => _box = box);
-    _loadSlot(_slot);
+    await _loadSlot(_slot);
+    if (mounted) setState(() => _ready = true);
   }
 
-  void _loadSlot(int slot) {
-    final stored = _box?.get('slot_$slot') as Map?;
+  Future<void> _loadSlot(int slot) async {
+    final note = await _notes.read(slot);
+    if (!mounted) return;
     setState(() {
       _slot = slot;
-      _title.text = stored?['title'] as String? ?? '';
-      _body.text = stored?['body'] as String? ?? '';
+      _title.text = note.title;
+      _body.text = note.body;
     });
   }
 
   Future<void> _send() async {
-    if (!_bluetooth.isConnected) {
-      _notify('Glasses are not connected');
-      return;
-    }
-
     final title = _title.text.trim();
     final body = _body.text.trim();
     if (title.isEmpty && body.isEmpty) {
@@ -71,30 +59,21 @@ class _QuickNoteScreenState extends State<QuickNoteScreen> {
       return;
     }
 
-    await _box?.put('slot_$_slot', {'title': title, 'body': body});
+    // Saved either way: the phone keeps the record, and the note is replayed
+    // to the glasses as soon as they are back.
+    await _notes.save(QuickNote(slot: _slot, title: title, body: body));
 
-    await _bluetooth.sendNote(
-      Note(
-        noteNumber: _slot,
-        name: title.isEmpty ? 'Note $_slot' : title,
-        text: body,
-      ),
-    );
-    _notify('Sent to slot $_slot');
+    _notify(BluetoothManager.singleton.isConnected
+        ? 'Sent to slot $_slot'
+        : 'Saved. It will reach the glasses when they reconnect.');
   }
 
   Future<void> _clear() async {
-    await _box?.delete('slot_$_slot');
+    await _notes.clear(_slot);
     setState(() {
       _title.clear();
       _body.clear();
     });
-
-    if (_bluetooth.isConnected) {
-      await _bluetooth.sendNote(
-        Note(noteNumber: _slot, name: '', text: ''),
-      );
-    }
     _notify('Slot $_slot cleared');
   }
 
@@ -113,7 +92,7 @@ class _QuickNoteScreenState extends State<QuickNoteScreen> {
           IconButton(
             icon: const Icon(Icons.delete_outline),
             tooltip: 'Clear this slot',
-            onPressed: _box == null ? null : _clear,
+            onPressed: _ready ? _clear : null,
           ),
         ],
       ),
@@ -124,7 +103,7 @@ class _QuickNoteScreenState extends State<QuickNoteScreen> {
           children: [
             SegmentedButton<int>(
               segments: [
-                for (var i = 1; i <= _slotCount; i++)
+                for (var i = 1; i <= QuickNotesService.slotCount; i++)
                   ButtonSegment(value: i, label: Text('$i')),
               ],
               selected: {_slot},
@@ -153,7 +132,7 @@ class _QuickNoteScreenState extends State<QuickNoteScreen> {
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
-              onPressed: _box == null ? null : _send,
+              onPressed: _ready ? _send : null,
               icon: const Icon(Icons.send),
               label: Text('Send to slot $_slot'),
             ),

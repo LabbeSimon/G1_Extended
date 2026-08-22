@@ -20,10 +20,20 @@ class Note {
   final String name;
   final String text;
 
+  /// Revision byte the glasses use to tell one write from the next.
+  ///
+  /// It used to be derived from the clock, which wraps every 256 seconds:
+  /// two notes written a few minutes apart could carry the same value, or the
+  /// newer one a lower value than the older. Whichever way the firmware
+  /// resolves that, the result looks like slots vanishing at random. A
+  /// counter that only ever moves forward removes the ambiguity.
+  final int? revision;
+
   Note({
     required this.noteNumber,
     required this.name,
     required this.text,
+    this.revision,
   }) {
     if (noteNumber < 1 || noteNumber > 4) {
       throw ArgumentError('Note number must be between 1 and 4');
@@ -34,9 +44,7 @@ class Note {
     return Uint8List.fromList([0x03, 0x01, 0x00, 0x01, 0x00]);
   }
 
-  int _getVersioningByte() {
-    return DateTime.now().millisecondsSinceEpoch ~/ 1000 % 256;
-  }
+  int _getVersioningByte() => (revision ?? 0) & 0xFF;
 
   int _calculatePayloadLength(Uint8List nameBytes, Uint8List textBytes) {
     List<int> components = [
