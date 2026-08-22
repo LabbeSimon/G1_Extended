@@ -3,6 +3,7 @@ import 'package:g1_extended/models/g1/glass.dart';
 import 'package:g1_extended/models/g1/commands.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/dictation_service.dart';
+import 'package:g1_extended/services/notification_history.dart';
 import 'package:g1_extended/services/speech_recognition_service.dart';
 import 'package:g1_extended/utils/lc3.dart';
 import 'package:flutter/foundation.dart';
@@ -220,6 +221,23 @@ class BluetoothReciever {
   /// True while a touchpad-initiated capture is running.
   bool _isCapturing = false;
 
+  /// Puts a recent notification back on the lens.
+  ///
+  /// Repeated taps walk further back, which is why the history keeps a
+  /// cursor rather than only the newest.
+  Future<void> _recallNotification() async {
+    final recalled = NotificationHistory.singleton.recallNext();
+    final bt = BluetoothManager();
+
+    try {
+      await bt.sendPriorityText(
+        recalled?.forGlasses() ?? 'Nothing recent',
+      );
+    } catch (e) {
+      debugPrint('Could not recall a notification: $e');
+    }
+  }
+
   /// Start capturing speech after a touchpad press.
   Future<void> _beginDictation(GlassSide side) async {
     if (_isCapturing) {
@@ -336,10 +354,17 @@ class BluetoothReciever {
         // Subcmd 24 (0x18) = TouchPad pressed and released.
         // Only the left temple is hold-to-record; the right one toggles on
         // press, so its release carries no meaning.
-        if (side == GlassSide.left) {
+        if (side != GlassSide.left) {
+          debugPrint('[$side] Right touchpad released, toggle handled on press');
+          break;
+        }
+
+        if (_isCapturing) {
           await _finishDictation(side);
         } else {
-          debugPrint('[$side] Right touchpad released, toggle handled on press');
+          // A release with no hold before it is a tap, a gesture nothing else
+          // uses. It brings back what just went past.
+          await _recallNotification();
         }
         break;
 

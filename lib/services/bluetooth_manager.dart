@@ -15,6 +15,7 @@ import 'package:g1_extended/models/g1/note.dart';
 import 'package:g1_extended/models/g1/notification.dart';
 import 'package:g1_extended/models/g1/text.dart';
 import 'package:g1_extended/services/navigation_service.dart';
+import 'package:g1_extended/services/notification_history.dart';
 import 'package:g1_extended/services/voice_command_runner.dart';
 import 'package:g1_extended/services/notifications_listener.dart';
 import 'package:g1_extended/services/stops_manager.dart';
@@ -823,6 +824,10 @@ class BluetoothManager {
         debugPrint('Could not read the notification blocklist: $e, allowing');
       }
 
+      final appName = await _getAppDisplayName(
+          packageName.isNotEmpty ? packageName : '');
+      NotificationHistory.singleton.remember(notification, appName);
+
       NCSNotification ncsNotification = NCSNotification(
         msgId: (notification.id ?? 1) + DateTime.now().millisecondsSinceEpoch,
         action: 0,
@@ -831,7 +836,7 @@ class BluetoothManager {
         title: notification.title ?? '',
         subtitle: '',
         message: notification.content ?? '',
-        displayName: await _getAppDisplayName(packageName.isNotEmpty ? packageName : ''),
+        displayName: appName,
       );
 
       sendNotification(ncsNotification);
