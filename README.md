@@ -17,6 +17,7 @@ No account. No telemetry. Nothing leaves your phone.
 - Turn-by-turn directions, read from whatever navigation app you already use
 - Optional live speed readout from GPS
 - Live captions from the glasses microphone
+- A teleprompter that follows your voice, or a set pace, or your thumb
 - Dictation: hold a temple touchpad, speak, see the text on the lens
 
 **Voice**
