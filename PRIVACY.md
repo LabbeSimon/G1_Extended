@@ -63,17 +63,25 @@ uploaded. Transcripts are kept locally in the dictation history, capped at the
 There is no telemetry. Nothing is collected in the background and nothing is
 sent anywhere on its own.
 
-Instead, Settings offers a diagnostic report you can generate yourself. It
-contains the app version, your operating system version, whether the glasses
-are connected and their names, battery percentages, and any raw protocol
-frames you chose to record. No location, no contacts, no audio, no identifier
-of any kind. The app lists the contents on screen before writing it, saves it
-as a JSON file you own, and hands it to your system share sheet. Where it goes
-is entirely your decision — you can read it yourself, keep it, or attach it to
-a bug report.
+Instead there is a diagnostic report you can generate yourself. It lives
+behind developer options, which are hidden until you tap the version in
+Settings > About ten times, so nobody meets it by accident.
 
-Recording protocol frames is off by default and only records while you leave
-it on.
+By default the report leaves out anything that would tie it to you or to your
+hardware: your phone's manufacturer and model, its exact OS build, its screen
+size, the app's package name, and the Bluetooth names of your glasses — which
+carry their serial number. What remains is the app version, the operating
+system family, whether the glasses are connected, battery percentages, and any
+raw protocol frames you chose to record. That is enough to decode a protocol
+problem and not enough to identify a person.
+
+You can switch that off if you are debugging your own device and want the
+details. The app lists exactly what the file contains before writing it, saves
+it as JSON you own, and hands it to your system share sheet. Where it goes is
+entirely your decision.
+
+No location, no contacts, no audio, ever. Recording protocol frames is off by
+default and only records while you leave it on.
 
 ## Where your data lives
 

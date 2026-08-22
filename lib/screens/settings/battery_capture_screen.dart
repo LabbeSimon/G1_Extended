@@ -22,6 +22,8 @@ class BatteryCaptureScreen extends StatefulWidget {
 class _BatteryCaptureScreenState extends State<BatteryCaptureScreen> {
   final BatteryFrameLog _log = BatteryFrameLog.singleton;
 
+  bool _redacted = true;
+
   /// The states worth capturing, in the order that isolates one variable
   /// at a time.
   static const List<String> _states = [
@@ -38,8 +40,7 @@ class _BatteryCaptureScreenState extends State<BatteryCaptureScreen> {
     final report = await DiagnosticReport.singleton.build();
     if (!mounted) return;
 
-    final frames =
-        (report['batteryFrames'] as Map)['frames'] as List;
+    final frames = (report['batteryFrames'] as Map)['frames'] as List;
 
     final proceed = await showDialog<bool>(
       context: context,
@@ -56,10 +57,23 @@ class _BatteryCaptureScreenState extends State<BatteryCaptureScreen> {
             const Text('• whether the glasses are connected, and their names'),
             const Text('• battery percentages'),
             Text('• ${frames.length} captured battery frame(s)'),
+            const SizedBox(height: 8),
+            if (_redacted)
+              const Text(
+                'Left out: the Bluetooth names of your glasses, your exact '
+                'OS build, the package name.',
+                style: TextStyle(fontSize: 12),
+              )
+            else
+              const Text(
+                'Included: the Bluetooth names of your glasses, which carry '
+                'their serial number, and your exact OS build.',
+                style: TextStyle(fontSize: 12),
+              ),
             const SizedBox(height: 12),
             const Text(
-              'No location, no contacts, no audio, no identifier. It is '
-              'written to a file and goes only where you send it.',
+              'No location, no contacts, no audio. It is written to a file '
+              'and goes only where you send it.',
               style: TextStyle(fontSize: 12),
             ),
           ],
@@ -84,6 +98,14 @@ class _BatteryCaptureScreenState extends State<BatteryCaptureScreen> {
       [XFile(file.path)],
       subject: 'G1 Extended diagnostics',
     );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    DiagnosticReport.singleton.isRedacted().then((value) {
+      if (mounted) setState(() => _redacted = value);
+    });
   }
 
   @override
@@ -131,6 +153,19 @@ class _BatteryCaptureScreenState extends State<BatteryCaptureScreen> {
               'Everything stays on the phone. Nothing is sent anywhere.',
             ),
             onChanged: (value) => setState(() => _log.enabled = value),
+          ),
+          SwitchListTile(
+            value: _redacted,
+            title: const Text('Leave out identifying details'),
+            subtitle: const Text(
+              'Omits the Bluetooth names of your glasses, which carry their '
+              'serial number, and your exact OS build. Neither is needed to '
+              'read a protocol frame.',
+            ),
+            onChanged: (value) async {
+              await DiagnosticReport.singleton.setRedacted(value);
+              if (mounted) setState(() => _redacted = value);
+            },
           ),
           const Divider(),
 

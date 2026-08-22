@@ -7,7 +7,6 @@ import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/utils/bitmap.dart';
 import 'package:flutter/material.dart';
 
-import 'package:g1_extended/screens/settings/battery_capture_screen.dart';
 
 class DebugPage extends StatefulWidget {
   const DebugPage({super.key});
@@ -225,16 +224,7 @@ class _DebugPageSate extends State<DebugPage> {
             onPressed: _debugTranslateCommand,
             child: const Text("Debug Translate"),
           ),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const BatteryCaptureScreen(),
-              ),
-            ),
-            child: const Text("Battery frame capture"),
-          ),
+
         ],
       ),
     );
