@@ -101,10 +101,12 @@ class SpeechRecognitionService {
           completer.complete(recognised.isEmpty ? null : recognised);
         }
       },
-      listenFor: timeout,
-      pauseFor: const Duration(seconds: 3),
-      localeId: localeId,
-      listenOptions: stt.SpeechListenOptions(cancelOnError: true),
+      listenOptions: stt.SpeechListenOptions(
+        listenFor: timeout,
+        pauseFor: const Duration(seconds: 3),
+        localeId: localeId,
+        cancelOnError: true,
+      ),
     );
 
     // Guard against the platform never delivering a final result.

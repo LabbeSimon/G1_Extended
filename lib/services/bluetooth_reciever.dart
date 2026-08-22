@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:g1_extended/models/g1/glass.dart';
 import 'package:g1_extended/models/g1/commands.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
@@ -64,9 +65,10 @@ class BluetoothReciever {
     // TODO: Consider locale from settings? speech_to_text uses system default
     await _speechToText.listen(
       onResult: _onSpeechResult,
-      listenFor: const Duration(seconds: 60), // Adjust timeout as needed
-      pauseFor: const Duration(seconds: 5), // Adjust pause duration
-      // partialResults: true, // Enable if needed
+      listenOptions: SpeechListenOptions(
+        listenFor: const Duration(seconds: 60),
+        pauseFor: const Duration(seconds: 5),
+      ),
     );
     _isListening = true; // Set listening status based on callback?
   }
@@ -123,8 +125,51 @@ class BluetoothReciever {
     return prefs.getBool('use_glasses_microphone') ?? false;
   }
 
+  /// Requests waiting for a reply, keyed by the command byte they sent.
+  ///
+  /// The G1 echoes the command id back in the first byte of its response, so
+  /// that byte is enough to match a reply to the request that asked for it.
+  final Map<int, Completer<List<int>>> _pendingReplies = {};
+
+  /// Registers interest in the next response carrying [command].
+  ///
+  /// Returns null if nothing arrives within [timeout], rather than hanging:
+  /// the glasses silently ignore commands they do not understand.
+  Future<List<int>?> awaitReply(
+    int command, {
+    Duration timeout = const Duration(seconds: 3),
+  }) async {
+    // A second request for the same command supersedes the first.
+    _pendingReplies.remove(command)?.complete(const []);
+
+    final completer = Completer<List<int>>();
+    _pendingReplies[command] = completer;
+
+    try {
+      final reply = await completer.future.timeout(timeout);
+      return reply.isEmpty ? null : reply;
+    } on TimeoutException {
+      debugPrint('No reply to command 0x${command.toRadixString(16)}');
+      return null;
+    } finally {
+      _pendingReplies.remove(command);
+    }
+  }
+
+  /// Hands [data] to a waiting request, if one asked for this command.
+  /// Returns true when the packet was consumed by a pending request.
+  bool _deliverToPendingReply(List<int> data) {
+    final completer = _pendingReplies[data[0]];
+    if (completer == null || completer.isCompleted) return false;
+    completer.complete(List<int>.unmodifiable(data));
+    return true;
+  }
+
   Future<void> receiveHandler(GlassSide side, List<int> data) async {
     if (data.isEmpty) return;
+
+    // Settings replies are consumed by whoever asked for them.
+    if (_deliverToPendingReply(data)) return;
 
     int command = data[0];
 

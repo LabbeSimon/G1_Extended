@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:g1_extended/models/g1/battery.dart';
 import 'package:g1_extended/screens/settings/dashboard_screen.dart';
 import 'package:g1_extended/screens/settings/notifications_screen.dart';
+import 'package:g1_extended/screens/settings/display_settings_screen.dart';
 import 'package:g1_extended/screens/settings/voice_settings_screen.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/widgets/g1_battery_widget.dart';
@@ -387,6 +388,20 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
         padding: const EdgeInsets.only(top: 12, bottom: 8),
         child: Column(
           children: [
+            _buildActionTile(
+              icon: Icons.brightness_medium_outlined,
+              title: 'Display',
+              subtitle: 'Brightness, position in the lens, head-up angle.',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const DisplaySettingsScreen(),
+                  ),
+                );
+              },
+            ),
+            const Divider(height: 1),
             _buildActionTile(
               icon: Icons.dashboard_customize_outlined,
               title: 'Dashboard preferences',
