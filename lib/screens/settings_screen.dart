@@ -15,6 +15,7 @@ import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/theme/app_theme.dart';
 import 'package:g1_extended/widgets/battery_gauge.dart';
 import 'package:g1_extended/widgets/bento.dart';
+import 'package:g1_extended/widgets/pixel_art.dart';
 import 'package:g1_extended/widgets/glass_status.dart';
 
 class GlassesSettingsPage extends StatefulWidget {
@@ -197,14 +198,13 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
               children: [
                 Row(
                   children: [
-                    Icon(
-                      _isConnected
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
-                      size: 22,
-                      color: _isConnected ? AppColors.ink : AppColors.inkFaint,
+                    PixelArt(
+                      rows: PixelArtwork.glasses,
+                      size: 18,
+                      color:
+                          _isConnected ? AppColors.ink : AppColors.inkFaint,
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 14),
                     Text(
                       _isConnected ? 'My G1' : 'Not connected',
                       style: Theme.of(context).textTheme.titleMedium,

@@ -7,7 +7,16 @@
 [![Android](https://img.shields.io/badge/android-7.0%2B-brightgreen)](#build)
 [![Telemetry](https://img.shields.io/badge/telemetry-none-brightgreen)](PRIVACY.md)
 
-An Android companion app for [Even Realities G1](https://www.evenrealities.com) smart glasses.
+An alternative, open-source Android client for the
+[Even Realities G1](https://www.evenrealities.com) smart glasses.
+
+It removes the telemetry and the account the original client came with, and
+gives back a device that works entirely on its own. Working from a
+reverse-engineered BLE protocol — two Nordic UART radios, one per temple — it
+lets you force HUD layouts the official app does not expose, read hardware
+events it discards, and push your own data to the lens, including from a
+microcontroller of your own.
+
 No account. No telemetry. Nothing leaves your phone.
 
 ## What it does

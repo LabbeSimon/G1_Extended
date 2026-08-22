@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:g1_extended/theme/app_theme.dart';
+import 'package:g1_extended/widgets/pixel_art.dart';
 
 /// A line-art battery gauge, drawn rather than picked from an icon font.
 ///
@@ -264,12 +265,12 @@ class CaseBatteryReadout extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          Icons.inbox_outlined,
-          size: 15,
+        PixelArt(
+          rows: PixelArtwork.caseClosed,
+          size: 11,
           color: suspected ? AppColors.inkFaint : AppColors.inkMuted,
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 8),
         Text(
           suspected ? '$value%?' : '$value%',
           style: TextStyle(
