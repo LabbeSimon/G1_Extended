@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:agixt/models/g1/battery.dart';
+import 'package:g1_extended/models/g1/battery.dart';
 
 class G1BatteryWidget extends StatelessWidget {
   final G1BatteryStatus batteryStatus;

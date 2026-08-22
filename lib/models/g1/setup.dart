@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:agixt/models/g1/commands.dart';
+import 'package:g1_extended/models/g1/commands.dart';
 import 'package:hive/hive.dart';
 
 class G1Setup {
@@ -12,7 +12,7 @@ class G1Setup {
   App app;
 
   static G1Setup generateSetup() {
-    final appBox = Hive.box('agixtNotificationApps');
+    final appBox = Hive.box('notificationApps');
     final selectedMap = appBox.toMap();
     selectedMap.removeWhere((k, v) => !v);
     final selected = selectedMap.keys.toList();

@@ -1,5 +1,0 @@
-flutter_native_splash:
-  color: "#f6f6f6"
-  branding: assets/icons/agixt-nobg.png
-  branding_mode: bottom
-  android: true

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:agixt/services/permission_manager.dart';
-import 'package:agixt/services/location_service.dart';
+import 'package:g1_extended/services/permission_manager.dart';
 
 class PermissionsSettingsPage extends StatefulWidget {
   const PermissionsSettingsPage({super.key});
@@ -75,11 +74,6 @@ class _PermissionsSettingsPageState extends State<PermissionsSettingsPage> {
         if (!granted && mounted) {
           _showSnack(
               'Permission is still disabled. Please enable it from system settings.');
-        } else if (granted && permission == AppPermission.location) {
-          // Auto-enable location setting when permission is granted
-          await LocationService().setLocationEnabled(true);
-          debugPrint(
-              'Location permission granted - auto-enabled location setting');
         }
       } else {
         final settingsOpened = await PermissionManager.openSettings();
@@ -170,11 +164,6 @@ class _PermissionsSettingsPageState extends State<PermissionsSettingsPage> {
       final granted = await PermissionManager.ensureGranted(definition.id);
       if (!granted) {
         anyFailures = true;
-      } else if (definition.id == AppPermission.location) {
-        // Auto-enable location setting when permission is granted
-        await LocationService().setLocationEnabled(true);
-        debugPrint(
-            'Location permission granted via Enable All - auto-enabled location setting');
       }
       await _refreshSingle(definition.id);
     }

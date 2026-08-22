@@ -1,15 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:agixt/models/agixt/auth/auth.dart';
-import 'package:agixt/models/g1/battery.dart';
-import 'package:agixt/screens/settings/dashboard_screen.dart';
-import 'package:agixt/screens/settings/location_screen.dart';
-import 'package:agixt/screens/settings/notifications_screen.dart';
-import 'package:agixt/screens/settings/voice_watch_settings_screen.dart';
-import 'package:agixt/services/bluetooth_manager.dart';
-import 'package:agixt/widgets/g1_battery_widget.dart';
-import 'package:agixt/widgets/glass_status.dart';
+import 'package:g1_extended/models/g1/battery.dart';
+import 'package:g1_extended/screens/settings/dashboard_screen.dart';
+import 'package:g1_extended/screens/settings/notifications_screen.dart';
+import 'package:g1_extended/screens/settings/voice_settings_screen.dart';
+import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/widgets/g1_battery_widget.dart';
+import 'package:g1_extended/widgets/glass_status.dart';
 
 class GlassesSettingsPage extends StatefulWidget {
   const GlassesSettingsPage({super.key});
@@ -34,7 +33,8 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
   }
 
   Future<void> _loadGlassesDisplayPreference() async {
-    final preference = await AuthService.getGlassesDisplayPreference();
+    final prefs = await SharedPreferences.getInstance();
+    final preference = prefs.getBool('glasses_display_enabled') ?? true;
     if (!mounted) {
       return;
     }
@@ -44,7 +44,7 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
   }
 
   Future<void> _saveGlassesDisplayPreference(bool value) async {
-    await AuthService.setGlassesDisplayPreference(value);
+    await BluetoothManager.setGlassesDisplayEnabled(value);
 
     final bluetoothManager = BluetoothManager();
 
@@ -417,27 +417,13 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
             const Divider(height: 1),
             _buildActionTile(
               icon: Icons.record_voice_over_rounded,
-              title: 'Voice & Watch',
-              subtitle: 'Wake word, Pixel Watch, TTS and voice input settings.',
+              title: 'Voice',
+              subtitle: 'Wake word, microphone and offline speech model.',
               onTap: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const VoiceWatchSettingsScreen(),
-                  ),
-                );
-              },
-            ),
-            const Divider(height: 1),
-            _buildActionTile(
-              icon: Icons.location_on_outlined,
-              title: 'Location & weather',
-              subtitle: 'Share location data for accurate on-glasses updates.',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const LocationSettingsScreen(),
+                    builder: (context) => const VoiceSettingsScreen(),
                   ),
                 );
               },

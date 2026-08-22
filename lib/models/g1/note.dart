@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:agixt/models/g1/commands.dart';
+import 'package:g1_extended/models/g1/commands.dart';
 
 class NoteConstants {
   static const int FIXED_BYTE = 0x00;

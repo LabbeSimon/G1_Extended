@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:agixt/models/g1/commands.dart';
+import 'package:g1_extended/models/g1/commands.dart';
 import 'package:flutter/foundation.dart';
 
 class NoteSubCommands {

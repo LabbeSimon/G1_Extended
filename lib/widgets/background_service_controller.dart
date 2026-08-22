@@ -1,4 +1,4 @@
-import 'package:agixt/services/bluetooth_background_service.dart';
+import 'package:g1_extended/services/bluetooth_background_service.dart';
 import 'package:flutter/material.dart';
 
 class BackgroundServiceController extends StatefulWidget {

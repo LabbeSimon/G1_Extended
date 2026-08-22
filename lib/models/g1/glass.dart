@@ -1,11 +1,10 @@
-import 'package:agixt/models/g1/commands.dart';
-import 'package:agixt/models/g1/battery.dart';
+import 'package:g1_extended/models/g1/commands.dart';
+import 'package:g1_extended/models/g1/battery.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'dart:async';
 import '../../services/bluetooth_reciever.dart';
 import '../../utils/constants.dart';
-import '../../services/ai_service.dart';
 
 enum GlassSide { left, right }
 
@@ -44,10 +43,8 @@ class Glass {
   BluetoothReciever reciever = BluetoothReciever.singleton;
 
   Glass({required this.name, required this.device, required this.side}) {
-    // Bind side button press to AGiXT chat completion
-    onSideButtonPress = () async {
-      await AIService.singleton.handleSideButtonPress();
-    };
+    // The side button is free for a caller to bind. Nothing is wired by
+    // default: dictation is driven by the touchpad in BluetoothReciever.
   }
 
   Future<void> connect() async {

@@ -1,10 +1,10 @@
-import 'package:agixt/models/agixt/checklist.dart';
+import 'package:g1_extended/models/dashboard/checklist.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 class ChecklistItemsScreen extends StatefulWidget {
   final int index;
-  final AGiXTChecklist checklist;
+  final Checklist checklist;
 
   const ChecklistItemsScreen({
     super.key,
@@ -17,12 +17,12 @@ class ChecklistItemsScreen extends StatefulWidget {
 }
 
 class ChecklistItemsScreenState extends State<ChecklistItemsScreen> {
-  late Box<AGiXTChecklist> _checklistBox;
+  late Box<Checklist> _checklistBox;
 
   @override
   void initState() {
     super.initState();
-    _checklistBox = Hive.box<AGiXTChecklist>('agixtChecklistBox');
+    _checklistBox = Hive.box<Checklist>('checklistBox');
   }
 
   void _addItem() {
@@ -157,8 +157,8 @@ class ChecklistItemsScreenState extends State<ChecklistItemsScreen> {
 }
 
 class _AddItemDialog extends StatefulWidget {
-  final Function(AGiXTCheckListItem) onAdd;
-  final AGiXTCheckListItem? item;
+  final Function(ChecklistEntry) onAdd;
+  final ChecklistEntry? item;
 
   const _AddItemDialog({required this.onAdd, this.item});
 
@@ -192,7 +192,7 @@ class _AddItemDialogState extends State<_AddItemDialog> {
         TextButton(
           onPressed: () {
             if (widget.item == null) {
-              widget.onAdd(AGiXTCheckListItem(title: titleController.text));
+              widget.onAdd(ChecklistEntry(title: titleController.text));
             } else {
               widget.item!.title = titleController.text;
               widget.onAdd(widget.item!);

@@ -3,11 +3,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vosk_flutter/vosk_flutter.dart';
-import 'package:http/http.dart' as http;
-import 'package:archive/archive.dart';
+
+import 'package:g1_extended/services/vosk_model_manager.dart';
 
 /// Service for wake word detection ("computer")
 /// Uses Vosk for on-device, offline speech recognition
@@ -18,7 +17,8 @@ class WakeWordService {
   WakeWordService._internal();
 
   // Vosk components
-  final VoskFlutterPlugin _vosk = VoskFlutterPlugin.instance();
+  final VoskModelManager _models = VoskModelManager.singleton;
+  VoskFlutterPlugin get _vosk => _models.plugin;
   Model? _model;
   Recognizer? _recognizer;
   SpeechService? _speechService;
@@ -32,8 +32,6 @@ class WakeWordService {
   bool _isListening = false;
   bool _isInitialized = false;
   bool _isPaused = false;
-  bool _isModelLoading = false;
-  double _modelDownloadProgress = 0.0;
 
   // Callbacks
   WakeWordCallback? _onWakeWordDetected;
@@ -62,17 +60,13 @@ class WakeWordService {
   // ignore: unused_field
   static const _minEnergyRatio = 2.0; // Audio must be 2x above ambient noise
 
-  // Model info - using small English model (~50MB)
-  static const _modelUrl =
-      'https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip';
-  static const _modelName = 'vosk-model-small-en-us-0.15';
 
   // Public getters
   bool get isEnabled => _isEnabled;
   bool get isListening => _isListening && !_isPaused;
   bool get isInitialized => _isInitialized;
-  bool get isModelLoading => _isModelLoading;
-  double get modelDownloadProgress => _modelDownloadProgress;
+  bool get isModelLoading => _models.isDownloading;
+  double get modelDownloadProgress => _models.progress;
   String get wakeWord => _wakeWord;
   double get sensitivity => _sensitivity;
   Stream<WakeWordEvent> get eventStream => _eventController.stream;
@@ -89,19 +83,9 @@ class WakeWordService {
     _wakeWord = prefs.getString('wake_word') ?? 'computer';
     _sensitivity = prefs.getDouble('wake_word_sensitivity') ?? 0.5;
 
-    // Check if model exists, download if needed
-    final modelPath = await _getModelPath();
-    if (modelPath == null) {
-      debugPrint(
-        'WakeWordService: Model not found, will download when enabled',
-      );
-      // Model will be downloaded when user enables wake word
-      _isInitialized = true;
-      return;
-    }
-
-    // Load the model
-    await _loadModel(modelPath);
+    // Load the model if it is already on disk. If it is not, it gets
+    // downloaded the first time the user enables the wake word.
+    await _ensureModel();
 
     _isInitialized = true;
     debugPrint('WakeWordService: Initialized = $_isInitialized');
@@ -112,130 +96,32 @@ class WakeWordService {
     }
   }
 
-  /// Get the path to the Vosk model, or null if not downloaded
-  Future<String?> _getModelPath() async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final modelDir = Directory('${appDir.path}/vosk-models/$_modelName');
+  /// Loads the shared offline model, downloading it if allowed.
+  Future<bool> _ensureModel({bool allowDownload = false}) async {
+    if (_model != null) return true;
 
-    if (await modelDir.exists()) {
-      debugPrint('WakeWordService: Model found at ${modelDir.path}');
-      return modelDir.path;
+    if (allowDownload && !await _models.isModelInstalled()) {
+      _eventController.add(
+        WakeWordEvent(type: WakeWordEventType.modelDownloadStarted),
+      );
     }
 
-    return null;
-  }
+    _model = await _models.load(allowDownload: allowDownload);
 
-  /// Download the Vosk model
-  Future<String?> _downloadModel() async {
-    if (_isModelLoading) return null;
-
-    _isModelLoading = true;
-    _modelDownloadProgress = 0.0;
-    _eventController.add(
-      WakeWordEvent(type: WakeWordEventType.modelDownloadStarted),
-    );
-
-    try {
-      debugPrint('WakeWordService: Downloading model from $_modelUrl');
-
-      final appDir = await getApplicationDocumentsDirectory();
-      final modelsDir = Directory('${appDir.path}/vosk-models');
-      if (!await modelsDir.exists()) {
-        await modelsDir.create(recursive: true);
-      }
-
-      // Download the zip file
-      final client = http.Client();
-      final request = http.Request('GET', Uri.parse(_modelUrl));
-      final response = await client.send(request);
-
-      if (response.statusCode != 200) {
-        throw Exception('Failed to download model: ${response.statusCode}');
-      }
-
-      final contentLength = response.contentLength ?? 0;
-      final zipPath = '${modelsDir.path}/$_modelName.zip';
-      final zipFile = File(zipPath);
-      final sink = zipFile.openWrite();
-
-      int downloaded = 0;
-      await for (final chunk in response.stream) {
-        sink.add(chunk);
-        downloaded += chunk.length;
-        if (contentLength > 0) {
-          _modelDownloadProgress = downloaded / contentLength;
-          _eventController.add(
-            WakeWordEvent(
-              type: WakeWordEventType.modelDownloadProgress,
-              progress: _modelDownloadProgress,
-            ),
-          );
-        }
-      }
-
-      await sink.close();
-      client.close();
-
-      debugPrint('WakeWordService: Download complete, extracting...');
-
-      // Extract the zip file
-      final bytes = await zipFile.readAsBytes();
-      final archive = ZipDecoder().decodeBytes(bytes);
-
-      for (final file in archive) {
-        final filename = '${modelsDir.path}/${file.name}';
-        if (file.isFile) {
-          final outFile = File(filename);
-          await outFile.create(recursive: true);
-          await outFile.writeAsBytes(file.content as List<int>);
-        } else {
-          await Directory(filename).create(recursive: true);
-        }
-      }
-
-      // Delete the zip file
-      await zipFile.delete();
-
-      final modelPath = '${modelsDir.path}/$_modelName';
-      debugPrint('WakeWordService: Model extracted to $modelPath');
-
-      _isModelLoading = false;
-      _modelDownloadProgress = 1.0;
-      _eventController.add(
-        WakeWordEvent(type: WakeWordEventType.modelDownloadComplete),
-      );
-
-      return modelPath;
-    } catch (e) {
-      debugPrint('WakeWordService: Error downloading model: $e');
-      _isModelLoading = false;
+    if (_model == null) {
       _eventController.add(
         WakeWordEvent(
           type: WakeWordEventType.error,
-          error: 'Failed to download speech model: $e',
-        ),
-      );
-      return null;
-    }
-  }
-
-  /// Load the Vosk model
-  Future<bool> _loadModel(String modelPath) async {
-    try {
-      debugPrint('WakeWordService: Loading model from $modelPath');
-      _model = await _vosk.createModel(modelPath);
-      debugPrint('WakeWordService: Model loaded successfully');
-      return true;
-    } catch (e) {
-      debugPrint('WakeWordService: Error loading model: $e');
-      _eventController.add(
-        WakeWordEvent(
-          type: WakeWordEventType.error,
-          error: 'Failed to load speech model: $e',
+          error: 'Speech model unavailable',
         ),
       );
       return false;
     }
+
+    _eventController.add(
+      WakeWordEvent(type: WakeWordEventType.modelDownloadComplete),
+    );
+    return true;
   }
 
   /// Create recognizer with grammar for wake word detection
@@ -407,20 +293,8 @@ class WakeWordService {
     debugPrint('WakeWordService: Enabled set to $enabled');
 
     if (enabled) {
-      // Check if model is loaded
-      if (_model == null) {
-        // Try to load existing model or download
-        var modelPath = await _getModelPath();
-        if (modelPath == null) {
-          debugPrint('WakeWordService: Downloading model...');
-          modelPath = await _downloadModel();
-        }
-        if (modelPath != null) {
-          await _loadModel(modelPath);
-        }
-      }
-
-      if (_model != null) {
+      // Downloads the shared model on first use.
+      if (await _ensureModel(allowDownload: true)) {
         await startListening();
       } else {
         _eventController.add(
@@ -570,40 +444,30 @@ class WakeWordService {
     }
   }
 
-  /// Check if the device supports wake word detection
+  /// Check if the device supports wake word detection.
+  /// Vosk ships native libraries for Android, Linux and Windows.
   Future<bool> isSupported() async {
-    // Vosk supports Android (and Linux/Windows)
     return Platform.isAndroid || Platform.isLinux || Platform.isWindows;
   }
 
-  /// Delete the downloaded model to free space
+  /// Delete the downloaded model to free space.
   Future<void> deleteModel() async {
     await stopListening();
     _recognizer = null;
     _model = null;
-
-    final appDir = await getApplicationDocumentsDirectory();
-    final modelDir = Directory('${appDir.path}/vosk-models/$_modelName');
-    if (await modelDir.exists()) {
-      await modelDir.delete(recursive: true);
-      debugPrint('WakeWordService: Model deleted');
-    }
+    await _models.deleteModel();
   }
 
-  /// Get the model size in bytes (for display purposes)
+  /// Size of the installed model in bytes, 0 when it is not installed.
   Future<int> getModelSize() async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final modelDir = Directory('${appDir.path}/vosk-models/$_modelName');
-    if (await modelDir.exists()) {
-      int size = 0;
-      await for (final entity in modelDir.list(recursive: true)) {
-        if (entity is File) {
-          size += await entity.length();
-        }
-      }
-      return size;
+    final path = await _models.installedModelPath();
+    if (path == null) return 0;
+
+    var size = 0;
+    await for (final entity in Directory(path).list(recursive: true)) {
+      if (entity is File) size += await entity.length();
     }
-    return 0;
+    return size;
   }
 
   /// Dispose of the service

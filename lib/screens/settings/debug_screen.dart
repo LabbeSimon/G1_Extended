@@ -1,13 +1,11 @@
-import 'package:agixt/models/agixt/auth/auth.dart';
-import 'package:agixt/models/g1/calendar.dart';
-import 'package:agixt/models/g1/dashboard.dart';
-import 'package:agixt/models/g1/note.dart';
-import 'package:agixt/models/g1/notification.dart';
-import 'package:agixt/models/g1/translate.dart';
-import 'package:agixt/services/bluetooth_manager.dart';
-import 'package:agixt/utils/bitmap.dart';
+import 'package:g1_extended/models/g1/calendar.dart';
+import 'package:g1_extended/models/g1/dashboard.dart';
+import 'package:g1_extended/models/g1/note.dart';
+import 'package:g1_extended/models/g1/notification.dart';
+import 'package:g1_extended/models/g1/translate.dart';
+import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/utils/bitmap.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 class DebugPage extends StatefulWidget {
   const DebugPage({super.key});
@@ -102,7 +100,7 @@ class _DebugPageSate extends State<DebugPage> {
 
     final note1 = Note(
       noteNumber: 1,
-      name: 'AGiXT',
+      name: 'G1 Extended',
       text:
           '☐ 09:00 Take medication\n☐ 09:18 Take bus 85\n☐ 09:58 take train to FN',
     );
@@ -171,84 +169,6 @@ class _DebugPageSate extends State<DebugPage> {
     await bluetoothManager.setMicrophone(false);
   }
 
-  void _showJWT() async {
-    final jwt = await AuthService.getJwt();
-    final isLoggedIn = await AuthService.isLoggedIn();
-    final email = await AuthService.getEmail();
-
-    if (mounted) {
-      showDialog(
-        context: context,
-        builder:
-            (context) => AlertDialog(
-              title: const Text('JWT Information'),
-              content: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('Logged in: ${isLoggedIn ? "Yes" : "No"}'),
-                    if (email != null && email.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8.0),
-                        child: Text('Email: $email'),
-                      ),
-                    if (jwt != null && jwt.isNotEmpty) ...[
-                      const Padding(
-                        padding: EdgeInsets.only(top: 16.0, bottom: 8.0),
-                        child: Text('JWT Token:'),
-                      ),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.grey[200],
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        padding: const EdgeInsets.all(8.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              jwt,
-                              style: const TextStyle(
-                                fontFamily: 'monospace',
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    if (jwt == null || jwt.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 16.0),
-                        child: Text('No JWT token found. Not logged in.'),
-                      ),
-                  ],
-                ),
-              ),
-              actions: [
-                if (jwt != null && jwt.isNotEmpty)
-                  TextButton(
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: jwt));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('JWT copied to clipboard'),
-                        ),
-                      );
-                      Navigator.of(context).pop();
-                    },
-                    child: const Text('Copy JWT'),
-                  ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Close'),
-                ),
-              ],
-            ),
-      );
-    }
-  }
 
   @override
   void initState() {
@@ -302,15 +222,6 @@ class _DebugPageSate extends State<DebugPage> {
           ElevatedButton(
             onPressed: _debugTranslateCommand,
             child: const Text("Debug Translate"),
-          ),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: _showJWT,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple, // Make it stand out
-              foregroundColor: Colors.white,
-            ),
-            child: const Text("Show JWT"),
           ),
         ],
       ),

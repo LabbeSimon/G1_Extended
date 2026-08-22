@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:agixt/utils/emoji.dart';
+import 'package:g1_extended/utils/emoji.dart';
 import 'package:intl/intl.dart';
 
 class G1Notification {

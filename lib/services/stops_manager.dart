@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:agixt/models/agixt/stop.dart';
-import 'package:agixt/services/bluetooth_manager.dart';
+import 'package:g1_extended/models/dashboard/stop.dart';
+import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:hive/hive.dart';
 
@@ -24,8 +24,8 @@ class StopsManager {
     await loadStops();
   }
 
-  Future<bool> _isStopStillInDatabase(AGiXTStopItem stop) async {
-    final box = Hive.lazyBox<AGiXTStopItem>('agixtStopBox');
+  Future<bool> _isStopStillInDatabase(StopItem stop) async {
+    final box = Hive.lazyBox<StopItem>('agixtStopBox');
     for (int i = 0; i < box.length; i++) {
       final item = await box.getAt(i);
       if (item != null && item.uuid == stop.uuid) {
@@ -37,8 +37,8 @@ class StopsManager {
 
   Future<void> loadStops() async {
     // Load stops from Hive
-    final box = Hive.lazyBox<AGiXTStopItem>('agixtStopBox');
-    final stops = <AGiXTStopItem>[];
+    final box = Hive.lazyBox<StopItem>('agixtStopBox');
+    final stops = <StopItem>[];
     for (int i = 0; i < box.length; i++) {
       final item = await box.getAt(i);
       if (item != null) {
@@ -55,7 +55,7 @@ class StopsManager {
     }
   }
 
-  void _triggerTimer(AGiXTStopItem item) async {
+  void _triggerTimer(StopItem item) async {
     if (!await _isStopStillInDatabase(item)) {
       return;
     }
@@ -72,13 +72,13 @@ class StopsManager {
     // show notification
     flutterLocalNotificationsPlugin.show(
       Random().nextInt(1000),
-      'AGiXT',
+      'G1 Extended',
       'Time to: ${item.title}',
       NotificationDetails(
         android: AndroidNotificationDetails(
           'agixt',
-          'AGiXT',
-          icon: 'agixt_logo',
+          'G1 Extended',
+          icon: 'app_logo',
           importance: Importance.max,
           priority: Priority.high,
           actions: [

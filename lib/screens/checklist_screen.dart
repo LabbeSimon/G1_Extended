@@ -1,24 +1,24 @@
 import 'package:duration_picker/duration_picker.dart';
-import 'package:agixt/models/agixt/checklist.dart';
-import 'package:agixt/screens/checklists/list_screen.dart';
-import 'package:agixt/services/bluetooth_manager.dart';
+import 'package:g1_extended/models/dashboard/checklist.dart';
+import 'package:g1_extended/screens/checklists/list_screen.dart';
+import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
-class AGiXTChecklistPage extends StatefulWidget {
-  const AGiXTChecklistPage({super.key});
+class ChecklistPage extends StatefulWidget {
+  const ChecklistPage({super.key});
 
   @override
-  AGiXTChecklistPageState createState() => AGiXTChecklistPageState();
+  ChecklistPageState createState() => ChecklistPageState();
 }
 
-class AGiXTChecklistPageState extends State<AGiXTChecklistPage> {
-  late Box<AGiXTChecklist> _checklistBox;
+class ChecklistPageState extends State<ChecklistPage> {
+  late Box<Checklist> _checklistBox;
 
   @override
   void initState() {
     super.initState();
-    _checklistBox = Hive.box<AGiXTChecklist>('agixtChecklistBox');
+    _checklistBox = Hive.box<Checklist>('checklistBox');
   }
 
   void _addChecklist() {
@@ -112,7 +112,7 @@ class AGiXTChecklistPageState extends State<AGiXTChecklistPage> {
       ),
       body: ValueListenableBuilder(
         valueListenable: _checklistBox.listenable(),
-        builder: (context, Box<AGiXTChecklist> box, _) {
+        builder: (context, Box<Checklist> box, _) {
           final checklists = box.values.toList();
 
           return ListView.builder(
@@ -158,8 +158,8 @@ class AGiXTChecklistPageState extends State<AGiXTChecklistPage> {
 }
 
 class _AddListDialog extends StatefulWidget {
-  final Function(AGiXTChecklist) onAdd;
-  final AGiXTChecklist? item;
+  final Function(Checklist) onAdd;
+  final Checklist? item;
 
   const _AddListDialog({required this.onAdd, this.item});
 
@@ -207,7 +207,7 @@ class _AddListDialogState extends State<_AddListDialog> {
           onPressed: () {
             if (widget.item == null) {
               final newChecklist =
-                  AGiXTChecklist(name: titleController.text, duration: 0);
+                  Checklist(name: titleController.text, duration: 0);
               newChecklist.setDuration(duration);
               widget.onAdd(newChecklist);
             } else {

@@ -1,0 +1,21 @@
+Categories:
+  - Connectivity
+License: MIT
+SourceCode: https://github.com/LabbeSimon/G1_Extended
+IssueTracker: https://github.com/LabbeSimon/G1_Extended/issues
+
+AutoName: G1 Extended
+Summary: Offline companion app for Even Realities G1 glasses
+Description: |-
+    Pairs with Even Realities G1 smart glasses over Bluetooth and drives their
+    display: dashboard, notifications, live captions and dictation.
+
+    There is no account and no telemetry. Speech recognition runs on the
+    device. The only network requests are an optional weather forecast and a
+    one-off download of the offline speech model.
+
+RepoType: git
+Repo: https://github.com/LabbeSimon/G1_Extended.git
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags

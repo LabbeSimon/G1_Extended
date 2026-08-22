@@ -1,4 +1,4 @@
-import 'package:agixt/models/agixt/calendar.dart';
+import 'package:g1_extended/models/dashboard/calendar.dart';
 import 'package:flutter/material.dart';
 import 'package:device_calendar/device_calendar.dart';
 import 'package:flutter/services.dart';
@@ -15,12 +15,12 @@ class CalendarsPage extends StatefulWidget {
 
 class CalendarsPageState extends State<CalendarsPage> {
   final List<Calendar> _calendars = [];
-  late Box<AGiXTCalendar> _calendarBox;
+  late Box<DashboardCalendar> _calendarBox;
 
   @override
   void initState() {
     super.initState();
-    _calendarBox = Hive.box<AGiXTCalendar>('agixtCalendarBox');
+    _calendarBox = Hive.box<DashboardCalendar>('calendarBox');
     _retrieveCalendars();
   }
 
@@ -60,7 +60,7 @@ class CalendarsPageState extends State<CalendarsPage> {
     final index = boxCals.indexWhere((c) => c.id == calendar.id);
 
     if (index == -1) {
-      _calendarBox.add(AGiXTCalendar(id: calendar.id!, enabled: true));
+      _calendarBox.add(DashboardCalendar(id: calendar.id!, enabled: true));
     } else {
       final cal = boxCals[index];
       cal.enabled = !cal.enabled;
@@ -91,7 +91,7 @@ class CalendarsPageState extends State<CalendarsPage> {
           final isEnabled = _calendarBox.values
               .firstWhere((c) => c.id == calendar.id,
                   orElse: () =>
-                      AGiXTCalendar(id: calendar.id!, enabled: false))
+                      DashboardCalendar(id: calendar.id!, enabled: false))
               .enabled;
 
           return ListTile(

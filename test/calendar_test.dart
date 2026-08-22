@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:agixt/models/g1/calendar.dart';
+import 'package:g1_extended/models/g1/calendar.dart';
 import 'dart:typed_data';
 
 void main() {

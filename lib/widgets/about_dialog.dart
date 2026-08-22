@@ -12,7 +12,7 @@ void showCustomAboutDialog(BuildContext context) async {
   if (context.mounted) {
     showAboutDialog(
       context: context,
-      applicationName: "AGiXT",
+      applicationName: "G1 Extended",
       applicationVersion: version,
       applicationIcon: Image.asset(
         'assets/icons/agixt.png',

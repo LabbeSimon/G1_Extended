@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:agixt/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:flutter/material.dart';
 
 class GlassStatus extends StatefulWidget {

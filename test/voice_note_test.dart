@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:agixt/models/g1/voice_note.dart';
-import 'package:agixt/models/g1/commands.dart';
+import 'package:g1_extended/models/g1/voice_note.dart';
+import 'package:g1_extended/models/g1/commands.dart';
 
 void main() {
   group('VoiceNote', () {

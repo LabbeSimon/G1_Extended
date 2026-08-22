@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:agixt/utils/ui_perfs.dart';
-import 'package:agixt/services/open_meteo_weather_service.dart';
+import 'package:g1_extended/utils/ui_perfs.dart';
+import 'package:g1_extended/services/open_meteo_weather_service.dart';
 
 void main() {
   group('End-to-End Temperature Toggle Workflow', () {

@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:agixt/models/g1/dashboard.dart';
+import 'package:g1_extended/models/g1/dashboard.dart';
 
 class DashboardController {
   static final DashboardController _singleton = DashboardController._internal();

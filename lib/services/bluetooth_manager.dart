@@ -1,30 +1,29 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:agixt/services/bluetooth_background_service.dart';
+import 'package:g1_extended/services/bluetooth_background_service.dart';
 import 'package:android_package_manager/android_package_manager.dart';
-import 'package:agixt/models/agixt/agixt_dashboard.dart';
-import 'package:agixt/models/g1/bmp.dart';
-import 'package:agixt/models/g1/commands.dart';
-import 'package:agixt/models/g1/crc.dart';
-import 'package:agixt/models/g1/dashboard.dart';
-import 'package:agixt/models/g1/setup.dart';
-import 'package:agixt/models/g1/battery.dart';
-import 'package:agixt/services/dashboard_controller.dart';
-import 'package:agixt/models/g1/note.dart';
-import 'package:agixt/models/g1/notification.dart';
-import 'package:agixt/models/g1/text.dart';
-import 'package:agixt/services/notifications_listener.dart';
-import 'package:agixt/services/stops_manager.dart';
-import 'package:agixt/services/open_meteo_weather_service.dart';
-import 'package:agixt/utils/utils.dart';
+import 'package:g1_extended/models/dashboard/dashboard.dart';
+import 'package:g1_extended/models/g1/bmp.dart';
+import 'package:g1_extended/models/g1/commands.dart';
+import 'package:g1_extended/models/g1/crc.dart';
+import 'package:g1_extended/models/g1/dashboard.dart';
+import 'package:g1_extended/models/g1/setup.dart';
+import 'package:g1_extended/models/g1/battery.dart';
+import 'package:g1_extended/services/dashboard_controller.dart';
+import 'package:g1_extended/models/g1/note.dart';
+import 'package:g1_extended/models/g1/notification.dart';
+import 'package:g1_extended/models/g1/text.dart';
+import 'package:g1_extended/services/notifications_listener.dart';
+import 'package:g1_extended/services/stops_manager.dart';
+import 'package:g1_extended/services/open_meteo_weather_service.dart';
+import 'package:g1_extended/utils/utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart'; // Add this import for MethodChannel
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:hive/hive.dart';
 import 'package:notification_listener_service/notification_event.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:agixt/models/agixt/auth/auth.dart';
 import '../utils/constants.dart';
 import '../models/g1/glass.dart';
 import 'time_sync.dart';
@@ -66,12 +65,12 @@ class BluetoothManager {
     });
   }
 
-  AGiXTDashboard agixtDashboard = AGiXTDashboard();
+  GlassesDashboard agixtDashboard = GlassesDashboard();
   DashboardController dashboardController = DashboardController();
   StopsManager stopsManager = StopsManager();
 
-  /// Incremented each time sendAIResponse is called so in-flight sends abort.
-  int _aiResponseVersion = 0;
+  /// Incremented each time sendPriorityText is called so in-flight sends abort.
+  int _priorityTextVersion = 0;
 
   Timer? _syncTimer;
 
@@ -653,7 +652,7 @@ class BluetoothManager {
   }
 
   /// Send text directly to glasses without display preference checks
-  /// Used for AI responses and system messages
+  /// Used for dictation feedback and system messages
   Future<void> _sendTextDirect(
     String text, {
     Duration delay = const Duration(seconds: 5),
@@ -663,8 +662,8 @@ class BluetoothManager {
     List<List<int>> packets = textMsg.constructSendText();
 
     for (int i = 0; i < packets.length; i++) {
-      // Abort if a newer AI response has been queued
-      if (cancelVersion != null && _aiResponseVersion != cancelVersion) return;
+      // Abort if newer text has been queued
+      if (cancelVersion != null && _priorityTextVersion != cancelVersion) return;
       await sendCommandToGlasses(packets[i]);
       if (i < 2) {
         // init packet
@@ -675,16 +674,16 @@ class BluetoothManager {
     }
   }
 
-  /// Send AI response text to glasses, bypassing display preference checks.
-  /// When [streaming] is true, only the last page is sent with a short delay
+  /// Send text to the glasses, bypassing the "display enabled" preference.
+  /// Used for dictation feedback and system messages the user must see.
   /// and any in-flight sends are cancelled, keeping the display responsive.
-  Future<void> sendAIResponse(
+  Future<void> sendPriorityText(
     String text, {
     Duration delay = const Duration(seconds: 5),
     bool streaming = false,
   }) async {
-    _aiResponseVersion++;
-    final version = _aiResponseVersion;
+    _priorityTextVersion++;
+    final version = _priorityTextVersion;
 
     if (streaming) {
       // Streaming mode: send only the last page for instant feedback
@@ -807,7 +806,7 @@ class BluetoothManager {
       }
 
       try {
-        final appBox = Hive.box('agixtNotificationApps');
+        final appBox = Hive.box('notificationApps');
         final isWhitelisted = appBox.get(packageName, defaultValue: false) == true;
         if (!isWhitelisted) {
           debugPrint(
@@ -932,7 +931,7 @@ class BluetoothManager {
     if (notes.length < 4) {
       final hintNote = Note(
         noteNumber: notes.length + 1,
-        name: 'AGiXT',
+        name: 'G1 Extended',
         text: 'Touch right touchbar\nto start/stop conversation\ntranscription',
       );
       await sendNote(hintNote);
@@ -1006,13 +1005,22 @@ class BluetoothManager {
     _stopBackgroundService();
   }
 
+  /// Whether the user wants content pushed to the glasses display at all.
+  /// Stored locally; defaults to enabled.
   Future<bool> _isGlassesDisplayEnabled() async {
     try {
-      return await AuthService.getGlassesDisplayPreference();
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool('glasses_display_enabled') ?? true;
     } catch (e) {
       debugPrint('Error checking glasses display preference: $e');
-      return true; // Default to enabled if there's an error
+      return true;
     }
+  }
+
+  /// Turns the glasses display on or off.
+  static Future<void> setGlassesDisplayEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('glasses_display_enabled', enabled);
   }
 
   Future<void> setSilentMode(bool enabled) async {

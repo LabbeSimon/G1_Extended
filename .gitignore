@@ -71,3 +71,8 @@ app.*.map.json
 
 .cxx/
 pull_request.md
+# Android signing — never commit keys or their passwords
+android/keystore.properties
+android/app/keystore/
+*.jks
+*.keystore

@@ -1,6 +1,6 @@
-import 'package:agixt/services/bluetooth_manager.dart';
-import 'package:agixt/services/time_sync.dart';
-import 'package:agixt/utils/ui_perfs.dart';
+import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/time_sync.dart';
+import 'package:g1_extended/utils/ui_perfs.dart';
 import 'package:flutter/material.dart';
 
 class DashboardSettingsPage extends StatefulWidget {
