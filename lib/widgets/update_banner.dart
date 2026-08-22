@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:g1_extended/services/update_service.dart';
 import 'package:g1_extended/theme/app_theme.dart';
+import 'package:g1_extended/widgets/pixel_art.dart';
 
 /// Shown at the top of the home screen when a newer release exists.
 ///
@@ -59,8 +60,7 @@ class _UpdateBannerState extends State<UpdateBanner> {
             padding: const EdgeInsets.fromLTRB(18, 14, 8, 14),
             child: Row(
               children: [
-                const Icon(Icons.arrow_circle_down_outlined,
-                    size: 22, color: AppColors.ink),
+                const PixelArt(rows: PixelArtwork.download, size: 20),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(

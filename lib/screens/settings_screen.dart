@@ -244,7 +244,7 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
     final silent = !_isGlassesDisplayEnabled;
 
     return BentoTile(
-      icon: silent ? Icons.nightlight_outlined : Icons.wb_sunny_outlined,
+      pixels: silent ? PixelArtwork.moon : PixelArtwork.sun,
       active: silent,
       onTap: () {
         setState(() => _isGlassesDisplayEnabled = silent);
@@ -273,49 +273,49 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
   Widget _buildSettingsList() {
     final entries = <_SettingsEntry>[
       _SettingsEntry(
-        icon: Icons.brightness_medium_outlined,
+        pixels: PixelArtwork.sun,
         title: 'Display',
         subtitle: 'Brightness, position in the lens, head-up angle.',
         builder: (_) => const DisplaySettingsScreen(),
       ),
       _SettingsEntry(
-        icon: Icons.dashboard_customize_outlined,
+        pixels: PixelArtwork.grid,
         title: 'Dashboard',
         subtitle: 'What shows on your glasses timeline.',
         builder: (_) => const DashboardSettingsPage(),
       ),
       _SettingsEntry(
-        icon: Icons.edit_note_outlined,
+        pixels: PixelArtwork.note,
         title: 'My cards',
         subtitle: 'Your own lines on the glasses.',
         builder: (_) => const CustomCardsScreen(),
       ),
       _SettingsEntry(
-        icon: Icons.notifications_none,
+        pixels: PixelArtwork.bell,
         title: 'Notifications',
         subtitle: 'Which apps reach the lens.',
         builder: (_) => const NotificationSettingsPage(),
       ),
       _SettingsEntry(
-        icon: Icons.forum_outlined,
+        pixels: PixelArtwork.chat,
         title: 'Assistant',
         subtitle: 'Ask a model you host, or one you chose.',
         builder: (_) => const AssistantScreen(),
       ),
       _SettingsEntry(
-        icon: Icons.record_voice_over_outlined,
+        pixels: PixelArtwork.mic,
         title: 'Voice',
         subtitle: 'Wake word, microphone, offline speech model.',
         builder: (_) => const VoiceSettingsScreen(),
       ),
       _SettingsEntry(
-        icon: Icons.speed_outlined,
+        pixels: PixelArtwork.speed,
         title: 'Speed',
         subtitle: 'Live speed readout on the lens.',
         builder: (_) => const SpeedometerScreen(),
       ),
       _SettingsEntry(
-        icon: Icons.info_outline,
+        pixels: PixelArtwork.info,
         title: 'About',
         subtitle: 'Version, updates, source code.',
         builder: (_) => const AboutScreen(),
@@ -346,7 +346,7 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           child: Row(
             children: [
-              Icon(entry.icon, size: 22, color: AppColors.ink),
+              PixelArt(rows: entry.pixels, size: 20),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -384,13 +384,13 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
 
 class _SettingsEntry {
   const _SettingsEntry({
-    required this.icon,
+    required this.pixels,
     required this.title,
     required this.subtitle,
     required this.builder,
   });
 
-  final IconData icon;
+  final List<String> pixels;
   final String title;
   final String subtitle;
   final WidgetBuilder builder;

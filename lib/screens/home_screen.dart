@@ -23,6 +23,7 @@ import 'package:g1_extended/services/open_meteo_weather_service.dart';
 import 'package:g1_extended/theme/app_theme.dart';
 import 'package:g1_extended/widgets/battery_gauge.dart';
 import 'package:g1_extended/widgets/bento.dart';
+import 'package:g1_extended/widgets/pixel_art.dart';
 import 'package:g1_extended/widgets/permission_banner.dart';
 import 'package:g1_extended/widgets/update_banner.dart';
 
@@ -223,8 +224,8 @@ class _HomeScreenState extends State<HomeScreen>
       padding: const EdgeInsets.symmetric(vertical: 14),
       child: Row(
         children: [
-          const Icon(Icons.dashboard_outlined, size: 22, color: AppColors.ink),
-          const SizedBox(width: 12),
+          const PixelArt(rows: PixelArtwork.glasses, size: 16),
+          const SizedBox(width: 14),
           Text(
             'G1 Extended',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -234,7 +235,7 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           const Spacer(),
           IconButton(
-            icon: const Icon(Icons.tune, color: AppColors.ink),
+            icon: const PixelArt(rows: PixelArtwork.sliders, size: 20),
             tooltip: 'Settings',
             onPressed: _openGlassesSettings,
           ),
@@ -378,9 +379,9 @@ class _HomeScreenState extends State<HomeScreen>
               children: [
                 Expanded(
                   child: BentoTile(
-                    icon: _autoBrightness
-                        ? Icons.brightness_auto_outlined
-                        : Icons.brightness_medium_outlined,
+                    pixels: _autoBrightness
+                        ? PixelArtwork.sunAuto
+                        : PixelArtwork.sun,
                     label: _brightnessLabel,
                     onTap: () => Navigator.of(context)
                         .push(MaterialPageRoute(
@@ -392,7 +393,7 @@ class _HomeScreenState extends State<HomeScreen>
                 const SizedBox(height: AppMetrics.gutter),
                 Expanded(
                   child: BentoTile(
-                    icon: Icons.nightlight_outlined,
+                    pixels: PixelArtwork.moon,
                     label: 'Silent mode',
                     active: _silentMode,
                     onTap: connected ? _toggleSilentMode : null,
@@ -409,32 +410,32 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _buildActionGrid() {
     final actions = <_Action>[
       _Action(
-        icon: Icons.edit_note_outlined,
+        pixels: PixelArtwork.note,
         label: 'Quick note',
         builder: (_) => const QuickNoteScreen(),
       ),
       _Action(
-        icon: Icons.subtitles_outlined,
+        pixels: PixelArtwork.captions,
         label: 'Live captions',
         builder: (_) => const LiveCaptionsScreen(),
       ),
       _Action(
-        icon: Icons.format_list_numbered,
+        pixels: PixelArtwork.list,
         label: 'Teleprompter',
         builder: (_) => const TeleprompterScreen(),
       ),
       _Action(
-        icon: Icons.mic_none_outlined,
+        pixels: PixelArtwork.mic,
         label: 'Dictation',
         builder: (_) => const DictationHistoryScreen(),
       ),
       _Action(
-        icon: Icons.checklist_outlined,
+        pixels: PixelArtwork.check,
         label: 'Checklists',
         builder: (_) => const ChecklistPage(),
       ),
       _Action(
-        icon: Icons.view_agenda_outlined,
+        pixels: PixelArtwork.grid,
         label: 'Dashboard',
         builder: (_) => const DashboardSettingsPage(),
       ),
@@ -450,7 +451,7 @@ class _HomeScreenState extends State<HomeScreen>
       children: [
         for (final action in actions)
           BentoTile(
-            icon: action.icon,
+            pixels: action.pixels,
             label: action.label,
             onTap: action.builder == null
                 ? null
@@ -465,12 +466,12 @@ class _HomeScreenState extends State<HomeScreen>
 
 class _Action {
   const _Action({
-    required this.icon,
+    required this.pixels,
     required this.label,
     required this.builder,
   });
 
-  final IconData icon;
+  final List<String> pixels;
   final String label;
   final WidgetBuilder? builder;
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'package:g1_extended/theme/app_theme.dart';
+import 'package:g1_extended/widgets/pixel_art.dart';
 
 /// One cell of the Bento grid.
 ///
@@ -11,6 +12,7 @@ class BentoTile extends StatelessWidget {
   const BentoTile({
     super.key,
     this.icon,
+    this.pixels,
     this.label,
     this.child,
     this.onTap,
@@ -19,6 +21,12 @@ class BentoTile extends StatelessWidget {
   });
 
   final IconData? icon;
+
+  /// Pixel artwork, preferred over [icon] when both are given. The rest of
+  /// the interface is drawn on a grid; a smooth Material glyph beside it
+  /// looks like it wandered in from another application.
+  final List<String>? pixels;
+
   final String? label;
   final Widget? child;
   final VoidCallback? onTap;
@@ -43,10 +51,13 @@ class BentoTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (icon != null)
+              if (pixels != null)
+                PixelArt(rows: pixels!, size: 24, color: AppColors.ink)
+              else if (icon != null)
                 Icon(icon, size: 26, color: AppColors.ink),
               if (child != null) ...[
-                if (icon != null) const SizedBox(height: 12),
+                if (pixels != null || icon != null)
+                  const SizedBox(height: 12),
                 Expanded(child: child!),
               ] else
                 const Spacer(),
