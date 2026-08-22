@@ -10,6 +10,7 @@ import 'package:g1_extended/models/g1/crc.dart';
 import 'package:g1_extended/models/g1/dashboard.dart';
 import 'package:g1_extended/models/g1/setup.dart';
 import 'package:g1_extended/models/g1/battery.dart';
+import 'package:g1_extended/models/g1/case_battery.dart';
 import 'package:g1_extended/services/dashboard_controller.dart';
 import 'package:g1_extended/models/g1/note.dart';
 import 'package:g1_extended/models/g1/notification.dart';
@@ -115,6 +116,43 @@ class BluetoothManager {
   get isScanning => _isScanning;
 
   /// Stream of battery status updates
+  final StreamController<CaseBattery> _caseBatteryController =
+      StreamController<CaseBattery>.broadcast();
+
+  CaseBattery? _caseBattery;
+
+  /// The charging case's level, or null while nothing has reported one.
+  CaseBattery? get caseBattery => _caseBattery;
+
+  Stream<CaseBattery> get caseBatteryStream =>
+      _caseBatteryController.stream;
+
+  /// Records a case reading, preferring the source we trust.
+  ///
+  /// A documented state change always wins. The byte guessed out of a polled
+  /// reply is only accepted while nothing better has arrived, and never
+  /// overwrites a confirmed value — otherwise a poll every ninety seconds
+  /// would quietly replace a known-good number with a suspected one, and the
+  /// display would flicker between two truths.
+  void updateCaseBattery(CaseBattery reading) {
+    final current = _caseBattery;
+
+    if (current != null && current.isConfirmed && !reading.isConfirmed) {
+      return;
+    }
+    if (current != null &&
+        current.percentage == reading.percentage &&
+        current.source == reading.source) {
+      return;
+    }
+
+    debugPrint('Case battery: $reading');
+    _caseBattery = reading;
+    if (!_caseBatteryController.isClosed) {
+      _caseBatteryController.add(reading);
+    }
+  }
+
   Stream<G1BatteryStatus> get batteryStatusStream =>
       _batteryStatusController.stream;
 

@@ -75,6 +75,8 @@ class DiagnosticReport {
         'battery': {
           'left': bluetooth.batteryStatus.leftBattery?.percentage,
           'right': bluetooth.batteryStatus.rightBattery?.percentage,
+          'case': bluetooth.caseBattery?.percentage,
+          'caseSource': bluetooth.caseBattery?.source.name,
           'lastUpdated':
               bluetooth.batteryStatus.lastUpdated.toIso8601String(),
         },

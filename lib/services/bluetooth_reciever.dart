@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:g1_extended/models/g1/glass.dart';
+import 'package:g1_extended/models/g1/case_battery.dart';
 import 'package:g1_extended/models/g1/commands.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/dictation_service.dart';
@@ -178,9 +179,18 @@ class BluetoothReciever {
       case Commands.HEARTBEAT:
         break;
       case Commands.START_AI:
+        // 0xF5 carries both the touchpad events and spontaneous state
+        // changes. handleEvenAICommand only receives the subcommand, so
+        // anything with a payload has to be read before dispatching or the
+        // payload is simply dropped.
+        final caseBattery = CaseBatteryParser.fromStateChange(data);
+        if (caseBattery != null) {
+          BluetoothManager.singleton.updateCaseBattery(caseBattery);
+          break;
+        }
+
         if (data.length >= 2) {
-          int subcmd = data[1];
-          handleEvenAICommand(side, subcmd);
+          handleEvenAICommand(side, data[1]);
         }
         break;
 

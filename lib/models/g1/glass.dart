@@ -3,7 +3,9 @@ import 'package:g1_extended/models/g1/battery.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'dart:async';
+import 'case_battery.dart';
 import '../../services/battery_frame_log.dart';
+import '../../services/bluetooth_manager.dart';
 import '../../services/bluetooth_reciever.dart';
 import '../../utils/constants.dart';
 
@@ -186,6 +188,14 @@ class Glass {
 
       // Parse battery info using the protocol parser
       BatteryFrameLog.singleton.record(side, data);
+
+      // The polled reply may also carry the case level. The manager decides
+      // whether to believe it: a suspected value never displaces a confirmed
+      // one.
+      final caseReading = CaseBatteryParser.fromPolledReply(data);
+      if (caseReading != null) {
+        BluetoothManager.singleton.updateCaseBattery(caseReading);
+      }
 
       final batteryInfo = G1BatteryInfo.fromResponse(data, side);
       if (batteryInfo != null) {

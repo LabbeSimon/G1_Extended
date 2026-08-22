@@ -235,3 +235,50 @@ class GlassesBattery extends StatelessWidget {
     );
   }
 }
+
+
+/// The charging case's level, shown only once something has reported one.
+///
+/// The glasses do not always know it: they learn it from the case, and only
+/// while docked or shortly after. An empty space is more honest than a stale
+/// number, so this renders nothing at all until there is something to say.
+class CaseBatteryReadout extends StatelessWidget {
+  const CaseBatteryReadout({
+    super.key,
+    required this.percentage,
+    this.suspected = false,
+  });
+
+  final int? percentage;
+
+  /// True when the value came from a byte believed to be the case level
+  /// rather than the documented state change. Shown differently so a reading
+  /// nobody has confirmed is never mistaken for one that is.
+  final bool suspected;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = percentage;
+    if (value == null) return const SizedBox.shrink();
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.inbox_outlined,
+          size: 15,
+          color: suspected ? AppColors.inkFaint : AppColors.inkMuted,
+        ),
+        const SizedBox(width: 6),
+        Text(
+          suspected ? '$value%?' : '$value%',
+          style: TextStyle(
+            fontFamily: AppTheme.technicalFont,
+            fontSize: 13,
+            color: suspected ? AppColors.inkFaint : AppColors.ink,
+          ),
+        ),
+      ],
+    );
+  }
+}

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import 'package:g1_extended/models/dashboard/dashboard.dart';
 import 'package:g1_extended/models/g1/battery.dart';
+import 'package:g1_extended/models/g1/case_battery.dart';
 import 'package:g1_extended/models/g1/glasses_settings.dart';
 import 'package:g1_extended/screens/checklist_screen.dart';
 import 'package:g1_extended/screens/dictation_history_screen.dart';
@@ -46,6 +47,8 @@ class _HomeScreenState extends State<HomeScreen>
   WeatherData? _weather;
   String? _nextEvent;
   bool _silentMode = false;
+  CaseBattery? _caseBattery;
+  StreamSubscription<CaseBattery>? _caseSubscription;
   int _brightness = 0;
   bool _autoBrightness = false;
 
@@ -78,6 +81,10 @@ class _HomeScreenState extends State<HomeScreen>
 
     _connectionSubscription =
         _bluetooth.connectionStatusStream.listen((_) => _refresh());
+    _caseBattery = _bluetooth.caseBattery;
+    _caseSubscription = _bluetooth.caseBatteryStream.listen((reading) {
+      if (mounted) setState(() => _caseBattery = reading);
+    });
     _batterySubscription =
         _bluetooth.batteryStatusStream.listen((_) => _refresh());
 
@@ -142,6 +149,7 @@ class _HomeScreenState extends State<HomeScreen>
     WidgetsBinding.instance.removeObserver(this);
     _clock?.cancel();
     _connectionSubscription?.cancel();
+    _caseSubscription?.cancel();
     _batterySubscription?.cancel();
     super.dispose();
   }
@@ -347,6 +355,13 @@ class _HomeScreenState extends State<HomeScreen>
                     right: battery.rightBattery?.percentage,
                     charging: battery.isAnyCharging,
                   ),
+                  if (_caseBattery != null) ...[
+                    const SizedBox(height: 8),
+                    CaseBatteryReadout(
+                      percentage: _caseBattery!.percentage,
+                      suspected: !_caseBattery!.isConfirmed,
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   Text(
                     connected ? 'Tap to manage' : 'Tap to pair',
