@@ -35,6 +35,7 @@ class MainActivity : FlutterActivity() {
         const val CHANNEL_APP_RETAIN = "$PACKAGE/app_retain"
         const val CHANNEL_BATTERY = "$PACKAGE/battery_optimization"
         const val CHANNEL_INSTALL = "$PACKAGE/apk_install"
+        const val CHANNEL_MEMORY = "$PACKAGE/memory"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -96,6 +97,33 @@ class MainActivity : FlutterActivity() {
             if (call.method == "sendToBackground") {
                 moveTaskToBack(true)
                 result.success(null)
+            } else {
+                result.notImplemented()
+            }
+        }
+
+        // What the system will let this process have.
+        //
+        // The speech model's loader is native: it allocates outside Dart's
+        // heap and, when there is not enough, the process is killed from
+        // the outside with nothing catchable and nothing logged. Asking
+        // beforehand is the only way to turn that into a sentence rather
+        // than a disappearance.
+        MethodChannel(messenger, CHANNEL_MEMORY).setMethodCallHandler { call, result ->
+            if (call.method == "state") {
+                val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                val info = android.app.ActivityManager.MemoryInfo()
+                am.getMemoryInfo(info)
+                result.success(
+                    mapOf(
+                        "availableBytes" to info.availMem,
+                        "totalBytes" to info.totalMem,
+                        "lowMemoryThresholdBytes" to info.threshold,
+                        "systemLowMemory" to info.lowMemory,
+                        // The ceiling this process may reach, in megabytes.
+                        "heapLimitMb" to am.largeMemoryClass,
+                    )
+                )
             } else {
                 result.notImplemented()
             }

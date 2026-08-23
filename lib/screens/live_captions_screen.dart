@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'package:g1_extended/models/g1/translate.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/memory_state.dart';
 import 'package:g1_extended/services/translation_service.dart';
 import 'package:g1_extended/services/bluetooth_reciever.dart';
 import 'package:g1_extended/services/speech_recognition_service.dart';
@@ -61,6 +62,48 @@ class _LiveCaptionsScreenState extends State<LiveCaptionsScreen> {
     _loadTranslationState();
   }
 
+  /// Asks whether there is room before handing the speech model to a
+  /// native loader that cannot fail politely.
+  ///
+  /// Pressing Start used to end the process outright — nothing thrown,
+  /// nothing logged, the app gone and the glasses' link with it. That
+  /// cannot be caught afterwards, so it is asked about beforehand; and
+  /// since a refusal here is a guess, it is offered as a warning the
+  /// wearer may override rather than a rule.
+  Future<bool> _memoryAllows() async {
+    final memory = await MemoryState.read();
+    // No answer is not a warning.
+    if (memory == null || !memory.speechModelIsRisky) return true;
+    if (!mounted) return false;
+
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: const Text('Not much memory free'),
+        content: Text(
+          'Captions load a speech model of some tens of megabytes, and the '
+          'part of Android that loads it cannot fail gracefully — if there '
+          'is not enough room the app is closed outright, taking the '
+          'glasses connection with it.\n\n'
+          '${memory.summary}.\n\n'
+          'Closing a few other apps first is the reliable fix. You can also '
+          'go ahead anyway.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialog).pop(true),
+            child: const Text('Go ahead'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialog).pop(false),
+            child: const Text('Not now'),
+          ),
+        ],
+      ),
+    );
+    return proceed ?? false;
+  }
+
   Future<void> _loadTranslationState() async {
     final (from, to) = await TranslationService.singleton.pair();
     final ready = await TranslationService.singleton.modelsReady();
@@ -107,6 +150,8 @@ class _LiveCaptionsScreenState extends State<LiveCaptionsScreen> {
       _notify('Glasses are not connected');
       return;
     }
+
+    if (!await _memoryAllows()) return;
 
     try {
       _session = await SpeechRecognitionService.singleton.startLiveTranscription();
