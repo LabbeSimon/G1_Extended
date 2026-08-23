@@ -34,8 +34,11 @@ jobs:
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME#v}"
+          # A beta tag carries a suffix the pubspec does not: v1.1.2-beta.1
+          # is still version 1.1.2. Only the core has to agree.
+          core="${tag%%-*}"
           pubspec="$(sed -n 's/^version: *\([^+]*\).*/\1/p' pubspec.yaml)"
-          if [ "$tag" != "$pubspec" ]; then
+          if [ "$core" != "$pubspec" ]; then
             echo "::error::tag $GITHUB_REF_NAME does not match pubspec version $pubspec."
             echo "::error::Every install would be told it is out of date, forever."
             exit 1
@@ -180,4 +183,10 @@ jobs:
           name: ${{ github.ref_name }}
           files: apk/*.apk
           generate_release_notes: true
+          # A suffixed tag publishes as a pre-release. GitHub keeps
+          # pre-releases out of /releases/latest, which is the endpoint the
+          # in-app update check reads — so people on stable are never told
+          # to "update" to a beta, and beta testers pick theirs up from the
+          # releases page deliberately.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           token: ${{ secrets.GITHUB_TOKEN }}
