@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// A release newer than the one running.
@@ -12,10 +14,18 @@ class AvailableUpdate {
   final String url;
   final String? notes;
 
+  /// Direct download for the APK asset, when the release carries one.
+  final String? apkUrl;
+
+  /// Its size in bytes, for the progress bar. Zero when unknown.
+  final int apkBytes;
+
   const AvailableUpdate({
     required this.version,
     required this.url,
     this.notes,
+    this.apkUrl,
+    this.apkBytes = 0,
   });
 }
 
@@ -106,15 +116,100 @@ class UpdateService {
       if (tag == null || url == null) return null;
 
       final notes = (json['body'] as String?)?.trim();
+      final apk = pickApkAsset(json);
 
       return AvailableUpdate(
         version: normalise(tag),
         url: url,
         notes: notes == null || notes.isEmpty ? null : notes,
+        apkUrl: apk?.$1,
+        apkBytes: apk?.$2 ?? 0,
       );
     } catch (e) {
       debugPrint('UpdateService: check failed: $e');
       return null;
+    }
+  }
+
+  /// The APK among a release's assets, as (url, size).
+  ///
+  /// By suffix, not by exact name: the asset is named after the tag, and
+  /// tying this to today's naming would quietly break the update button the
+  /// day the naming changes.
+  @visibleForTesting
+  static (String, int)? pickApkAsset(Map<String, dynamic> release) {
+    final assets = release['assets'];
+    if (assets is! List) return null;
+
+    for (final asset in assets) {
+      if (asset is! Map) continue;
+      final name = asset['name'] as String? ?? '';
+      final url = asset['browser_download_url'] as String?;
+      if (url == null || !name.toLowerCase().endsWith('.apk')) continue;
+      return (url, (asset['size'] as num?)?.toInt() ?? 0);
+    }
+    return null;
+  }
+
+  /// Downloads the update's APK into the cache, reporting progress 0..1.
+  ///
+  /// The cache directory on purpose: Android may clear it whenever it
+  /// likes, which is exactly right for a file that is disposable the moment
+  /// it is installed. Anything older is deleted first, so failed attempts
+  /// do not pile up.
+  Future<File?> downloadApk(
+    AvailableUpdate update, {
+    void Function(double progress)? onProgress,
+  }) async {
+    final apkUrl = update.apkUrl;
+    if (apkUrl == null) return null;
+
+    final client = http.Client();
+    try {
+      final dir = await getApplicationCacheDirectory();
+      final target = File('${dir.path}/update-${update.version}.apk');
+
+      await for (final stale in dir.list()) {
+        final name = stale.path.split('/').last;
+        if (name.startsWith('update-') && name.endsWith('.apk')) {
+          await stale.delete();
+        }
+      }
+
+      final response =
+          await client.send(http.Request('GET', Uri.parse(apkUrl)));
+      if (response.statusCode != 200) {
+        debugPrint('UpdateService: download returned ${response.statusCode}');
+        return null;
+      }
+
+      final total = response.contentLength ?? update.apkBytes;
+      final sink = target.openWrite();
+      var received = 0;
+
+      try {
+        await for (final chunk in response.stream) {
+          sink.add(chunk);
+          received += chunk.length;
+          if (total > 0) onProgress?.call(received / total);
+        }
+      } finally {
+        await sink.close();
+      }
+
+      // A partial file handed to the installer produces a parse error with
+      // no explanation; better to say the download failed.
+      if (total > 0 && received < total) {
+        await target.delete();
+        return null;
+      }
+
+      return target;
+    } catch (e) {
+      debugPrint('UpdateService: download failed: $e');
+      return null;
+    } finally {
+      client.close();
     }
   }
 

@@ -34,6 +34,7 @@ class MainActivity : FlutterActivity() {
         const val CHANNEL_BACKGROUND = "$PACKAGE/background_service"
         const val CHANNEL_APP_RETAIN = "$PACKAGE/app_retain"
         const val CHANNEL_BATTERY = "$PACKAGE/battery_optimization"
+        const val CHANNEL_INSTALL = "$PACKAGE/apk_install"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -87,6 +88,53 @@ class MainActivity : FlutterActivity() {
                 result.success(null)
             } else {
                 result.notImplemented()
+            }
+        }
+
+        // In-app updates. Android never lets an app install silently — the
+        // system's own sheet always confirms — but it does let one hand the
+        // installer a downloaded APK, which spares the trip through the
+        // browser and the Downloads folder.
+        MethodChannel(messenger, CHANNEL_INSTALL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "canInstall" -> {
+                    result.success(
+                        android.os.Build.VERSION.SDK_INT < 26 ||
+                            packageManager.canRequestPackageInstalls()
+                    )
+                }
+                "openInstallPermission" -> {
+                    // The per-app "install unknown apps" switch. There is no
+                    // dialog for it; the settings page is the only door.
+                    val intent = android.content.Intent(
+                        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        android.net.Uri.parse("package:$PACKAGE"),
+                    )
+                    startActivity(intent)
+                    result.success(null)
+                }
+                "install" -> {
+                    val path = call.argument<String>("path")
+                    if (path == null) {
+                        result.error("bad_args", "path is required", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val uri = androidx.core.content.FileProvider.getUriForFile(
+                            this, "$PACKAGE.fileprovider", java.io.File(path),
+                        )
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, "application/vnd.android.package-archive")
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("install_failed", e.message, null)
+                    }
+                }
+                else -> result.notImplemented()
             }
         }
 

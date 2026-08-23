@@ -21,6 +21,9 @@
          turned into a number on the phone; no position is ever transmitted. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Lets the update button hand a downloaded APK to the system
+         installer. The system still confirms every install itself. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
@@ -119,6 +122,16 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="fr.simonlabbe.g1extended.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- The home screen widget. Exported because the launcher, another
              application, is what delivers APPWIDGET_UPDATE to it. -->
         <receiver
