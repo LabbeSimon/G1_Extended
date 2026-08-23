@@ -49,7 +49,6 @@ abstract final class CardTemplate {
     'speed': 'Current speed',
     'next_event': 'Next calendar event',
     'value': 'Value fetched from the card\'s source',
-    'hr': 'Heart rate, from a paired Bluetooth sensor',
   };
 
   /// Token names found in a template that nothing will ever fill.

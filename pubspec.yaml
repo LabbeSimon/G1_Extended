@@ -2,7 +2,7 @@ name: g1_extended
 description: "Android companion app for Even Realities G1 smart glasses — offline, no account, no telemetry"
 publish_to: "none"
 
-version: 1.1.2-beta.6+6
+version: 1.2.0+7
 
 environment:
   sdk: ^3.5.4
@@ -63,7 +63,6 @@ dependencies:
   package_info_plus: ^8.3.1
   home_widget: ^0.9.3
   timezone: ^0.9.4
-  google_mlkit_translation: ^0.15.1
 
 dev_dependencies:
   flutter_test:
