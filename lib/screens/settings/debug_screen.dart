@@ -8,6 +8,7 @@ import 'package:g1_extended/utils/bitmap.dart';
 import 'dart:convert';
 import 'package:g1_extended/models/g1/text.dart';
 import 'package:g1_extended/services/isolate_report.dart';
+import 'package:g1_extended/services/voice_notes_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -65,6 +66,27 @@ class _DebugPageSate extends State<DebugPage> {
     }
 
     _toast('Done. Which one stayed out of Even AI?');
+  }
+
+  void _fetchVoiceNotes() async {
+    final service = VoiceNotesService.singleton;
+    final held = service.known;
+
+    if (held.isEmpty) {
+      _toast('The glasses have not announced any voice notes. Record one by '
+          'holding the right temple, then try again.');
+      return;
+    }
+
+    _toast('Asking for ${held.length} note(s) — give it a few seconds.');
+    await service.fetchAll();
+    _toast('Done. Copy the capture.');
+  }
+
+  void _copyVoiceNoteCapture() async {
+    final text = await VoiceNotesService.singleton.export();
+    await Clipboard.setData(ClipboardData(text: text));
+    _toast('Voice note capture copied.');
   }
 
   void _copyIsolateReport() async {
@@ -315,6 +337,18 @@ class _DebugPageSate extends State<DebugPage> {
           ElevatedButton(
             onPressed: _copyIsolateReport,
             child: const Text("Copy isolate report"),
+          ),
+          const SizedBox(height: 20),
+          // Voice notes recorded on the glasses. The audio format is
+          // undocumented, so this asks for them and keeps every frame.
+          ElevatedButton(
+            onPressed: _fetchVoiceNotes,
+            child: const Text("Fetch voice notes from glasses"),
+          ),
+          const SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: _copyVoiceNoteCapture,
+            child: const Text("Copy voice note capture"),
           ),
           const SizedBox(height: 20),
           // Which status byte stops the glasses opening Even AI.

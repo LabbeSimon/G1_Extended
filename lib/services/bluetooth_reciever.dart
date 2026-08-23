@@ -3,6 +3,7 @@ import 'package:g1_extended/models/g1/glass.dart';
 import 'package:g1_extended/models/g1/case_battery.dart';
 import 'package:g1_extended/models/g1/commands.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/voice_notes_service.dart';
 import 'package:g1_extended/services/dictation_service.dart';
 import 'package:g1_extended/services/notification_history.dart';
 import 'package:g1_extended/services/speech_recognition_service.dart';
@@ -466,18 +467,25 @@ class BluetoothReciever {
     // }
   }
 
+  /// The glasses announcing which voice notes they hold (0x21).
+  ///
+  /// This was discarded, on the reasoning that the right touchpad is
+  /// already handled through the Even AI command and doing both would
+  /// double-toggle. That reasoning applies to a *touchpad press*; this
+  /// frame is not one. It is the firmware saying what it has recorded, and
+  /// throwing it away is why notes recorded on the glasses never appeared
+  /// anywhere.
   void handleQuickNoteCommand(GlassSide side, List<int> data) {
-    // Quick note events from the glasses firmware are ignored because
-    // the right touchpad press is already handled by handleEvenAICommand
-    // (0xF5 subcmd 23/24). Processing both would cause a double-toggle,
-    // immediately starting and stopping the conversation recording.
-    debugPrint('[$side] Quick note event received, ignoring (handled by EvenAI command)');
+    VoiceNotesService.singleton.onListing(side, data);
   }
 
+  /// A voice note's audio, in reply to a fetch (0x1E).
+  ///
+  /// Recorded rather than decoded: the protocol's note for this command
+  /// reads "TODO", so the format is captured from real glasses before
+  /// anything is written against it.
   void handleQuickNoteAudioData(GlassSide side, List<int> data) async {
-    // Quick note audio data is no longer fetched — the right-side touchpad
-    // now triggers conversation recording instead. Discard any stale packets.
-    debugPrint('[$side] Discarding quick note audio data (conversation mode active)');
+    VoiceNotesService.singleton.onAudioFrame(side, data);
   }
 
   /// Dispose of all resources to prevent memory leaks
