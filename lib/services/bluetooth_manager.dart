@@ -1102,13 +1102,16 @@ class BluetoothManager {
   /// rather than at the next sync, up to a minute later.
   Future<void> writeNoteSlots() => _writeNoteSlots();
 
-  Future<void> _writeNoteSlots() async {
-    if (!isConnected) return;
-
+  /// The slot plan as it would be written right now.
+  ///
+  /// Shared between the actual write and the home screen's lens mirror, so
+  /// the preview can never drift from what the glasses are really sent —
+  /// they are the same computation, not two opinions of it.
+  Future<Map<int, SlotContent?>> noteSlotPlan() async {
     final generated = await glassesDashboard.generateDashboardItems();
     final library = NotesLibrary.singleton;
 
-    final plan = NoteSlots.plan(
+    return NoteSlots.plan(
       userNotes: await library.pinnedSlots(),
       generated: [
         for (final note in generated)
@@ -1122,6 +1125,12 @@ class BluetoothManager {
             'to save it',
       ),
     );
+  }
+
+  Future<void> _writeNoteSlots() async {
+    if (!isConnected) return;
+
+    final plan = await noteSlotPlan();
 
     for (final entry in plan.entries) {
       final content = entry.value;
@@ -1138,7 +1147,7 @@ class BluetoothManager {
         noteNumber: entry.key,
         name: content.name,
         text: content.text,
-        revision: await library.nextRevision(),
+        revision: await NotesLibrary.singleton.nextRevision(),
       ));
     }
   }

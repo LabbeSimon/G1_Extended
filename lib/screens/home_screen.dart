@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import 'package:g1_extended/models/dashboard/dashboard.dart';
 import 'package:g1_extended/models/g1/battery.dart';
@@ -24,7 +23,9 @@ import 'package:g1_extended/services/open_meteo_weather_service.dart';
 import 'package:g1_extended/theme/app_theme.dart';
 import 'package:g1_extended/widgets/battery_gauge.dart';
 import 'package:g1_extended/widgets/crash_dialog.dart';
+import 'package:g1_extended/widgets/lens_preview.dart';
 import 'package:g1_extended/services/crash_reporter.dart';
+import 'package:g1_extended/services/notes_library.dart';
 import 'package:g1_extended/services/speedometer_service.dart';
 import 'package:g1_extended/widgets/bento.dart';
 import 'package:g1_extended/widgets/pixel_art.dart';
@@ -56,6 +57,13 @@ class _HomeScreenState extends State<HomeScreen>
   StreamSubscription<CaseBattery>? _caseSubscription;
   int _brightness = 0;
   bool _autoBrightness = false;
+
+  // What the lens mirror needs: the configured arrangement, and the slot
+  // titles from the same plan the glasses are actually sent.
+  DashboardMode _dashMode = DashboardMode.dual;
+  DashboardPane _dashPane = DashboardPane.notes;
+  List<String> _slotTitles = const [];
+  StreamSubscription<void>? _notesChanges;
 
   String get _brightnessLabel =>
       _autoBrightness ? 'Auto' : '${(_brightness / BrightnessSetting.maxLevel * 100).round()}%';
@@ -117,6 +125,10 @@ class _HomeScreenState extends State<HomeScreen>
     _batterySubscription =
         _bluetooth.batteryStatusStream.listen((_) => _refresh());
 
+    _notesChanges = NotesLibrary.singleton.changes.listen((_) {
+      _loadLensMirror();
+    });
+
     _loadWeather();
     _loadNextEvent();
     _loadGlassesState();
@@ -164,12 +176,21 @@ class _HomeScreenState extends State<HomeScreen>
     final settings = GlassesSettingsService.singleton;
     final cached = await settings.cachedValues();
 
+    final modeIndex = cached['dashboardMode']! as int;
+    final paneIndex = cached['dashboardPane']! as int;
+
     if (mounted) {
       setState(() {
         _brightness = cached['brightness']! as int;
         _autoBrightness = cached['brightnessAuto']! as bool;
+        _dashMode = DashboardMode
+            .values[modeIndex.clamp(0, DashboardMode.values.length - 1)];
+        _dashPane = DashboardPane
+            .values[paneIndex.clamp(0, DashboardPane.values.length - 1)];
       });
     }
+
+    unawaited(_loadLensMirror());
 
     if (!_bluetooth.isConnected) return;
 
@@ -193,6 +214,7 @@ class _HomeScreenState extends State<HomeScreen>
     _connectionSubscription?.cancel();
     _caseSubscription?.cancel();
     _batterySubscription?.cancel();
+    _notesChanges?.cancel();
     super.dispose();
   }
 
@@ -232,6 +254,20 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _loadWeather() async {
     final weather = await OpenMeteoWeatherService().getCurrentWeather();
     if (mounted) setState(() => _weather = weather);
+  }
+
+  /// Reads the slot plan — the one the glasses are genuinely written from.
+  Future<void> _loadLensMirror() async {
+    try {
+      final plan = await _bluetooth.noteSlotPlan();
+      final titles = [
+        for (var slot = 1; slot <= 4; slot++)
+          if (plan[slot] != null) plan[slot]!.name,
+      ];
+      if (mounted) setState(() => _slotTitles = titles);
+    } catch (e) {
+      debugPrint('HomeScreen: could not read the slot plan: $e');
+    }
   }
 
   Future<void> _loadNextEvent() async {
@@ -314,87 +350,74 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// Mirrors the glasses display: the same clock, weather and agenda the
-  /// wearer sees, so the phone and the glasses never disagree.
+  /// The top banner is the lens.
+  ///
+  /// Same layout, same content, at the display's own 640 by 200
+  /// proportions. The slot titles come from the very plan this app writes
+  /// to the glasses, so the mirror cannot drift from the real thing; the
+  /// line underneath says which mode and pane are doing the arranging.
   Widget _buildHero() {
-    final temperature = _weather == null
-        ? '--'
-        : _weather!.temperature.round().toString();
+    final temperature =
+        _weather == null ? '--' : _weather!.temperature.round().toString();
+
+    final battery = _bluetooth.batteryStatus;
+    final levels = [
+      battery.leftBattery?.percentage,
+      battery.rightBattery?.percentage,
+    ].whereType<int>();
+    final batteryLabel =
+        levels.isEmpty ? '--' : '${levels.reduce((a, b) => a < b ? a : b)}%';
+
+    final paneLabel = _dashMode == DashboardMode.minimal
+        ? _dashMode.label
+        : '${_dashMode.label} · ${_dashPane.label}';
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppMetrics.tileRadius),
       child: Container(
         color: AppColors.tile,
-        height: 210,
+        padding: const EdgeInsets.all(14),
         child: DotMatrix(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Readout(
-                            value: DateFormat('EEE, dd/MM').format(_now),
-                            muted: true,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            DateFormat('HH:mm').format(_now),
-                            style: Theme.of(context).textTheme.displayLarge,
-                          ),
-                        ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LensPreview(
+                now: _now,
+                temperature: temperature,
+                batteryLabel: batteryLabel,
+                mode: _dashMode,
+                pane: _dashPane,
+                slots: _slotTitles,
+                nextEvent: _nextEvent,
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Text(
+                    paneLabel.toUpperCase(),
+                    style: const TextStyle(
+                      fontFamily: AppTheme.technicalFont,
+                      fontSize: 11,
+                      letterSpacing: 1.1,
+                      color: AppColors.inkFaint,
+                    ),
+                  ),
+                  const Spacer(),
+                  Flexible(
+                    child: Text(
+                      _nextEvent ?? 'No upcoming event',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: AppTheme.technicalFont,
+                        fontSize: 11,
+                        color: AppColors.inkFaint,
                       ),
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Readout(
-                          value: temperature,
-                          unit: 'c',
-                          icon: (_weather?.isDay ?? true)
-                              ? Icons.light_mode_outlined
-                              : Icons.dark_mode_outlined,
-                          muted: true,
-                        ),
-                        const SizedBox(height: 6),
-                        const Readout(
-                          value: '0',
-                          icon: Icons.notifications_none,
-                          muted: true,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    const Icon(Icons.calendar_today_outlined,
-                        size: 14, color: AppColors.inkFaint),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _nextEvent ?? 'No upcoming event',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontFamily: AppTheme.technicalFont,
-                          fontSize: 13,
-                          color: AppColors.inkFaint,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
