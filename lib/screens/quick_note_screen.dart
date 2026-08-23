@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:g1_extended/models/note_editing.dart';
 import 'package:g1_extended/models/note_entry.dart';
 import 'package:g1_extended/services/notes_library.dart';
 import 'package:g1_extended/widgets/pixel_art.dart';
@@ -255,6 +256,12 @@ class _NoteEditorState extends State<_NoteEditor> {
     ));
   }
 
+  Widget _markupButton(String label, String prefix) => ActionChip(
+        label: Text(label),
+        onPressed: () =>
+            _body.value = NoteEditing.toggleLinePrefix(_body.value, prefix),
+      );
+
   @override
   Widget build(BuildContext context) {
     final entry = _entry;
@@ -279,6 +286,22 @@ class _NoteEditorState extends State<_NoteEditor> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                // The markup, one tap instead of one explanation: each
+                // button works on the line the cursor is on, and pressing
+                // it again takes the prefix back off.
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    _markupButton('☐ To do', '[] '),
+                    _markupButton('✓ Done', '[x] '),
+                    ActionChip(
+                      label: const Text('1 2 3'),
+                      onPressed: () =>
+                          _body.value = NoteEditing.numberLine(_body.value),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
                 TextField(
                   controller: _body,
                   minLines: 6,
@@ -291,10 +314,8 @@ class _NoteEditorState extends State<_NoteEditor> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Saved as you type. Pinned notes reach the glasses at once.\n\n'
-                  'Start a line with "[] " for a checkbox on the lens, '
-                  '"[x] " for a checked one, "- " works too. Numbers like '
-                  '"1." are shown as written.',
+                  'Saved as you type. Pinned notes reach the glasses at '
+                  'once, boxes and checks drawn as the lens draws them.',
                   style: TextStyle(fontSize: 12),
                 ),
               ],
