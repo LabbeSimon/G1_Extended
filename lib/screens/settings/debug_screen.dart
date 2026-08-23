@@ -5,6 +5,8 @@ import 'package:g1_extended/models/g1/notification.dart';
 import 'package:g1_extended/models/g1/translate.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/utils/bitmap.dart';
+import 'dart:convert';
+import 'package:g1_extended/services/isolate_report.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -29,6 +31,22 @@ class _DebugPageSate extends State<DebugPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _copyIsolateReport() async {
+    final here = IsolateReport.describe();
+    final background = await IsolateReport.askBackground();
+
+    final text = const JsonEncoder.withIndent('  ').convert({
+      'what': 'which isolate holds the glasses',
+      'interface': here,
+      'backgroundService': background ??
+          'no answer within three seconds — the service is not running, '
+              'or it is not the one holding the link',
+    });
+
+    await Clipboard.setData(ClipboardData(text: text));
+    _toast('Isolate report copied.');
   }
 
   void _copyNavigationCapture() async {
@@ -254,6 +272,15 @@ class _DebugPageSate extends State<DebugPage> {
           ElevatedButton(
             onPressed: _copyNavigationCapture,
             child: const Text("Copy navigation capture"),
+          ),
+          const SizedBox(height: 20),
+          // Which isolate actually holds the glasses. The app runs a
+          // BluetoothManager in two of them and they are separate objects;
+          // if the one receiving is not the one drawing, that is the shape
+          // of several complaints at once.
+          ElevatedButton(
+            onPressed: _copyIsolateReport,
+            child: const Text("Copy isolate report"),
           ),
 
         ],

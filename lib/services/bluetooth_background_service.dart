@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:g1_extended/main.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/isolate_report.dart';
 import 'package:g1_extended/services/speedometer_service.dart';
 import 'package:g1_extended/services/bluetooth_reciever.dart';
 import 'package:g1_extended/utils/battery_optimization_helper.dart';
@@ -281,6 +282,9 @@ class BluetoothBackgroundService {
 
     // Start connection monitoring timer - check every 60 seconds
     _startConnectionMonitorTimer();
+
+    // Lets the interface ask this isolate what it actually holds.
+    IsolateReport.serveFrom(service);
 
     // Commands arriving from the home screen widget.
     //
