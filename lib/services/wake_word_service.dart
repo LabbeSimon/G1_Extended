@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vosk_flutter/vosk_flutter.dart';
 
 import 'package:g1_extended/models/speech_model.dart';
+import 'package:g1_extended/services/memory_state.dart';
 import 'package:g1_extended/services/vosk_model_manager.dart';
 import 'package:g1_extended/services/wake_word_vocabulary.dart';
 
@@ -360,6 +361,60 @@ class WakeWordService {
       }
     } else {
       await stopListening();
+    }
+  }
+
+  /// Resumes listening after a restart, if it was left on.
+  ///
+  /// initialize() reads the preferences and deliberately does not load the
+  /// model — but nothing else did either, so the switch came back showing
+  /// "on" over a service that had stopped listening the moment the app was
+  /// closed. Enabled and deaf, with nothing to say why.
+  ///
+  /// Three refusals, all of them better than the alternative:
+  ///
+  /// The model is never downloaded from here. Forty megabytes pulled down
+  /// unasked at launch is not something to do on someone's data.
+  ///
+  /// Nor is it loaded when memory is short. The loader is native and takes
+  /// the process with it when there is no room, and app start-up is the
+  /// worst possible moment for that — it would look like an app that
+  /// refuses to open at all.
+  ///
+  /// Nor when the previous load never returned. That marker exists exactly
+  /// so a bad model kills the app once rather than every time.
+  Future<void> resumeIfEnabled() async {
+    if (!_isEnabled) return;
+
+    final models = VoskModelManager.singleton;
+    if (!await models.isModelInstalled()) {
+      debugPrint('WakeWordService: enabled, but no model on the device');
+      _eventController.add(WakeWordEvent(
+        type: WakeWordEventType.error,
+        error: 'The speech model is not downloaded, so the wake word cannot '
+            'listen. Open Voice settings to fetch it.',
+      ));
+      return;
+    }
+
+    if (models.suspectedBadModel) {
+      debugPrint('WakeWordService: refusing a model that killed us before');
+      return;
+    }
+
+    final memory = await MemoryState.read();
+    if (memory != null && memory.speechModelIsRisky) {
+      debugPrint('WakeWordService: too little memory to load at start-up');
+      _eventController.add(WakeWordEvent(
+        type: WakeWordEventType.error,
+        error: 'Not enough free memory to start the wake word right now.',
+      ));
+      return;
+    }
+
+    debugPrint('WakeWordService: resuming after restart');
+    if (await _ensureModel(allowDownload: false)) {
+      await startListening();
     }
   }
 
