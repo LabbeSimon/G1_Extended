@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 
 import 'package:g1_extended/models/g1/translate.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/glasses_audio.dart';
 import 'package:g1_extended/services/memory_state.dart';
 import 'package:g1_extended/services/translation_service.dart';
-import 'package:g1_extended/services/bluetooth_reciever.dart';
 import 'package:g1_extended/services/speech_recognition_service.dart';
 import 'package:g1_extended/utils/lc3.dart';
 
@@ -24,12 +24,9 @@ class _LiveCaptionsScreenState extends State<LiveCaptionsScreen> {
   /// The glasses caption area holds roughly this many characters.
   static const int _maxGlassesChars = 220;
 
-  /// How often buffered audio is drained and fed to the recogniser.
-  static const Duration _drainInterval = Duration(milliseconds: 200);
-
   final BluetoothManager _bluetooth = BluetoothManager();
 
-  Timer? _drainTimer;
+  StreamSubscription<Uint8List>? _audioSubscription;
   LiveTranscription? _session;
   StreamSubscription<String>? _textSubscription;
   Translate? _display;
@@ -169,25 +166,23 @@ class _LiveCaptionsScreenState extends State<LiveCaptionsScreen> {
     _display = display;
 
     await _bluetooth.sendCommandToGlasses(display.buildSetupCommand());
-    await _bluetooth.rightGlass?.sendData(display.buildRightGlassStartCommand());
+    await _bluetooth.sendToRight(display.buildRightGlassStartCommand());
     for (final command in display.buildInitalScreenLoad()) {
       await _bluetooth.sendCommandToGlasses(command);
     }
     await Future.delayed(const Duration(milliseconds: 200));
-    await _bluetooth.setMicrophone(true);
-
-    final receiver = BluetoothReciever();
-    receiver.voiceCollector.reset();
-    receiver.voiceCollector.isRecording = true;
 
     _textSubscription = _session!.text.listen(_onCaption);
 
-    _drainTimer = Timer.periodic(_drainInterval, (_) async {
-      final encoded = await receiver.voiceCollector.getAllDataAndReset();
-      if (encoded.isEmpty) return;
-      final pcm = await LC3.decodeLC3(Uint8List.fromList(encoded));
+    // Through GlassesAudio, which knows where the audio actually lands.
+    // This screen used to drain its own isolate's buffer; the packets
+    // arrive at whichever isolate holds the Bluetooth link, which is the
+    // background service, so the buffer here was never filled once.
+    _audioSubscription = GlassesAudio.singleton.chunks.listen((encoded) async {
+      final pcm = await LC3.decodeLC3(encoded);
       if (pcm.isNotEmpty) await _session?.feed(pcm);
     });
+    await GlassesAudio.singleton.start();
 
     setState(() => _isRunning = true);
   }
@@ -231,8 +226,10 @@ class _LiveCaptionsScreenState extends State<LiveCaptionsScreen> {
   Future<void> _teardown() async {
     _translateDebounce?.cancel();
     _translateDebounce = null;
-    _drainTimer?.cancel();
-    _drainTimer = null;
+
+    await _audioSubscription?.cancel();
+    _audioSubscription = null;
+    await GlassesAudio.singleton.stop();
 
     await _textSubscription?.cancel();
     _textSubscription = null;
@@ -241,11 +238,6 @@ class _LiveCaptionsScreenState extends State<LiveCaptionsScreen> {
     _session = null;
     _display = null;
 
-    final receiver = BluetoothReciever();
-    receiver.voiceCollector.isRecording = false;
-    receiver.voiceCollector.reset();
-
-    await _bluetooth.setMicrophone(false);
   }
 
   Widget _languageDropdown({required bool isFrom}) {

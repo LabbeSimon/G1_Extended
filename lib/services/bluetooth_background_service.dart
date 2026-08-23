@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:g1_extended/main.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/glasses_audio.dart';
 import 'package:g1_extended/services/glasses_relay.dart';
 import 'package:g1_extended/services/isolate_report.dart';
 import 'package:g1_extended/services/speedometer_service.dart';
@@ -307,6 +308,11 @@ class BluetoothBackgroundService {
 
     // Lets the interface ask this isolate what it actually holds.
     IsolateReport.serveFrom(service);
+
+    // Forwards the glasses' microphone to whoever asked for it. The voice
+    // packets land in this isolate because this is where the link is; the
+    // screens that want them are in the other.
+    GlassesAudio.serveFrom(service);
 
     // The interface holds no link; its screens live on these broadcasts.
     // Sent on every change and every battery packet — small maps, rare

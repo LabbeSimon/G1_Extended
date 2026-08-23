@@ -443,21 +443,20 @@ class BluetoothReciever {
       '[$side] Received voice data chunk: seq=$seq, length=${voiceData.length}',
     );
 
-    final usingGlassesMic = await _useGlassesMicrophone();
     final isRecording = voiceCollector.isRecording;
-    debugPrint(
-        '[$side] Voice data: usingGlassesMic=$usingGlassesMic, isRecording=$isRecording');
 
-    // Only buffer when the glasses microphone is the active source.
-    if (usingGlassesMic && isRecording) {
-      debugPrint('[$side] Adding voice chunk to collector');
+    // isRecording alone decides.
+    //
+    // This used to also require the "use the glasses microphone" setting,
+    // which is a choice about dictation and has nothing to say about live
+    // captions — a feature that has no other microphone to use. With that
+    // setting off, captions turned the microphone on, the glasses sent, and
+    // every packet was thrown away here, silently. Something asked for this
+    // audio; that is the whole condition.
+    if (isRecording) {
       voiceCollector.addChunk(seq, voiceData);
-    } else if (!usingGlassesMic) {
-      // The phone microphone feeds the platform recogniser directly, so the
-      // glasses stream is not buffered at all in that mode.
-      debugPrint('[$side] Phone microphone in use, not buffering');
     } else {
-      debugPrint('[$side] Not recording, discarding voice data');
+      debugPrint('[$side] Nothing is listening, discarding voice data');
     }
 
     // This check seems redundant now as stop command (24) handles mic disabling
