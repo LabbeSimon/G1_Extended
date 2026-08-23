@@ -21,6 +21,7 @@ class _AboutScreenState extends State<AboutScreen> {
 
   String _version = '…';
   bool _autoCheck = true;
+  bool _beta = false;
   bool _checking = false;
   bool _developer = false;
 
@@ -33,11 +34,13 @@ class _AboutScreenState extends State<AboutScreen> {
   Future<void> _load() async {
     final info = await PackageInfo.fromPlatform();
     final enabled = await UpdateService.singleton.isEnabled();
+    final beta = await UpdateService.singleton.isBeta();
     final developer = await DeveloperMode.singleton.isEnabled();
     if (!mounted) return;
     setState(() {
       _version = '${info.version} (${info.buildNumber})';
       _autoCheck = enabled;
+      _beta = beta;
       _developer = developer;
     });
   }
@@ -126,6 +129,21 @@ class _AboutScreenState extends State<AboutScreen> {
           ),
           const Divider(),
 
+          SwitchListTile(
+            value: _beta,
+            title: const Text('Beta channel'),
+            subtitle: const Text(
+              'Offers pre-releases as they are cut. They compile and pass '
+              'their tests, but have not been worn on a face — and half of '
+              'this app talks to hardware. Turning this on is volunteering.',
+            ),
+            onChanged: (value) async {
+              await UpdateService.singleton.setBeta(value);
+              if (!mounted) return;
+              setState(() => _beta = value);
+              _checkNow();
+            },
+          ),
           SwitchListTile(
             value: _autoCheck,
             title: const Text('Check for updates'),

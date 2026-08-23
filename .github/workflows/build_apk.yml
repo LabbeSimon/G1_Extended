@@ -34,11 +34,12 @@ jobs:
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME#v}"
-          # A beta tag carries a suffix the pubspec does not: v1.1.2-beta.1
-          # is still version 1.1.2. Only the core has to agree.
-          core="${tag%%-*}"
+          # Exactly, pre-release suffix included. The app compares versions
+          # by semantic versioning rules, where 1.1.2-beta.6 and 1.1.2 are
+          # different versions — so a beta whose pubspec said plain 1.1.2
+          # would compare equal to itself and never offer the next one.
           pubspec="$(sed -n 's/^version: *\([^+]*\).*/\1/p' pubspec.yaml)"
-          if [ "$core" != "$pubspec" ]; then
+          if [ "$tag" != "$pubspec" ]; then
             echo "::error::tag $GITHUB_REF_NAME does not match pubspec version $pubspec."
             echo "::error::Every install would be told it is out of date, forever."
             exit 1
