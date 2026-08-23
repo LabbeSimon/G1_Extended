@@ -63,6 +63,7 @@ dependencies:
   package_info_plus: ^8.3.1
   home_widget: ^0.9.3
   timezone: ^0.9.4
+  google_mlkit_translation: ^0.15.1
 
 dev_dependencies:
   flutter_test:
