@@ -246,6 +246,11 @@ class BluetoothReciever {
   /// Repeated taps walk further back, which is why the history keeps a
   /// cursor rather than only the newest.
   Future<void> _recallNotification() async {
+    // The tap is handled in whichever isolate holds the glasses; the
+    // notifications were recorded in whichever isolate the stream reached.
+    // The file bridges the two — without this line, "Nothing recent" on a
+    // phone that buzzed all morning.
+    await NotificationHistory.singleton.ensureLoaded();
     final recalled = NotificationHistory.singleton.recallNext();
     final bt = BluetoothManager();
 

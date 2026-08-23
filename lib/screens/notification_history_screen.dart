@@ -21,6 +21,16 @@ class NotificationHistoryScreen extends StatefulWidget {
 class _NotificationHistoryScreenState extends State<NotificationHistoryScreen> {
   final NotificationHistory _history = NotificationHistory.singleton;
 
+  @override
+  void initState() {
+    super.initState();
+    // This screen lives in the interface isolate; the notifications may
+    // have been recorded in the other. Load the shared mirror first.
+    _history.ensureLoaded().then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
   Future<void> _sendToGlasses(RecalledNotification item) async {
     final bluetooth = BluetoothManager.singleton;
     if (bluetooth.isConnected != true) {
