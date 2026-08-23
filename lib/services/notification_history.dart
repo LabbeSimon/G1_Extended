@@ -51,8 +51,13 @@ class NotificationHistory {
   static final NotificationHistory singleton = NotificationHistory._internal();
   factory NotificationHistory() => singleton;
 
-  /// Enough to look back through a short absence, not a reading list.
-  static const int capacity = 10;
+  /// Sized for the history screen, which shows everything held here.
+  ///
+  /// The temple-tap walk is unaffected by the size: the cursor wraps at the
+  /// end of whatever exists, and nobody taps fifty times. What the larger
+  /// figure buys is the screen answering "what did I miss this afternoon"
+  /// rather than only "what did I miss just now".
+  static const int capacity = 50;
 
   /// Older than this and the wearer means "the latest one", not "the one I
   /// was on".

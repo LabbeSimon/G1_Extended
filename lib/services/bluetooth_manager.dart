@@ -968,42 +968,48 @@ class BluetoothManager {
       return;
     }
 
-    if (isConnected) {
-      // Check if the app is in the user's notification whitelist
-      final packageName = notification.packageName ?? '';
-      if (packageName.isEmpty) {
-        debugPrint('Notification has no package name, skipping');
+    final packageName = notification.packageName ?? '';
+    if (packageName.isEmpty) {
+      debugPrint('Notification has no package name, skipping');
+      return;
+    }
+
+    try {
+      // Everything reaches the glasses unless the user excluded the app.
+      final blocklist = Hive.box('notificationBlocklist');
+      if (blocklist.get(packageName, defaultValue: false) == true) {
+        debugPrint('Notifications from $packageName are excluded, skipping');
         return;
       }
-
-      try {
-        // Everything reaches the glasses unless the user excluded the app.
-        final blocklist = Hive.box('notificationBlocklist');
-        if (blocklist.get(packageName, defaultValue: false) == true) {
-          debugPrint('Notifications from $packageName are excluded, skipping');
-          return;
-        }
-      } catch (e) {
-        debugPrint('Could not read the notification blocklist: $e, allowing');
-      }
-
-      final appName = await _getAppDisplayName(
-          packageName.isNotEmpty ? packageName : '');
-      NotificationHistory.singleton.remember(notification, appName);
-
-      NCSNotification ncsNotification = NCSNotification(
-        msgId: (notification.id ?? 1) + DateTime.now().millisecondsSinceEpoch,
-        action: 0,
-        type: 0,
-        appIdentifier: packageName.isNotEmpty ? packageName : 'fr.simonlabbe.g1extended',
-        title: notification.title ?? '',
-        subtitle: '',
-        message: notification.content ?? '',
-        displayName: appName,
-      );
-
-      sendNotification(ncsNotification);
+    } catch (e) {
+      debugPrint('Could not read the notification blocklist: $e, allowing');
     }
+
+    final appName = await _getAppDisplayName(packageName);
+
+    // Into the history whether or not the glasses are reachable. It used to
+    // sit inside the connected branch, which meant the history only recorded
+    // what this isolate happened to forward — the app's history screen could
+    // sit empty while the glasses recalled notifications happily from the
+    // other isolate, and anything arriving while the glasses were in the
+    // case was never recorded anywhere. The history's whole purpose is what
+    // you missed; what you missed is precisely what arrives disconnected.
+    NotificationHistory.singleton.remember(notification, appName);
+
+    if (!isConnected) return;
+
+    NCSNotification ncsNotification = NCSNotification(
+      msgId: (notification.id ?? 1) + DateTime.now().millisecondsSinceEpoch,
+      action: 0,
+      type: 0,
+      appIdentifier: packageName,
+      title: notification.title ?? '',
+      subtitle: '',
+      message: notification.content ?? '',
+      displayName: appName,
+    );
+
+    sendNotification(ncsNotification);
   }
 
   Future<List<int>?> _sendBmpPacket({

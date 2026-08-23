@@ -9,6 +9,7 @@ import 'package:g1_extended/models/g1/case_battery.dart';
 import 'package:g1_extended/models/g1/glasses_settings.dart';
 import 'package:g1_extended/screens/checklist_screen.dart';
 import 'package:g1_extended/screens/dictation_history_screen.dart';
+import 'package:g1_extended/screens/notification_history_screen.dart';
 import 'package:g1_extended/screens/quick_note_screen.dart';
 import 'package:g1_extended/screens/settings/display_settings_screen.dart';
 import 'package:g1_extended/screens/teleprompter_screen.dart';
@@ -507,6 +508,11 @@ class _HomeScreenState extends State<HomeScreen>
         pixels: PixelArtwork.grid,
         label: 'Dashboard',
         builder: (_) => const DashboardSettingsPage(),
+      ),
+      _Action(
+        pixels: PixelArtwork.bell,
+        label: 'Notifications',
+        builder: (_) => const NotificationHistoryScreen(),
       ),
     ];
 

@@ -268,11 +268,12 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
                   }
                 : null,
             title: const Text('Listen for a wake word'),
-            subtitle: Text(
-              _modelInstalled
-                  ? 'Say "$_wakeWordValue" to start dictating.'
-                  : 'Download the offline model first.',
-            ),
+            // The subtitle reports what the recognizer was genuinely built
+            // with, not what the preferences wish. The failure mode this
+            // guards against had no symptom: a word the armed grammar did
+            // not contain was simply never produced, with nothing anywhere
+            // saying so.
+            subtitle: Text(_wakeWordSubtitle()),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
@@ -313,6 +314,16 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
         ],
       ),
     );
+  }
+
+  String _wakeWordSubtitle() {
+    if (!_modelInstalled) return 'Download the offline model first.';
+    final armed = _wakeWord.armedDescription;
+    if (_wakeWordEnabled && armed != null) return 'Listening for $armed.';
+    if (_wakeWordEnabled) {
+      return 'Enabled but not listening — check the microphone permission.';
+    }
+    return 'Say "$_wakeWordValue" to start dictating.';
   }
 
   Widget _header(String text) => Padding(

@@ -85,80 +85,88 @@ class _BatteryPainter extends CustomPainter {
   final bool charging;
   final bool hollow;
 
+  /// The battery drawn on a fixed grid of whole pixels, like every other
+  /// glyph in the app. It used to be rounded rectangles with an anti-aliased
+  /// bolt — the one smooth object on an interface drawn entirely in squares,
+  /// which is exactly the kind of thing that looks like it wandered in from
+  /// another application.
+  ///
+  /// The grid is 20 by 9: a 17-wide body with notched corners, a gap, and a
+  /// 2-wide terminal nub. The fill occupies the 13 by 5 interior.
+  static const int _cols = 20;
+  static const int _rows = 9;
+  static const int _fillCols = 13;
+
+  /// The bolt. While charging it replaces the fill entirely: at thirteen by
+  /// five pixels a level and a bolt drawn together are mush, and the exact
+  /// percentage is written in text right beside the gauge anyway.
+  static const List<String> _bolt = [
+    '......###....',
+    '.....###.....',
+    '...######....',
+    '.....###.....',
+    '....###......',
+  ];
+
   @override
   void paint(Canvas canvas, Size size) {
-    const stroke = 1.4;
-    final capWidth = size.width * 0.07;
-    final bodyWidth = size.width - capWidth - 2;
+    // Whole pixels only. A fractional cell is what turns crisp squares into
+    // a smear, so the scale is floored and the drawing centred in the rest.
+    final cell = (size.height / _rows).floorToDouble().clamp(1.0, 1000.0);
+    final left = ((size.width - cell * _cols) / 2).floorToDouble();
+    final top = ((size.height - cell * _rows) / 2).floorToDouble();
 
-    final body = Rect.fromLTWH(
-      stroke / 2,
-      stroke / 2,
-      bodyWidth,
-      size.height - stroke,
-    );
-    final radius = Radius.circular(size.height * 0.18);
-
-    final outline = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
+    // No anti-aliasing: these are meant to be squares, and blending their
+    // edges is what put hairline seams between adjacent cells.
+    final ink = Paint()
+      ..isAntiAlias = false
       ..color = hollow ? AppColors.inkMuted : AppColors.ink;
 
-    canvas.drawRRect(RRect.fromRectAndRadius(body, radius), outline);
+    final lit = fraction <= 0
+        ? 0
+        : (fraction.clamp(0.0, 1.0) * _fillCols).round().clamp(1, _fillCols);
 
-    // The terminal nub on the right.
-    final cap = Rect.fromLTWH(
-      body.right + 2,
-      size.height * 0.3,
-      capWidth,
-      size.height * 0.4,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(cap, Radius.circular(capWidth / 2)),
-      Paint()..color = hollow ? AppColors.inkMuted : AppColors.ink,
-    );
-
-    if (fraction <= 0) return;
-
-    // Fill inset far enough that it never touches the outline.
-    final inset = body.deflate(stroke + 1.2);
-    if (inset.width <= 0) return;
-
-    final fill = Rect.fromLTWH(
-      inset.left,
-      inset.top,
-      inset.width * fraction.clamp(0.0, 1.0),
-      inset.height,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(fill, Radius.circular(size.height * 0.1)),
-      Paint()..color = hollow ? AppColors.inkMuted : AppColors.ink,
-    );
-
-    if (charging) _paintBolt(canvas, body);
+    // Runs, not cells: one rectangle per horizontal stretch, the same trick
+    // PixelArt uses, so neighbouring cells cannot seam.
+    for (var r = 0; r < _rows; r++) {
+      var c = 0;
+      while (c < _cols) {
+        if (!_cellOn(c, r, lit)) {
+          c++;
+          continue;
+        }
+        var end = c;
+        while (end + 1 < _cols && _cellOn(end + 1, r, lit)) {
+          end++;
+        }
+        canvas.drawRect(
+          Rect.fromLTWH(
+              left + c * cell, top + r * cell, (end - c + 1) * cell, cell),
+          ink,
+        );
+        c = end + 1;
+      }
+    }
   }
 
-  /// A bolt punched out of the fill, so it reads at any level.
-  void _paintBolt(Canvas canvas, Rect body) {
-    final w = body.width;
-    final h = body.height;
-    final path = Path()
-      ..moveTo(body.left + w * 0.52, body.top + h * 0.12)
-      ..lineTo(body.left + w * 0.38, body.top + h * 0.54)
-      ..lineTo(body.left + w * 0.50, body.top + h * 0.54)
-      ..lineTo(body.left + w * 0.44, body.top + h * 0.90)
-      ..lineTo(body.left + w * 0.62, body.top + h * 0.44)
-      ..lineTo(body.left + w * 0.50, body.top + h * 0.44)
-      ..close();
+  bool _cellOn(int c, int r, int lit) {
+    // The terminal nub, floating one cell off the body.
+    if (c >= 18) return r >= 3 && r <= 5;
+    if (c == 17) return false;
 
-    canvas.drawPath(path, Paint()..blendMode = BlendMode.clear);
-    canvas.drawPath(
-      path,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..color = AppColors.ink,
-    );
+    // The body outline, corners notched the pixel-art way.
+    final corner = (c == 0 || c == 16) && (r == 0 || r == 8);
+    if (corner) return false;
+    if (r == 0 || r == 8 || c == 0 || c == 16) return true;
+
+    final interior = c >= 2 && c <= 14 && r >= 2 && r <= 6;
+    if (!interior) return false;
+
+    if (charging) {
+      final bc = c - 2, br = r - 2;
+      return _bolt[br][bc] == '#';
+    }
+    return (c - 2) < lit;
   }
 
   @override
