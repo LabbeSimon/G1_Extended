@@ -7,7 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/open_meteo_weather_service.dart';
-import 'package:g1_extended/services/quick_notes_service.dart';
+import 'package:g1_extended/services/notes_library.dart';
 import 'package:g1_extended/services/voice_commands.dart';
 
 /// Carries out a recognised command and says what happened.
@@ -101,9 +101,13 @@ class VoiceCommandRunner {
   Future<String> _note(String text) async {
     // The last slot is the one a spoken note goes to, so it never overwrites
     // something typed deliberately into slot one.
-    const slot = QuickNotesService.slotCount;
-    await QuickNotesService.singleton.save(
-      QuickNote(slot: slot, title: 'Note', body: text),
+    // Used to overwrite slot four every time, destroying whatever was there.
+    // A dictated note now joins the library and takes a slot only if one is
+    // going spare.
+    await NotesLibrary.singleton.create(
+      title: 'Note',
+      body: text,
+      pinIfPossible: true,
     );
     return 'Noted';
   }

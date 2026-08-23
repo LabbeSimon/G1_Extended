@@ -14,7 +14,7 @@ import 'package:g1_extended/models/g1/case_battery.dart';
 import 'package:g1_extended/services/dashboard_controller.dart';
 import 'package:g1_extended/models/g1/note.dart';
 import 'package:g1_extended/models/g1/note_slots.dart';
-import 'package:g1_extended/services/quick_notes_service.dart';
+import 'package:g1_extended/services/notes_library.dart';
 import 'package:g1_extended/models/g1/notification.dart';
 import 'package:g1_extended/models/g1/text.dart';
 import 'package:g1_extended/services/navigation_service.dart';
@@ -59,6 +59,13 @@ class BluetoothManager {
     // Not awaited here: this runs from the constructor. It is retried
     // whenever the app comes back to the foreground.
     notificationListener!.startListening();
+
+    // Editing or pinning a note reaches the glasses immediately. Waiting for
+    // the next sync meant up to a minute of the lens showing the old text,
+    // which reads as the change not having been saved.
+    _libraryChanges = NotesLibrary.singleton.changes.listen((_) {
+      unawaited(writeNoteSlots());
+    });
 
     // The displayTranscription channel was served by the iOS Swift layer only.
     // On Android nothing emits it, so the handler is gone; dictation reaches
@@ -121,6 +128,8 @@ class BluetoothManager {
   Glass? rightGlass;
 
   AndroidNotificationsListener? notificationListener;
+
+  StreamSubscription<void>? _libraryChanges;
 
   // Battery status management
   G1BatteryStatus _batteryStatus = G1BatteryStatus(lastUpdated: DateTime.now());
@@ -331,6 +340,8 @@ class BluetoothManager {
 
   /// Clean up all resources and connections
   Future<void> dispose() async {
+    await _libraryChanges?.cancel();
+    _libraryChanges = null;
     _batteryTimer?.cancel();
     _batteryTimer = null;
     // Stop battery monitoring
@@ -1032,12 +1043,18 @@ class BluetoothManager {
   ///
   /// There is one writer now, and one rule: what a person typed outranks
   /// anything generated.
+  /// Public so that editing or pinning a note reaches the glasses at once
+  /// rather than at the next sync, up to a minute later.
+  Future<void> writeNoteSlots() => _writeNoteSlots();
+
   Future<void> _writeNoteSlots() async {
+    if (!isConnected) return;
+
     final generated = await glassesDashboard.generateDashboardItems();
-    final quick = QuickNotesService.singleton;
+    final library = NotesLibrary.singleton;
 
     final plan = NoteSlots.plan(
-      userNotes: await quick.filledSlots(),
+      userNotes: await library.pinnedSlots(),
       generated: [
         for (final note in generated)
           SlotContent(name: note.name, text: note.text),
@@ -1066,7 +1083,7 @@ class BluetoothManager {
         noteNumber: entry.key,
         name: content.name,
         text: content.text,
-        revision: await quick.nextRevision(),
+        revision: await library.nextRevision(),
       ));
     }
   }
