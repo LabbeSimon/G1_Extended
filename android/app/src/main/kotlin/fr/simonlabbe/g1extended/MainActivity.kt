@@ -44,7 +44,17 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        BackgroundService.stopService(this, null)
+
+        // The background service is deliberately left running.
+        //
+        // It used to be stopped here, which defeated the one thing it
+        // exists for: holding the Bluetooth link while the app is not on
+        // screen. onDestroy fires when the activity goes away for any
+        // reason — the user swiping it out of recents, the system
+        // reclaiming it, or the process dying — so the glasses disconnected
+        // every time, including as a second casualty of any crash. The
+        // service stops when it is told to, from the app's own control, and
+        // not before.
     }
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
