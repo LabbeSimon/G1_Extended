@@ -22,17 +22,39 @@ class DashboardCalendarComposer {
 
   Future<List<DashboardItem>> toDashboardItems() async {
     final deviceCal = DeviceCalendarPlugin();
-    final fpCals = calendarBox.values.toList();
+
+    // Asked about, never requested: this runs from the sync timer, and a
+    // permission dialog popping out of a background refresh is how apps
+    // train people to tap "deny". The permissions screen owns asking.
+    final access = await deviceCal.hasPermissions();
+    if (access.data != true) return const [];
+
+    // Every calendar on the device, with the box holding only exclusions.
+    //
+    // It used to iterate the box itself — the list of calendars the user had
+    // explicitly enabled. That list was seeded by opening the Calendars
+    // screen, and by nothing else. So on a fresh install the agenda was
+    // empty forever, permission granted or not, until a visit to a screen
+    // nothing pointed at; "the calendar does not work even with access" was
+    // this, both times it was reported. Same decision as notifications:
+    // everything flows by default, the user excludes.
+    final calendars = (await deviceCal.retrieveCalendars()).data ??
+        const <Calendar>[];
+    final excluded = {
+      for (final stored in calendarBox.values)
+        if (!stored.enabled) stored.id,
+    };
 
     final items = <DashboardItem>[];
 
-    for (var cal in fpCals) {
-      if (!cal.enabled) {
+    for (final cal in calendars) {
+      final id = cal.id;
+      if (id == null || excluded.contains(id)) {
         continue;
       }
 
       final events = await deviceCal.retrieveEvents(
-          cal.id,
+          id,
           RetrieveEventsParams(
             startDate: DateTime.now(),
             endDate: DateTime.now().add(const Duration(days: 1)),
