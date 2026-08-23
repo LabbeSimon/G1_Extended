@@ -1169,8 +1169,11 @@ class BluetoothManager {
     G1Notification notif = G1Notification(ncsNotification: notification);
     List<Uint8List> notificationChunks = await notif.constructNotification();
 
+    // Left arm only, as the protocol specifies for 0x4B. Broadcasting to
+    // both is how a notification could be built correctly, chunked
+    // correctly, sent — and never appear.
     for (Uint8List chunk in notificationChunks) {
-      await sendCommandToGlasses(chunk);
+      await sendToLeft(chunk);
       await Future.delayed(
         Duration(milliseconds: 50),
       ); // Small delay between chunks
@@ -1347,13 +1350,29 @@ class BluetoothManager {
   Future<void> sendSetup() async {
     if (!isConnected) return;
     try {
+      // 0x04 is a left-arm command too.
       final setup = await (await G1Setup.generateSetup()).constructSetup();
       for (final command in setup) {
-        await sendCommandToGlasses(command);
+        await sendToLeft(command);
       }
     } catch (e) {
       debugPrint('BluetoothManager: could not send the allowlist: $e');
     }
+  }
+
+  /// Sends to the left temple only.
+  ///
+  /// The protocol assigns each command an arm, and getting it wrong is not
+  /// harmless: notifications (0x4B) and their allowlist (0x04) are
+  /// documented as left-arm commands, and we were broadcasting both to the
+  /// pair. Relays like [sendCommandToGlasses] when this isolate holds no
+  /// link of its own.
+  Future<bool> sendToLeft(List<int> command) {
+    if (!_ownsGlasses && leftGlass == null) {
+      GlassesRelay.send(command, side: 'left');
+      return Future.value(true);
+    }
+    return _serialised(() => _writeTo(leftGlass, command));
   }
 
   /// Sends to the right temple only — settings commands go there.

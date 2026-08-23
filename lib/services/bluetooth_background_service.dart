@@ -343,10 +343,13 @@ class BluetoothBackgroundService {
       if (manager == null) return;
 
       final side = payload?['side'] as String? ?? 'both';
-      if (side == 'right') {
-        await manager.sendToRight(bytes);
-      } else {
-        await manager.sendCommandToGlasses(bytes);
+      switch (side) {
+        case 'left':
+          await manager.sendToLeft(bytes);
+        case 'right':
+          await manager.sendToRight(bytes);
+        default:
+          await manager.sendCommandToGlasses(bytes);
       }
     });
 
