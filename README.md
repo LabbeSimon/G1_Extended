@@ -162,6 +162,11 @@ The badges above are rendered by GitHub when you read this page. They are not
 part of the app and the app never contacts those hosts — see
 [PRIVACY.md](PRIVACY.md) for the three it does contact.
 
+## Roadmap
+
+What works, what waits on a device, and what is open for anyone to take:
+[ROADMAP.md](ROADMAP.md).
+
 ## Contributing
 
 Fork, branch, pull request — see [CONTRIBUTING.md](CONTRIBUTING.md). Bug
