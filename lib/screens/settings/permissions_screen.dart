@@ -21,7 +21,13 @@ class _PermissionsSettingsPageState extends State<PermissionsSettingsPage> {
   @override
   void initState() {
     super.initState();
-    _definitions = PermissionManager.availableDefinitions;
+    // Notification access has a card of its own above the list, because it
+    // is the one the glasses cannot work without and the one Android hides
+    // behind a settings page. Listing it twice would only make the second
+    // one look like a different setting.
+    _definitions = PermissionManager.availableDefinitions
+        .where((d) => d.id != AppPermission.notificationAccess)
+        .toList(growable: false);
     _loadSummaries();
   }
 
@@ -103,10 +109,23 @@ class _PermissionsSettingsPageState extends State<PermissionsSettingsPage> {
 
   /// The essential permissions needed for core app functionality.
   /// These are the minimum permissions to make the app usable.
+  /// What the app cannot do its job without.
+  ///
+  /// Calendar and battery optimisation were missing from this set, so the
+  /// button offering to enable everything required skipped both — which is
+  /// why the agenda stayed empty however many times it was granted from
+  /// elsewhere, and why the connection died once the phone slept.
+  ///
+  /// Battery optimisation especially: nothing about it is optional for an
+  /// app whose entire function is holding two Bluetooth links open while the
+  /// screen is off.
   static const Set<AppPermission> _requiredPermissions = {
-    AppPermission.bluetooth, // Required to connect to glasses
-    AppPermission.notifications, // Required for alerts and messages
-    AppPermission.microphone, // Required for voice features
+    AppPermission.bluetooth, // Connecting to the glasses at all
+    AppPermission.notificationAccess, // Reading what goes on the glasses
+    AppPermission.notifications, // Posting the ongoing connection alert
+    AppPermission.calendar, // The agenda pane
+    AppPermission.batteryOptimization, // Surviving the screen going off
+    AppPermission.microphone, // Dictation and the wake word
   };
 
   Future<void> _handleEnableRequiredPermissions() async {
@@ -127,9 +146,9 @@ class _PermissionsSettingsPageState extends State<PermissionsSettingsPage> {
     // gets a string of "allow?" prompts, none of which is the one that
     // actually matters here, and comes away thinking they granted everything.
     if (!_notificationAccess) {
-      await NotificationListenerService.requestPermission();
-      final granted =
-          await NotificationListenerService.isPermissionGranted();
+      final granted = await PermissionManager.ensureGranted(
+        AppPermission.notificationAccess,
+      );
       if (mounted) setState(() => _notificationAccess = granted);
       if (!granted) anyFailures = true;
     }
@@ -185,9 +204,9 @@ class _PermissionsSettingsPageState extends State<PermissionsSettingsPage> {
     // gets a string of "allow?" prompts, none of which is the one that
     // actually matters here, and comes away thinking they granted everything.
     if (!_notificationAccess) {
-      await NotificationListenerService.requestPermission();
-      final granted =
-          await NotificationListenerService.isPermissionGranted();
+      final granted = await PermissionManager.ensureGranted(
+        AppPermission.notificationAccess,
+      );
       if (mounted) setState(() => _notificationAccess = granted);
       if (!granted) anyFailures = true;
     }
@@ -237,6 +256,8 @@ class _PermissionsSettingsPageState extends State<PermissionsSettingsPage> {
         return Icons.location_on;
       case AppPermission.notifications:
         return Icons.notifications_active;
+      case AppPermission.notificationAccess:
+        return Icons.notifications_active;
       case AppPermission.calendar:
         return Icons.calendar_today;
       case AppPermission.microphone:
@@ -275,7 +296,9 @@ class _PermissionsSettingsPageState extends State<PermissionsSettingsPage> {
         onTap: granted
             ? null
             : () async {
-                await NotificationListenerService.requestPermission();
+                await PermissionManager.ensureGranted(
+                  AppPermission.notificationAccess,
+                );
                 await _loadSummaries();
               },
       ),

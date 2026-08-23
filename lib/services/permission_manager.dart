@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:device_calendar/device_calendar.dart';
 import 'package:flutter/foundation.dart';
+import 'package:notification_listener_service/notification_listener_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 /// Logical groups of permissions that map to user-facing features.
@@ -11,6 +12,11 @@ enum AppPermission {
   bluetooth,
   location,
   notifications,
+
+  /// Reading the notifications other apps post, which is the whole point of
+  /// the glasses and is not a runtime permission at all.
+  notificationAccess,
+
   calendar,
   microphone,
   batteryOptimization,
@@ -102,14 +108,39 @@ class PermissionManager {
     ),
     const PermissionDefinition(
       id: AppPermission.notifications,
-      title: 'Notifications',
+      title: 'Show notifications',
       description:
-          'Lets the app show its own alerts. Forwarding your notifications to '
-          'the glasses is a separate switch, below.',
+          'Lets this app post its own alerts — the ongoing one that keeps the '
+          'glasses connected in the background. It does not let it read '
+          'anything.',
       permissions: [
         Permission.notification,
       ],
       requiredForCoreFlow: false,
+    ),
+    // Two entries that sound alike and are unrelated. The one above is
+    // POST_NOTIFICATIONS: permission to show alerts. The one below is
+    // notification listener access: permission to read the alerts other apps
+    // post, which is what gets put on the glasses.
+    //
+    // Only the first was ever offered, so the app asked to *send*
+    // notifications and never to *read* them. Everything downstream was
+    // correct — the manifest declares the listener service, the stream is
+    // subscribed, the blocklist lets everything through — and no notification
+    // could ever arrive, with nothing anywhere saying why.
+    //
+    // It is also granted per package name, so access given to an earlier
+    // build under a different application id does not carry over.
+    const PermissionDefinition(
+      id: AppPermission.notificationAccess,
+      title: 'Read notifications',
+      description:
+          'Required to put your notifications on the glasses. Android keeps '
+          'this behind its own settings page rather than a dialog, so this '
+          'opens that page.',
+      permissions: [],
+      requiredForCoreFlow: true,
+      androidOnly: true,
     ),
     const PermissionDefinition(
       id: AppPermission.calendar,
@@ -172,7 +203,43 @@ class PermissionManager {
   /// Groups with no permission_handler permission behind them, handled by
   /// the plugin that actually needs the access.
   static bool _isDelegated(AppPermission id) =>
-      id == AppPermission.calendar;
+      id == AppPermission.calendar || id == AppPermission.notificationAccess;
+
+  static Future<bool> _delegatedGranted(AppPermission id) =>
+      id == AppPermission.calendar
+          ? _calendarGranted()
+          : _notificationAccessGranted();
+
+  static Future<bool> _requestDelegated(AppPermission id) =>
+      id == AppPermission.calendar
+          ? _requestCalendar()
+          : _requestNotificationAccess();
+
+  static Future<bool> _notificationAccessGranted() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      return await NotificationListenerService.isPermissionGranted();
+    } catch (e) {
+      debugPrint('PermissionManager: could not read notification access: $e');
+      return false;
+    }
+  }
+
+  /// Opens the system page and reports what the user did there.
+  ///
+  /// Unlike a runtime permission this cannot be granted from a dialog, so the
+  /// call returns as soon as the page opens and the answer has to be read
+  /// back afterwards rather than taken from the return value.
+  static Future<bool> _requestNotificationAccess() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      await NotificationListenerService.requestPermission();
+      return await NotificationListenerService.isPermissionGranted();
+    } catch (e) {
+      debugPrint('PermissionManager: could not open notification access: $e');
+      return false;
+    }
+  }
 
   static Future<bool> _calendarGranted() async {
     try {
@@ -202,7 +269,7 @@ class PermissionManager {
       return PermissionSummary(
         definition: definition,
         statuses: {},
-        delegatedGranted: await _calendarGranted(),
+        delegatedGranted: await _delegatedGranted(id),
       );
     }
 
@@ -236,7 +303,7 @@ class PermissionManager {
 
   static Future<PermissionSummary> requestPermissions(AppPermission id) async {
     if (_isDelegated(id)) {
-      final granted = await _requestCalendar();
+      final granted = await _requestDelegated(id);
       return PermissionSummary(
         definition: definitionOf(id),
         statuses: {},
@@ -283,7 +350,7 @@ class PermissionManager {
 
   static Future<bool> ensureGranted(AppPermission id) async {
     if (_isDelegated(id)) {
-      return await _calendarGranted() || await _requestCalendar();
+      return await _delegatedGranted(id) || await _requestDelegated(id);
     }
 
     final summary = await getSummary(id);
