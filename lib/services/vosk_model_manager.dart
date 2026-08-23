@@ -283,8 +283,14 @@ class VoskModelManager {
   /// Runs on a background isolate, so it neither blocks the interface nor
   /// counts against the main isolate's heap. Static because an isolate entry
   /// point cannot close over `this`.
+  @visibleForTesting
+  static void extractForTest(String zipPath, String destination) =>
+      _extract(zipPath, destination);
+
   static void _extract(String zipPath, String destination) {
-    final input = InputFileStream(zipPath);
+    // 64 KB rather than the default. The archive holds four entries between
+    // 8 and 23 MB, and the buffers are live for the whole of each one.
+    final input = InputFileStream(zipPath, bufferSize: _bufferBytes);
     try {
       final archive = ZipDecoder().decodeBuffer(input);
 
@@ -297,18 +303,30 @@ class VoskModelManager {
         }
 
         Directory(File(target).parent.path).createSync(recursive: true);
-        final output = OutputFileStream(target);
+        final output = OutputFileStream(target, bufferSize: _bufferBytes);
         try {
-          // Streams the entry straight to disk rather than materialising it.
           entry.writeContent(output);
         } finally {
           output.closeSync();
         }
+
+        // Writing an entry does not release it. The decompressed bytes stay
+        // on the entry object, so by the last file the archive is holding
+        // every one of them at once — which is most of what the original
+        // decodeBytes version was blamed for.
+        //
+        // Measured against the real 39 MB English model, peak resident size
+        // above a bare VM: 191 MB reading the archive whole, 153 MB
+        // streaming without this call, 115 MB with it and the smaller
+        // buffers. All three produce byte-identical output.
+        entry.clear();
       }
     } finally {
       input.closeSync();
     }
   }
+
+  static const int _bufferBytes = 64 * 1024;
 
   /// Removes the downloaded model from disk and frees it from memory.
   Future<void> deleteModel() async {
