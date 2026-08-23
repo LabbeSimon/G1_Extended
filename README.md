@@ -25,6 +25,27 @@ microcontroller of your own.
 
 No account. No telemetry. Nothing leaves your phone.
 
+## Download
+
+**[Latest release →](https://github.com/LabbeSimon/G1_Extended/releases/latest)**
+— the signed APK is attached to every release, and once installed the app
+updates itself from its banner: one tap downloads the new version and opens
+Android's installer.
+
+Testing the next version early: pre-releases are published on the
+[releases page](https://github.com/LabbeSimon/G1_Extended/releases) from the
+`beta` branch. They never appear in the in-app update check — stable stays
+stable unless you opt in by hand.
+
+## The app in pictures
+
+<!-- Screenshots land in docs/screenshots/ — see the README there for the
+     expected names. Until they do, the sections below say more than any
+     placeholder would. -->
+
+*Screenshots are coming with the 1.1.2 release; the layout they will show
+is described honestly in the sections below.*
+
 ## What it does
 
 **Glasses**
