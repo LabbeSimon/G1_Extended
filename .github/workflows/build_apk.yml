@@ -23,6 +23,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      # A tag is what publishes a release, and the APK reports the version
+      # from pubspec.yaml — not from the tag. When the two drift apart every
+      # installed copy compares its own version against the release and
+      # decides it is out of date, so the update banner never goes away and
+      # points at the build the user already has. That happened: v1.0.3 was
+      # cut while pubspec still said 1.0.0.
+      - name: Tag must match the version in pubspec.yaml
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          pubspec="$(sed -n 's/^version: *\([^+]*\).*/\1/p' pubspec.yaml)"
+          if [ "$tag" != "$pubspec" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match pubspec version $pubspec."
+            echo "::error::Every install would be told it is out of date, forever."
+            exit 1
+          fi
+          echo "::notice::tag and pubspec agree on $pubspec"
+
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
