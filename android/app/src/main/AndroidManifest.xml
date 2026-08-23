@@ -57,10 +57,17 @@
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
+    <!-- largeHeap: the offline speech model is tens of megabytes and its
+         loader is native — it allocates outside Dart's heap and cannot be
+         caught if it fails. On a standard heap the process was killed from
+         the outside with nothing in any log, which is what opening the
+         captions screen looked like. This raises the ceiling the system
+         enforces. -->
     <application
         android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:largeHeap="true"
         android:usesCleartextTraffic="false"
         android:networkSecurityConfig="@xml/network_security_config">
 
