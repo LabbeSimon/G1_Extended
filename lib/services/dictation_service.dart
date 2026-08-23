@@ -99,6 +99,29 @@ class DictationService {
       return;
     }
 
+    // Nothing matched and there is no assistant to ask.
+    //
+    // Showing the raw transcript alone leaves the wearer to guess whether
+    // the app heard them wrongly or simply cannot do what they asked. The
+    // transcript plus the nearest commands answers both at once, and with
+    // a closed-vocabulary recogniser the vocabulary is exactly the thing
+    // worth teaching.
+    if (showOnGlasses && VoiceCommands.looksLikeACommandAttempt(trimmed)) {
+      try {
+        await BluetoothManager.singleton
+            .sendPriorityText(VoiceCommands.helpFor(trimmed));
+      } catch (e) {
+        debugPrint('DictationService: could not display the hint: $e');
+      }
+
+      await _persist(Dictation(
+        text: trimmed,
+        capturedAt: DateTime.now(),
+        source: source,
+      ));
+      return;
+    }
+
     final entry = Dictation(
       text: trimmed,
       capturedAt: DateTime.now(),

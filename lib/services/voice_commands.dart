@@ -105,6 +105,111 @@ abstract final class VoiceCommands {
     return best;
   }
 
+  /// What to put on the lens when nothing matched.
+  ///
+  /// "I did not understand" is the least useful sentence an assistant can
+  /// say: it spends the whole display telling the wearer something they
+  /// already know. What they do not know is what was heard and what they
+  /// could have said — and with a closed-vocabulary recogniser, the
+  /// vocabulary is exactly the thing to learn.
+  ///
+  /// So a miss shows the transcript, which usually reveals the problem by
+  /// itself, and the commands nearest to what was said. Nearest by first
+  /// word, because that is where a command lives and where mishearing
+  /// hurts: "appel" against "appelle" is one character and the difference
+  /// between working and not.
+  static String helpFor(String transcript) {
+    final heard = transcript.trim();
+    final suggestions = nearestTriggers(heard, count: 3);
+
+    final lines = <String>[
+      if (heard.isEmpty) 'Nothing heard' else '"$heard" ?',
+      if (suggestions.isNotEmpty) 'Try: ${suggestions.join(' · ')}',
+    ];
+    return lines.join('\n');
+  }
+
+  /// Whether a phrase was probably meant as a command.
+  ///
+  /// Dictation and commands share one microphone, so the miss must not
+  /// hijack ordinary speech: someone dictating a sentence wants their
+  /// sentence on the lens, not a menu. A short phrase whose first word is
+  /// close to a trigger was an attempt; a long one was speech.
+  static bool looksLikeACommandAttempt(String transcript) {
+    final words = normalise(transcript).split(' ')
+      ..removeWhere((w) => w.isEmpty);
+    if (words.isEmpty) return false;
+    if (words.length > 6) return false;
+
+    for (final trigger in _canonicalTriggers) {
+      if (_distance(words.first, trigger.split(' ').first) <= 2) return true;
+    }
+    return false;
+  }
+
+  /// The triggers closest to what was said, best first.
+  ///
+  /// Exposed for the settings screen, which lists what can be said, and for
+  /// tests — the distance is the kind of arithmetic that is confidently
+  /// wrong until something checks it.
+  static List<String> nearestTriggers(String transcript, {int count = 3}) {
+    final spoken = normalise(transcript).split(' ').firstWhere(
+          (w) => w.isNotEmpty,
+          orElse: () => '',
+        );
+    if (spoken.isEmpty) return _canonicalTriggers.take(count).toList();
+
+    final scored = <MapEntry<String, int>>[];
+    for (final trigger in _canonicalTriggers) {
+      final head = trigger.split(' ').first;
+      scored.add(MapEntry(trigger, _distance(spoken, head)));
+    }
+
+    scored.sort((a, b) {
+      final byDistance = a.value.compareTo(b.value);
+      // Ties broken alphabetically so the same input never produces two
+      // different answers between runs.
+      return byDistance != 0 ? byDistance : a.key.compareTo(b.key);
+    });
+
+    return [for (final entry in scored.take(count)) entry.key];
+  }
+
+  /// One trigger per command, the one worth teaching.
+  static const List<String> _canonicalTriggers = [
+    'appelle', 'reponds', 'meteo', 'note', 'efface',
+  ];
+
+  /// Levenshtein distance, iterative over a single row.
+  ///
+  /// Words here are short — a command and what was heard instead of it —
+  /// so the simple version is the right one.
+  static int _distance(String a, String b) {
+    if (a == b) return 0;
+    if (a.isEmpty) return b.length;
+    if (b.isEmpty) return a.length;
+
+    var previous = List<int>.generate(b.length + 1, (i) => i);
+    var current = List<int>.filled(b.length + 1, 0);
+
+    for (var i = 1; i <= a.length; i++) {
+      current[0] = i;
+      for (var j = 1; j <= b.length; j++) {
+        final substitution = previous[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1);
+        final deletion = previous[j] + 1;
+        final insertion = current[j - 1] + 1;
+        current[j] = substitution < deletion
+            ? (substitution < insertion ? substitution : insertion)
+            : (deletion < insertion ? deletion : insertion);
+      }
+      final swap = previous;
+      previous = current;
+      current = swap;
+    }
+
+    return previous[b.length];
+  }
+
   /// True when [text] begins with [trigger] as a whole word, so "notebook"
   /// is not heard as "note".
   static bool _startsWithWord(String text, String trigger) {
