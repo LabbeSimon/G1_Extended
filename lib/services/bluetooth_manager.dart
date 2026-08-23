@@ -457,9 +457,6 @@ class BluetoothManager {
     if (leftGlass?.isConnected == true && rightGlass?.isConnected == true) {
       _notifyConnectionStatusChanged();
       await _sync();
-      // Reconnecting from storage in a non-owning isolate happens only as
-      // a fallback; the link still belongs with the service.
-      await handOffToOwner();
     }
   }
 
@@ -536,60 +533,43 @@ class BluetoothManager {
         'caseConfirmed': caseBattery?.isConfirmed,
       };
 
-  /// Hands a freshly paired link over to the owning isolate.
+  /// Makes sure the owning service exists, and hands it nothing.
   ///
-  /// Pairing has to happen in the interface — it is a screen, driven by
-  /// taps — but the interface's link dies with the activity. Keeping it
-  /// was how two isolates came to hold the same pair at once: doubled
-  /// writes, split battery readings, and a link that vanished whenever
-  /// the app was swiped away. So the moment pairing succeeds and the ids
-  /// are stored, this side lets go and the service picks the pair up from
-  /// storage. The two second gap is the price of a single owner.
-  Future<void> handOffToOwner() async {
+  /// This used to disconnect after pairing so a single isolate held the
+  /// link. The reasoning rested on an assumption that turns out to be
+  /// false: that the two isolates hold two connections. They do not. The
+  /// background service runs in this same process — one PID for the whole
+  /// app, confirmed in dumpsys — so both isolates share one GATT
+  /// connection to each temple. Disconnecting in one severs it for both.
+  ///
+  /// So the "handoff" transferred nothing and destroyed something. The
+  /// glasses paired, worked, and dropped about five seconds later: the
+  /// time it took _sync to finish before this ran. The service then had to
+  /// build the link again from nothing, which is why it looked like the
+  /// connection could not hold.
+  ///
+  /// What is still worth doing is making sure the service is running, so
+  /// something survives the activity being swiped away. It attaches to the
+  /// already-open connection on its own terms; there is nothing to pass.
+  Future<void> ensureOwnerRunning() async {
     if (_ownsGlasses) return;
 
-    // Never let go on faith.
-    //
-    // This used to disconnect first and notify afterwards. In beta.3 the
-    // owner was never running — it only started once glasses connected,
-    // and after the isolate arbitration the owner is the one who connects
-    // — so the link was dropped and handed to nobody. The glasses went
-    // away mid-action and did not come back, which is not a timeout: it is
-    // this method, working exactly as written.
-    //
-    // So the owner is started and confirmed alive before anything is let
-    // go. A link held by the wrong isolate is imperfect; no link at all is
-    // broken, and imperfect beats broken every time.
     await BluetoothBackgroundService.start();
 
-    final owner = await _waitForOwner();
-    if (!owner) {
-      debugPrint('BluetoothManager: owner did not come up, keeping the link');
-      return;
-    }
-
-    debugPrint('BluetoothManager: owner is up, handing the link over');
-    await leftGlass?.disconnect();
-    await rightGlass?.disconnect();
+    // Release the handles, keep the link.
+    //
+    // Subscriptions and timers here would otherwise run alongside the
+    // service's, on the same connection: every incoming packet handled
+    // twice, two heartbeats, two syncs. Detaching cancels them and leaves
+    // the radio untouched, so the service discovers the services on a link
+    // that never dropped — which is what the earlier disconnect got wrong,
+    // and why the glasses fell over five seconds after pairing.
+    await leftGlass?.detach();
+    await rightGlass?.detach();
     leftGlass = null;
     rightGlass = null;
 
     GlassesRelay.reconnect();
-  }
-
-  /// Waits for the owning service to report itself running.
-  ///
-  /// Polled rather than awaited on a signal: the service bus carries no
-  /// reply to "are you there", and its own isRunning is the honest answer.
-  Future<bool> _waitForOwner({
-    Duration limit = const Duration(seconds: 10),
-  }) async {
-    final deadline = DateTime.now().add(limit);
-    while (DateTime.now().isBefore(deadline)) {
-      if (await BluetoothBackgroundService.isRunning()) return true;
-      await Future.delayed(const Duration(milliseconds: 400));
-    }
-    return false;
   }
 
   Future<void> startScanAndConnect({required OnUpdate onUpdate}) async {
@@ -772,7 +752,9 @@ class BluetoothManager {
             ); // Increased delay for stability
             _notifyConnectionStatusChanged();
             await _sync();
-            await handOffToOwner();
+            // The service is started, not handed anything: it shares this
+            // process and therefore this connection.
+            await ensureOwnerRunning();
           }
         }
       } catch (e) {

@@ -409,6 +409,32 @@ class Glass {
     attemptReconnect();
   }
 
+  /// Lets go of the handles without touching the radio link.
+  ///
+  /// The two isolates share one process and therefore one GATT connection
+  /// per temple, so disconnecting on one side severs it for both. Handing
+  /// the glasses from the isolate that paired them to the one that keeps
+  /// them means releasing subscriptions and timers here, and letting the
+  /// other side discover the services on a link that never dropped.
+  Future<void> detach() async {
+    _isReconnecting = false;
+
+    await notificationSubscription?.cancel();
+    notificationSubscription = null;
+
+    await connectionStateSubscription?.cancel();
+    connectionStateSubscription = null;
+
+    heartbeatTimer?.cancel();
+    heartbeatTimer = null;
+
+    _connectRetries = 0;
+    uartTx = null;
+    uartRx = null;
+
+    debugPrint('[$side Glass] detached, link left open');
+  }
+
   Future<void> disconnect() async {
     // Stop any ongoing reconnection
     _isReconnecting = false;

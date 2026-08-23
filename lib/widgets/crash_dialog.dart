@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/glasses_relay.dart';
+import 'package:g1_extended/services/bluetooth_background_service.dart';
 import 'package:g1_extended/services/crash_reporter.dart';
 import 'package:g1_extended/widgets/pixel_art.dart';
 
@@ -83,7 +84,11 @@ Future<void> showCrashReport(BuildContext context, CrashReport report) async {
           onPressed: () async {
             await reporter.dismiss();
             if (dialogContext.mounted) Navigator.of(dialogContext).pop();
-            await BluetoothManager.singleton.attemptReconnectFromStorage();
+            // Through the service, which owns the glasses. Reconnecting
+            // from this isolate would attach a second set of handlers to
+            // the same shared GATT link — every packet handled twice.
+            await BluetoothBackgroundService.start();
+            GlassesRelay.reconnect();
           },
           child: const Text('Reconnect'),
         ),
