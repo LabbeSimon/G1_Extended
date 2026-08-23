@@ -136,7 +136,13 @@ jobs:
           set -o pipefail
           # x86_64 is emulator-only and adds ~29 MB. This app needs Bluetooth LE
           # hardware, so an emulator build serves no purpose.
-          if ! flutter build apk --release \
+          #
+          # Split by architecture: a universal build carries native code for
+          # every processor, and all but one set is dead weight on any given
+          # phone — about half the download. The app asks Android what it is
+          # and fetches the matching build, so the split is invisible except
+          # in how long an update takes.
+          if ! flutter build apk --release --split-per-abi \
                --target-platform android-arm,android-arm64 2>&1 | tee build.log; then
             echo "::error::APK build failed. Last 40 lines follow."
             tail -40 build.log | while IFS= read -r line; do
@@ -157,7 +163,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: g1-extended-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-*-release.apk
           if-no-files-found: error
 
   # Only for a pushed tag. Every other commit still produces the APK above as
@@ -175,8 +181,30 @@ jobs:
           name: g1-extended-apk
           path: apk
 
-      - name: Name the APK after the tag
-        run: mv apk/app-release.apk "apk/g1-extended-${GITHUB_REF_NAME}.apk"
+      - name: Name each APK after the tag and its architecture
+        run: |
+          set -euo pipefail
+          for path in apk/app-*-release.apk; do
+            file="$(basename "$path")"
+            # app-arm64-v8a-release.apk -> arm64-v8a
+            abi="${file#app-}"
+            abi="${abi%-release.apk}"
+            mv "$path" "apk/g1-extended-${GITHUB_REF_NAME}-${abi}.apk"
+          done
+          ls -la apk/
+
+      # Which one to download, for anyone reading the release page rather
+      # than letting the app do it. Almost every phone since 2017 is arm64.
+      - name: Say which build is which
+        run: |
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "**Which file?** \`arm64-v8a\` for essentially any phone made"
+            echo "since 2017. \`armeabi-v7a\` only for older 32-bit devices."
+            echo "The app picks the right one by itself when it updates."
+          } > notes.md
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -184,6 +212,8 @@ jobs:
           name: ${{ github.ref_name }}
           files: apk/*.apk
           generate_release_notes: true
+          body_path: notes.md
+          append_body: true
           # A suffixed tag publishes as a pre-release. GitHub keeps
           # pre-releases out of /releases/latest, which is the endpoint the
           # in-app update check reads — so people on stable are never told

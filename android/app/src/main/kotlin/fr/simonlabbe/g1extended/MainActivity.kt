@@ -110,7 +110,11 @@ class MainActivity : FlutterActivity() {
         // beforehand is the only way to turn that into a sentence rather
         // than a disappearance.
         MethodChannel(messenger, CHANNEL_MEMORY).setMethodCallHandler { call, result ->
-            if (call.method == "state") {
+            if (call.method == "abis") {
+                // Most preferred first, which is the order Android itself
+                // uses when choosing which native libraries to load.
+                result.success(android.os.Build.SUPPORTED_ABIS.toList())
+            } else if (call.method == "state") {
                 val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
                 val info = android.app.ActivityManager.MemoryInfo()
                 am.getMemoryInfo(info)
