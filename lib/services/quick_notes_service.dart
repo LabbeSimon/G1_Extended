@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import 'package:g1_extended/models/g1/note.dart';
+import 'package:g1_extended/models/g1/note_slots.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 
 /// One of the four note slots the glasses keep on device.
@@ -72,10 +73,47 @@ class QuickNotesService {
   Future<List<QuickNote>> readAll() async =>
       [for (var slot = 1; slot <= slotCount; slot++) await read(slot)];
 
+  /// The slots the wearer has actually filled, for the allocator.
+  ///
+  /// Empty slots are left out rather than reported as blank, because an
+  /// absent note releases its slot to the dashboard while a blank one would
+  /// hold it.
+  Future<Map<int, SlotContent>> filledSlots() async {
+    final result = <int, SlotContent>{};
+    for (final note in await readAll()) {
+      if (note.isEmpty) continue;
+      result[note.slot] = SlotContent(
+        name: note.title.isEmpty ? 'Note ${note.slot}' : note.title,
+        text: note.body,
+        fromUser: true,
+      );
+    }
+    return result;
+  }
+
+  /// The shared forward-only counter, exposed so that whoever writes the
+  /// slots uses the same sequence rather than starting a competing one.
+  Future<int> nextRevision() => _nextRevision();
+
+  /// Writes a note to disk without touching the glasses.
+  ///
+  /// Separate from [save] so the screen can keep what is being typed without
+  /// putting a Bluetooth write on the radio for every keystroke. Storing used
+  /// to happen only on the explicit send, so anything typed and then left —
+  /// by navigating away, or by switching to another slot — was discarded
+  /// without a word.
+  Future<void> store(QuickNote note) async {
+    final box = await _openBox();
+    if (note.isEmpty) {
+      await box.delete('slot_${note.slot}');
+      return;
+    }
+    await box.put('slot_${note.slot}', note.toMap());
+  }
+
   /// Stores a note and sends it to the glasses.
   Future<void> save(QuickNote note) async {
-    final box = await _openBox();
-    await box.put('slot_${note.slot}', note.toMap());
+    await store(note);
     await _send(note);
   }
 

@@ -7,7 +7,18 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class BluetoothBackgroundService {
-  static const String _channelId = 'bluetooth_background_service';
+  // A new id on purpose.
+  //
+  // Android ignores changes to an existing channel's importance — the user
+  // owns it once it has been created. The old channel was IMPORTANCE_MAX,
+  // so every existing install would have kept a service notification that
+  // behaves like an urgent alert no matter what this code says. Creating a
+  // different channel and deleting the old one is the only way to change it.
+  static const String _channelId = 'glasses_connection';
+  static const String _retiredChannelId = 'bluetooth_background_service';
+
+  /// The last line posted, so an unchanged status is not re-posted.
+  static String? _lastNotificationStatus;
   static const int _notificationId = 999;
 
   static Timer? _heartbeatTimer;
@@ -25,16 +36,29 @@ class BluetoothBackgroundService {
       try {
         final flutterLocalNotificationsPlugin =
             FlutterLocalNotificationsPlugin();
+        // Low, not max.
+        //
+        // The previous value was chosen "for better background processing",
+        // which it does not affect: what keeps the process alive is the
+        // foreground service type, not the channel's importance. All the
+        // importance decided was how loudly a permanent, unremarkable status
+        // line announced itself — at max it sat at the top of the shade and
+        // reappeared there every time it was refreshed.
         const AndroidNotificationChannel channel = AndroidNotificationChannel(
           _channelId,
-          'G1 Extended',
-          description: 'Maintains connection to your glasses in the background',
-          importance: Importance
-              .max, // Changed from high to max for better background processing
+          'Glasses connection',
+          description: 'The ongoing notification Android requires while the '
+              'app keeps your glasses connected.',
+          importance: Importance.low,
           playSound: false,
           enableVibration: false,
           showBadge: false,
         );
+
+        await flutterLocalNotificationsPlugin
+            .resolvePlatformSpecificImplementation<
+                    AndroidFlutterLocalNotificationsPlugin>()
+            ?.deleteNotificationChannel(_retiredChannelId);
 
         await flutterLocalNotificationsPlugin
             .resolvePlatformSpecificImplementation<
@@ -114,10 +138,11 @@ class BluetoothBackgroundService {
             'G1 Extended',
             icon: 'app_logo',
             ongoing: true,
-            importance: Importance.max,
-            priority: Priority.max,
+            importance: Importance.low,
+            priority: Priority.low,
             category: AndroidNotificationCategory.service,
-            showWhen: true,
+            onlyAlertOnce: true,
+            showWhen: false,
             usesChronometer: false,
             playSound: false,
             enableVibration: false,
@@ -392,6 +417,14 @@ class BluetoothBackgroundService {
             status = 'Disconnected - trying to reconnect...';
           }
 
+          // Nothing to say, nothing to post.
+          //
+          // This ran every sixty seconds regardless, so the same unchanged
+          // line was rewritten a thousand times a day, each rewrite moving it
+          // back to the top of the shade.
+          if (status == _lastNotificationStatus) return;
+          _lastNotificationStatus = status;
+
           final flutterLocalNotificationsPlugin =
               FlutterLocalNotificationsPlugin();
           await flutterLocalNotificationsPlugin.show(
@@ -404,12 +437,14 @@ class BluetoothBackgroundService {
                 'G1 Extended',
                 icon: 'app_logo',
                 ongoing: true,
-                importance: Importance
-                    .max, // Changed from high to max for better persistence
-                priority: Priority
-                    .max, // Changed from high to max for better persistence
+                importance: Importance.low,
+                priority: Priority.low,
                 category: AndroidNotificationCategory.service,
-                showWhen: true,
+                onlyAlertOnce: true,
+                // No timestamp. It is re-posted whenever the status changes,
+                // and a visible time turning back to "now" is what made a
+                // permanent notification look like a new one each time.
+                showWhen: false,
                 usesChronometer: false,
                 playSound: false,
                 enableVibration: false,

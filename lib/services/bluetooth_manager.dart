@@ -13,6 +13,8 @@ import 'package:g1_extended/models/g1/battery.dart';
 import 'package:g1_extended/models/g1/case_battery.dart';
 import 'package:g1_extended/services/dashboard_controller.dart';
 import 'package:g1_extended/models/g1/note.dart';
+import 'package:g1_extended/models/g1/note_slots.dart';
+import 'package:g1_extended/services/quick_notes_service.dart';
 import 'package:g1_extended/models/g1/notification.dart';
 import 'package:g1_extended/models/g1/text.dart';
 import 'package:g1_extended/services/navigation_service.dart';
@@ -1018,6 +1020,57 @@ class BluetoothManager {
     await _sync();
   }
 
+  /// Fills the glasses' four note slots from a single plan.
+  ///
+  /// This used to write the dashboard's items into slots one upward and then
+  /// delete whatever was left over — every sixty seconds, unconditionally.
+  /// Quick notes, meanwhile, replayed the wearer's own text on every
+  /// reconnection. Each was right on its own and together they destroyed each
+  /// other's work on a one minute cycle, which is why a note written by hand
+  /// disappeared after a while, or on coming back to the app, seemingly at
+  /// random.
+  ///
+  /// There is one writer now, and one rule: what a person typed outranks
+  /// anything generated.
+  Future<void> _writeNoteSlots() async {
+    final generated = await glassesDashboard.generateDashboardItems();
+    final quick = QuickNotesService.singleton;
+
+    final plan = NoteSlots.plan(
+      userNotes: await quick.filledSlots(),
+      generated: [
+        for (final note in generated)
+          SlotContent(name: note.name, text: note.text),
+      ],
+      // Replaces the firmware's own "Hold right touchbar to add quicknote"
+      // text, and only if a slot is going spare.
+      hint: const SlotContent(
+        name: 'G1 Extended',
+        text: 'Touch right touchbar\nto start/stop conversation\n'
+            'transcription',
+      ),
+    );
+
+    for (final entry in plan.entries) {
+      final content = entry.value;
+
+      if (content == null) {
+        await sendCommandToGlasses(
+          Note(noteNumber: entry.key, name: 'Empty', text: '')
+              .buildDeleteCommand(),
+        );
+        continue;
+      }
+
+      await sendNote(Note(
+        noteNumber: entry.key,
+        name: content.name,
+        text: content.text,
+        revision: await quick.nextRevision(),
+      ));
+    }
+  }
+
   Future<void> _sync() async {
     if (!isConnected) {
       return;
@@ -1030,27 +1083,7 @@ class BluetoothManager {
       debugPrint('Error synchronizing time with glasses: $e');
     }
 
-    final notes = await glassesDashboard.generateDashboardItems();
-    for (var note in notes) {
-      await sendNote(note);
-    }
-
-    // Fill one remaining note slot so the firmware's default "Hold right
-    // touchbar to add quicknote" text is replaced with our own hint.
-    if (notes.length < 4) {
-      final hintNote = Note(
-        noteNumber: notes.length + 1,
-        name: 'G1 Extended',
-        text: 'Touch right touchbar\nto start/stop conversation\ntranscription',
-      );
-      await sendNote(hintNote);
-
-      // Delete remaining note slots so stale notes don't show
-      for (int i = notes.length + 2; i <= 4; i++) {
-        final emptyNote = Note(noteNumber: i, name: 'Empty', text: '');
-        await sendCommandToGlasses(emptyNote.buildDeleteCommand());
-      }
-    }
+    await _writeNoteSlots();
 
     final dash = await dashboardController.updateDashboardCommand();
     for (var command in dash) {

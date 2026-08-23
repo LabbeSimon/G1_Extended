@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'package:g1_extended/services/bluetooth_manager.dart';
@@ -23,17 +25,53 @@ class _QuickNoteScreenState extends State<QuickNoteScreen> {
   final TextEditingController _title = TextEditingController();
   final TextEditingController _body = TextEditingController();
 
+  Timer? _autosave;
+
+  /// Long enough that typing a word does not touch the disk, short enough
+  /// that leaving the screen almost never outruns it — and [_flush] covers
+  /// the case where it does.
+  static const Duration _autosaveAfter = Duration(milliseconds: 400);
+
   @override
   void initState() {
     super.initState();
+    _title.addListener(_scheduleAutosave);
+    _body.addListener(_scheduleAutosave);
     _open();
   }
 
   @override
   void dispose() {
+    _autosave?.cancel();
+    // Not awaited, and it does not need to be: the write is queued on a box
+    // that outlives this screen. What matters is that it is issued before the
+    // controllers are torn down.
+    unawaited(_flush());
     _title.dispose();
     _body.dispose();
     super.dispose();
+  }
+
+  /// Keeps what is on screen, without sending it.
+  ///
+  /// Nothing was written until the send button was pressed, so a note typed
+  /// and then left behind — by going back, or by switching slot — was simply
+  /// gone. The glasses are still only written on an explicit send: putting a
+  /// Bluetooth write on the radio for every keystroke would be worse than the
+  /// problem it solves.
+  void _scheduleAutosave() {
+    if (!_ready) return;
+    _autosave?.cancel();
+    _autosave = Timer(_autosaveAfter, () => unawaited(_flush()));
+  }
+
+  Future<void> _flush() async {
+    _autosave?.cancel();
+    await _notes.store(QuickNote(
+      slot: _slot,
+      title: _title.text.trim(),
+      body: _body.text.trim(),
+    ));
   }
 
   Future<void> _open() async {
@@ -42,6 +80,10 @@ class _QuickNoteScreenState extends State<QuickNoteScreen> {
   }
 
   Future<void> _loadSlot(int slot) async {
+    // Whatever is on screen belongs to the slot being left, so it has to be
+    // written before the fields are replaced.
+    if (_ready && slot != _slot) await _flush();
+
     final note = await _notes.read(slot);
     if (!mounted) return;
     setState(() {
