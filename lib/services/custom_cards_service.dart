@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import 'package:g1_extended/models/dashboard/dashboard_widget.dart';
 import 'package:g1_extended/models/g1/note.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/heart_rate_service.dart';
 import 'package:g1_extended/services/card_template.dart';
 import 'package:g1_extended/services/open_meteo_weather_service.dart';
 import 'package:g1_extended/services/speedometer_service.dart';
@@ -202,6 +203,12 @@ class CustomCardsService implements DashboardWidget {
       'battery': battery.lowestBatteryPercentage == null
           ? null
           : '${battery.lowestBatteryPercentage}%',
+      // Only a fresh reading; the service returns null past fifteen
+      // seconds, and the renderer shows the dash — an old heart rate is a
+      // lie with a confident face, worse on a lens than absence.
+      'hr': HeartRateService.singleton.current == null
+          ? null
+          : '${HeartRateService.singleton.current!.bpm}',
       'battery_left': battery.leftBattery == null
           ? null
           : '${battery.leftBattery!.percentage}%',
