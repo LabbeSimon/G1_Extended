@@ -16,6 +16,8 @@ import 'package:g1_extended/screens/home_screen.dart';
 import 'package:g1_extended/services/bluetooth_background_service.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/crash_reporter.dart';
+import 'package:home_widget/home_widget.dart';
+import 'package:g1_extended/services/widget_panel.dart';
 import 'package:g1_extended/services/notes_library.dart';
 import 'package:g1_extended/services/speedometer_service.dart';
 import 'package:g1_extended/services/stops_manager.dart';
@@ -68,6 +70,19 @@ void main() async {
     // reads the box.
     await _step('notes', NotesLibrary.singleton.migrate);
     await _step('speedometer', SpeedometerService.singleton.start);
+    await _step('home widget', () async {
+      // The callback below runs widget taps on a background engine; the
+      // listener mirrors, in this isolate, whatever the background service
+      // just did about one.
+      await HomeWidget.registerInteractivityCallback(widgetInteractionCallback);
+      FlutterBackgroundService().on('widgetCommandApplied').listen((event) {
+        unawaited(SpeedometerService.singleton.syncWithPreference());
+        if (event?['action'] == 'reconnect') {
+          BluetoothManager.singleton.hurryReconnect();
+        }
+      });
+      WidgetPanel.schedule();
+    });
     await _step('voice pipeline', VoicePipeline.singleton.start);
     await _step('legacy service', _startLegacyBackgroundService);
 

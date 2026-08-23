@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/navigation_service.dart';
+import 'package:g1_extended/services/widget_panel.dart';
 
 enum SpeedUnit {
   kmh('km/h', 3.6),
@@ -117,6 +118,27 @@ class SpeedometerService {
     } else {
       await stop();
     }
+    // Immediately, not on the debounced path: this is the state the widget's
+    // own button claims to control, and a toggle that visibly lags feels
+    // broken even when it is not.
+    await WidgetPanel.update();
+  }
+
+  /// Re-reads the preference from disk and follows it.
+  ///
+  /// The widget's toggle runs on a separate isolate and writes the
+  /// preference there; this isolate's cached copy knows nothing of it until
+  /// told. Called when a widget command arrives and when the app returns to
+  /// the foreground.
+  Future<void> syncWithPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    if (await isEnabled()) {
+      await start();
+    } else {
+      await stop();
+    }
+    await WidgetPanel.update();
   }
 
   /// Starts following the GPS, if the user asked for it and granted location.

@@ -24,6 +24,7 @@ import 'package:g1_extended/theme/app_theme.dart';
 import 'package:g1_extended/widgets/battery_gauge.dart';
 import 'package:g1_extended/widgets/crash_dialog.dart';
 import 'package:g1_extended/services/crash_reporter.dart';
+import 'package:g1_extended/services/speedometer_service.dart';
 import 'package:g1_extended/widgets/bento.dart';
 import 'package:g1_extended/widgets/pixel_art.dart';
 import 'package:g1_extended/widgets/permission_banner.dart';
@@ -79,6 +80,10 @@ class _HomeScreenState extends State<HomeScreen>
     // act on it: notification access may now be granted, and the banner may
     // now be wrong.
     _bluetooth.retryNotificationListener();
+
+    // The widget's toggle may have changed the preference while this isolate
+    // slept with a stale cache of it.
+    unawaited(SpeedometerService.singleton.syncWithPreference());
 
     // After a long absence the reconnect loop settles into checking every few
     // minutes, which is right for glasses left in a drawer and wrong the

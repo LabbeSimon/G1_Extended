@@ -112,6 +112,29 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+        <!-- The home screen widget. Exported because the launcher, another
+             application, is what delivers APPWIDGET_UPDATE to it. -->
+        <receiver
+            android:name=".GlassesWidgetProvider"
+            android:exported="true"
+            android:label="G1 Extended">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/glasses_widget_info" />
+        </receiver>
+
+        <!-- Receives the widget's button taps and runs the Dart callback for
+             them on a background engine, without opening the app. -->
+        <receiver
+            android:name="es.antonborri.home_widget.HomeWidgetBackgroundReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="es.antonborri.home_widget.action.BACKGROUND" />
+            </intent-filter>
+        </receiver>
     </application>
 
     <!-- Used by the Flutter engine's ProcessTextPlugin, and to list the

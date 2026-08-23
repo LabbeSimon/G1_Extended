@@ -15,6 +15,7 @@ import 'package:g1_extended/services/dashboard_controller.dart';
 import 'package:g1_extended/models/g1/note.dart';
 import 'package:g1_extended/models/g1/note_slots.dart';
 import 'package:g1_extended/services/notes_library.dart';
+import 'package:g1_extended/services/widget_panel.dart';
 import 'package:g1_extended/models/g1/notification.dart';
 import 'package:g1_extended/models/g1/text.dart';
 import 'package:g1_extended/services/navigation_service.dart';
@@ -179,6 +180,7 @@ class BluetoothManager {
     _caseBattery = reading;
     if (!_caseBatteryController.isClosed) {
       _caseBatteryController.add(reading);
+      WidgetPanel.schedule();
     }
   }
 
@@ -199,6 +201,7 @@ class BluetoothManager {
 
     _lastConnectionStatus = connected;
     _connectionStatusController.add(connected);
+    WidgetPanel.schedule();
 
     if (!connected) {
       _stopBatteryMonitoring();
@@ -1366,6 +1369,7 @@ class BluetoothManager {
 
     // Broadcast the updated status
     _batteryStatusController.add(_batteryStatus);
+    WidgetPanel.schedule();
   }
 
   /// Called when the link drops.

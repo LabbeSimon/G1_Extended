@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/speedometer_service.dart';
 import 'package:g1_extended/services/bluetooth_reciever.dart';
 import 'package:g1_extended/utils/battery_optimization_helper.dart';
 import 'package:flutter/foundation.dart';
@@ -267,6 +268,28 @@ class BluetoothBackgroundService {
 
     // Start connection monitoring timer - check every 60 seconds
     _startConnectionMonitorTimer();
+
+    // Commands arriving from the home screen widget.
+    //
+    // The tap itself ran on a throwaway isolate that could do no more than
+    // write a preference and pass word here. This isolate holds the actual
+    // BluetoothManager, so this is where the request becomes an action —
+    // and it is re-broadcast afterwards so the interface isolate, if alive,
+    // follows the same change instead of discovering it at its next resume.
+    service.on('widgetCommand').listen((event) async {
+      final action = event?['action'];
+      debugPrint('BluetoothBackgroundService: widget asked for $action');
+
+      switch (action) {
+        case 'speed':
+          await SpeedometerService.singleton.syncWithPreference();
+        case 'reconnect':
+          _bluetoothManager?.hurryReconnect();
+          await _bluetoothManager?.attemptReconnectFromStorage();
+      }
+
+      service.invoke('widgetCommandApplied', {'action': action});
+    });
 
     // Listen for service stop
     service.on('stop').listen((event) {
