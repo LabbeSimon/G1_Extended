@@ -304,10 +304,27 @@ class BluetoothManager {
     );
   }
 
-  Future<void> initialize() async {
+  /// True in the isolate that owns the glasses — the background service.
+  ///
+  /// The interface's copy of this singleton exists to drive screens and
+  /// relay commands, not to run the periodic machinery: two isolates both
+  /// syncing meant every dashboard write, every battery poll and every
+  /// note-slot plan happened twice, interleaved, from two objects that
+  /// never heard of each other.
+  bool _ownsGlasses = true;
+  bool get ownsGlasses => _ownsGlasses;
+
+  Future<void> initialize({bool ownsGlasses = true}) async {
+    _ownsGlasses = ownsGlasses;
     FlutterBluePlus.setLogLevel(LogLevel.none);
     await glassesDashboard.initialize();
     stopsManager.reload();
+
+    if (!ownsGlasses) {
+      debugPrint('BluetoothManager: interface copy, timers stay off');
+      return;
+    }
+
     _syncTimer ??= Timer.periodic(const Duration(minutes: 1), (timer) {
       _sync();
     });

@@ -65,7 +65,10 @@ void main() async {
       'battery exemption',
       BluetoothBackgroundService.requestBatteryOptimizationExemption,
     );
-    await _step('bluetooth', BluetoothManager.singleton.initialize);
+    // The interface's copy: screens and relays, no periodic machinery.
+    // The background service owns the glasses and runs the timers.
+    await _step('bluetooth',
+        () => BluetoothManager.singleton.initialize(ownsGlasses: false));
     // Brings forward anything the four-slot version wrote, before anything
     // reads the box.
     await _step('notes', NotesLibrary.singleton.migrate);
