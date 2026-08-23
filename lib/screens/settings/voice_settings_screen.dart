@@ -258,6 +258,32 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
           ),
           const Divider(),
 
+          _header('Temple gestures'),
+          FutureBuilder<SharedPreferences>(
+            future: SharedPreferences.getInstance(),
+            builder: (context, snapshot) {
+              final prefs = snapshot.data;
+              final on = prefs?.getBool('recall_on_left_tap') ?? false;
+              return SwitchListTile(
+                value: on,
+                title: const Text('Left tap recalls a notification'),
+                subtitle: const Text(
+                  'Off by default, because the glasses already use this '
+                  'gesture: on the dashboard it opens their own notification '
+                  'list. Turning it on puts two handlers on one tap, and the '
+                  'firmware usually wins — you get Even AI instead.',
+                ),
+                onChanged: prefs == null
+                    ? null
+                    : (value) async {
+                        await prefs.setBool('recall_on_left_tap', value);
+                        if (context.mounted) setState(() {});
+                      },
+              );
+            },
+          ),
+          const Divider(),
+
           _header('Wake word'),
           SwitchListTile(
             value: _wakeWordEnabled,

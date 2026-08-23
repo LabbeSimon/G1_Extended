@@ -245,6 +245,13 @@ class BluetoothReciever {
   ///
   /// Repeated taps walk further back, which is why the history keeps a
   /// cursor rather than only the newest.
+  /// Whether we answer the left tap ourselves. Off by default: the glasses
+  /// already do something with it.
+  Future<bool> _recallOnLeftTap() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('recall_on_left_tap') ?? false;
+  }
+
   Future<void> _recallNotification() async {
     // The tap is handled in whichever isolate holds the glasses; the
     // notifications were recorded in whichever isolate the stream reached.
@@ -390,10 +397,22 @@ class BluetoothReciever {
 
         if (_isCapturing) {
           await _finishDictation(side);
-        } else {
-          // A release with no hold before it is a tap, a gesture nothing else
-          // uses. It brings back what just went past.
+          break;
+        }
+
+        // A tap on the left temple is the firmware's own gesture, and it
+        // already means something there: on the dashboard it opens the
+        // notification list, inside it it moves to the next one. Answering
+        // it ourselves put two handlers on one gesture and the firmware won
+        // — what the wearer saw was Even AI opening instead of a recall.
+        //
+        // So we stand aside by default. The recall still exists and is
+        // still useful when the firmware's own list is not what you want;
+        // it is behind a setting rather than fighting for the gesture.
+        if (await _recallOnLeftTap()) {
           await _recallNotification();
+        } else {
+          debugPrint('[$side] Left tap left to the firmware');
         }
         break;
 

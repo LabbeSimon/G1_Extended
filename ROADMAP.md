@@ -19,11 +19,20 @@ hardware can confirm them:
       its own guard)
 - [ ] Both lenses staying in step after a failed write (retries + full
       rewrite when one side missed)
-- [ ] Live translation end to end — ML Kit runs only on a device
-- [ ] Heart rate from a strap or broadcasting watch — parser is pinned by
-      tests, but only a real sensor proves the link (Settings → Sensors,
-      then `{hr}` in any card)
+
 - [ ] The in-app update button, whole loop, at the next release
+
+## In beta, not yet in a stable release
+
+Built and passing their tests, held back from stable until they have run
+on real hardware. Both live on the `beta` branch; turn on the beta channel
+in Settings → About to get them.
+
+- [ ] **Live translation** of what someone is saying, on the device
+      (ML Kit, ~30 MB per language). Adds 24 MB to the app, which is the
+      other reason it waits.
+- [ ] **Heart rate** from a chest strap or a watch in broadcast mode, as
+      `{hr}` in any card
 
 ## Blocked on information
 
