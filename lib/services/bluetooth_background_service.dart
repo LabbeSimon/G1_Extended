@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:g1_extended/main.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/connection_journal.dart';
 import 'package:g1_extended/services/glasses_audio.dart';
 import 'package:g1_extended/services/glasses_relay.dart';
 import 'package:g1_extended/services/isolate_report.dart';
@@ -351,6 +352,19 @@ class BluetoothBackgroundService {
         default:
           await manager.sendCommandToGlasses(bytes);
       }
+    });
+
+    // Pairing, requested by the interface. Radio work happens here and
+    // only here: each engine registers its own Bluetooth plugin, and a
+    // connect from the interface would open a second native GATT client to
+    // the same temples.
+    service.on('startPairing').listen((_) async {
+      final manager = _bluetoothManager;
+      if (manager == null) return;
+      ConnectionJournal.singleton.record('pairing request received');
+      await manager.startScanAndConnect(onUpdate: (message) {
+        service.invoke('pairingUpdate', {'message': message});
+      });
     });
 
     // The nudge after the interface has paired and handed the link over,

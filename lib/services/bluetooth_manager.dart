@@ -14,6 +14,7 @@ import 'package:g1_extended/models/g1/case_battery.dart';
 import 'package:g1_extended/services/dashboard_controller.dart';
 import 'package:g1_extended/models/g1/note.dart';
 import 'package:g1_extended/models/g1/note_slots.dart';
+import 'package:g1_extended/services/connection_journal.dart';
 import 'package:g1_extended/services/glasses_relay.dart';
 import 'package:g1_extended/services/notes_library.dart';
 import 'package:g1_extended/services/notification_apps.dart';
@@ -553,26 +554,28 @@ class BluetoothManager {
   /// already-open connection on its own terms; there is nothing to pass.
   Future<void> ensureOwnerRunning() async {
     if (_ownsGlasses) return;
-
     await BluetoothBackgroundService.start();
-
-    // Release the handles, keep the link.
-    //
-    // Subscriptions and timers here would otherwise run alongside the
-    // service's, on the same connection: every incoming packet handled
-    // twice, two heartbeats, two syncs. Detaching cancels them and leaves
-    // the radio untouched, so the service discovers the services on a link
-    // that never dropped — which is what the earlier disconnect got wrong,
-    // and why the glasses fell over five seconds after pairing.
-    await leftGlass?.detach();
-    await rightGlass?.detach();
-    leftGlass = null;
-    rightGlass = null;
-
-    GlassesRelay.reconnect();
   }
 
   Future<void> startScanAndConnect({required OnUpdate onUpdate}) async {
+    // Pairing happens where the glasses live: in the service isolate.
+    //
+    // Each Flutter engine registers its own copy of the Bluetooth plugin,
+    // so a connect() from this isolate opens a second native GATT client to
+    // the same temples — two clients negotiating MTU and notifications on
+    // one peripheral, which is precisely the kind of thing a two-radio
+    // firmware gives up on. One engine touches the glasses' radio, ever;
+    // this side asks it to, and mirrors its progress.
+    if (!_ownsGlasses) {
+      ConnectionJournal.singleton.record('pairing requested, relaying');
+      onUpdate('Looking for your glasses…');
+      await BluetoothBackgroundService.start();
+      GlassesRelay.pair();
+      return;
+    }
+
+    ConnectionJournal.singleton.record('scan and connect starting');
+
     // Prevent multiple simultaneous scans
     if (_isScanning) {
       debugPrint('Scan already in progress, ignoring new scan request');
@@ -752,9 +755,6 @@ class BluetoothManager {
             ); // Increased delay for stability
             _notifyConnectionStatusChanged();
             await _sync();
-            // The service is started, not handed anything: it shares this
-            // process and therefore this connection.
-            await ensureOwnerRunning();
           }
         }
       } catch (e) {
@@ -921,6 +921,7 @@ class BluetoothManager {
   /// cannot be a write that jumps the queue — but neither can it be
   /// starved. Nothing queued takes more than a couple of seconds.
   Future<void> sendHeartbeats() => _serialised(() async {
+        ConnectionJournal.singleton.action('heartbeat');
         for (final glass in [leftGlass, rightGlass]) {
           if (glass?.isConnected != true) continue;
           try {
@@ -989,6 +990,14 @@ class BluetoothManager {
   /// milliseconds and is what keeps the two sides showing the same thing.
   Future<bool> _writeTo(Glass? glass, List<int> command) async {
     if (glass == null) return false;
+
+    // One funnel for every byte that leaves the app, so the action journal
+    // sees all of it from a single hook.
+    ConnectionJournal.singleton.action('write', detail: {
+      'cmd': '0x${command.isEmpty ? '?' : command.first.toRadixString(16).padLeft(2, '0')}',
+      'len': command.length,
+      'side': glass.side.name,
+    });
 
     for (var attempt = 1; attempt <= _writeAttempts; attempt++) {
       if (await glass.sendData(command)) {
@@ -1430,6 +1439,7 @@ class BluetoothManager {
     if (!isConnected) {
       return;
     }
+    ConnectionJournal.singleton.action('sync');
 
     // Synchronize time and weather with glasses
     try {

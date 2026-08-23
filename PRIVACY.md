@@ -97,6 +97,18 @@ entirely your decision.
 No location, no contacts, no audio, ever. Recording protocol frames is off by
 default and only records while you leave it on.
 
+### The action journal
+
+Behind developer mode, then ten taps on the protocol bench's title, sits a
+journal that records the app's own actions — each Bluetooth write's command
+byte and length, heartbeats, syncs, connection events with their reasons.
+It exists to chase connection bugs, and three properties keep it honest:
+it never records content (that a notification was sent, never what it
+said); it never leaves the device unless you copy it out yourself; and it
+switches itself off 24 hours after being enabled, so a journal forgotten
+on cannot quietly record a stranger's week — the stranger being future
+you.
+
 ## Where your data lives
 
 On your phone, in the app's private storage: notes, checklists, reminders,

@@ -26,8 +26,19 @@ abstract final class GlassesRelay {
     }
   }
 
-  /// Asks the owner to reconnect from the stored pairing — the nudge after
-  /// the interface has paired and handed the link over.
+  /// Asks the owner to scan for and pair new glasses.
+  ///
+  /// Pairing is radio work, and radio work happens in exactly one isolate.
+  /// Progress comes back as 'pairingUpdate' events and state broadcasts.
+  static void pair() {
+    try {
+      FlutterBackgroundService().invoke('startPairing');
+    } catch (e) {
+      debugPrint('GlassesRelay: could not ask for pairing: $e');
+    }
+  }
+
+  /// Asks the owner to reconnect from the stored pairing.
   static void reconnect() {
     try {
       FlutterBackgroundService().invoke('reconnectNow');

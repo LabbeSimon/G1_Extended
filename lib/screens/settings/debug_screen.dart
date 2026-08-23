@@ -7,6 +7,7 @@ import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/utils/bitmap.dart';
 import 'dart:convert';
 import 'package:g1_extended/models/g1/text.dart';
+import 'package:g1_extended/services/connection_journal.dart';
 import 'package:g1_extended/services/isolate_report.dart';
 import 'package:g1_extended/services/voice_notes_service.dart';
 import 'package:flutter/material.dart';
@@ -66,6 +67,38 @@ class _DebugPageSate extends State<DebugPage> {
     }
 
     _toast('Done. Which one stayed out of Even AI?');
+  }
+
+  int _titleTaps = 0;
+  DateTime _lastTitleTap = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _titleTapped() async {
+    final now = DateTime.now();
+    // A pause resets the count, so ten taps means ten deliberate taps and
+    // not a week of accidental ones.
+    if (now.difference(_lastTitleTap) > const Duration(seconds: 2)) {
+      _titleTaps = 0;
+    }
+    _lastTitleTap = now;
+    _titleTaps++;
+
+    if (_titleTaps >= 10) {
+      _titleTaps = 0;
+      final journal = ConnectionJournal.singleton;
+      final on = !await journal.verbose();
+      await journal.setVerbose(on);
+      _toast(on
+          ? 'Action journal ON — everything is being recorded.'
+          : 'Action journal off.');
+    } else if (_titleTaps >= 7) {
+      _toast('${10 - _titleTaps}…');
+    }
+  }
+
+  void _copyConnectionJournal() async {
+    final text = await ConnectionJournal.singleton.export();
+    await Clipboard.setData(ClipboardData(text: text));
+    _toast('Connection journal copied.');
   }
 
   void _fetchVoiceNotes() async {
@@ -276,7 +309,18 @@ class _DebugPageSate extends State<DebugPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Debug')),
+      appBar: AppBar(
+        // Named as the About list names it — one place, one name. Ten
+        // taps on this title toggle the action journal — every write,
+        // heartbeat and sync recorded with its isolate and timestamp. The
+        // same gesture that opens developer mode elsewhere: discoverable by
+        // the person it is for, invisible to everyone else.
+        title: GestureDetector(
+          onTap: _titleTapped,
+          behavior: HitTestBehavior.opaque,
+          child: const Text('Protocol test bench'),
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
@@ -337,6 +381,14 @@ class _DebugPageSate extends State<DebugPage> {
           ElevatedButton(
             onPressed: _copyIsolateReport,
             child: const Text("Copy isolate report"),
+          ),
+          const SizedBox(height: 8),
+          // Every connection event with the reason the platform gives for a
+          // disconnect — the field that names who hung up. With the action
+          // journal on (ten taps on the title), every write too.
+          ElevatedButton(
+            onPressed: _copyConnectionJournal,
+            child: const Text("Copy connection journal"),
           ),
           const SizedBox(height: 20),
           // Voice notes recorded on the glasses. The audio format is

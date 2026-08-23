@@ -6,6 +6,7 @@ import 'dart:async';
 import 'case_battery.dart';
 import '../../services/battery_frame_log.dart';
 import '../../services/bluetooth_manager.dart';
+import '../../services/connection_journal.dart';
 import '../../services/bluetooth_reciever.dart';
 import '../../utils/constants.dart';
 
@@ -51,6 +52,10 @@ class Glass {
   }
 
   Future<void> connect() async {
+    ConnectionJournal.singleton.record('connect requested', detail: {
+      'side': side.name,
+      'alreadyConnected': device.isConnected,
+    });
     try {
       // Cancel any existing subscriptions first
       await disconnect();
@@ -60,6 +65,21 @@ class Glass {
         BluetoothConnectionState state,
       ) {
         debugPrint('[$side Glass] Connection state: $state');
+
+        if (state == BluetoothConnectionState.disconnected) {
+          // The one field that names who hung up: the glasses, Android, or
+          // this app. Everything else in the journal is context for it.
+          final reason = device.disconnectReason;
+          ConnectionJournal.singleton.record('disconnected', detail: {
+            'side': side.name,
+            'reason': reason?.description ?? 'unknown',
+            'code': reason?.code,
+          });
+        } else if (state == BluetoothConnectionState.connected) {
+          ConnectionJournal.singleton
+              .record('connected', detail: {'side': side.name});
+        }
+
         onConnectionStateChanged?.call();
         if (state == BluetoothConnectionState.disconnected && !_isReconnecting) {
           _scheduleReconnect();
@@ -417,6 +437,8 @@ class Glass {
   /// them means releasing subscriptions and timers here, and letting the
   /// other side discover the services on a link that never dropped.
   Future<void> detach() async {
+    ConnectionJournal.singleton
+        .record('detach', detail: {'side': side.name});
     _isReconnecting = false;
 
     await notificationSubscription?.cancel();
@@ -436,6 +458,8 @@ class Glass {
   }
 
   Future<void> disconnect() async {
+    ConnectionJournal.singleton
+        .record('deliberate disconnect', detail: {'side': side.name});
     // Stop any ongoing reconnection
     _isReconnecting = false;
 
