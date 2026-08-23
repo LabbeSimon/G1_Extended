@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:g1_extended/models/g1/glasses_settings.dart';
+import 'package:g1_extended/models/g1/note_slots.dart';
 import 'package:g1_extended/theme/app_theme.dart';
 
 /// The glasses' display, reproduced at its own proportions.
@@ -39,8 +40,9 @@ class LensPreview extends StatelessWidget {
   final DashboardMode mode;
   final DashboardPane pane;
 
-  /// The four slot titles as they stand, empty entries omitted.
-  final List<String> slots;
+  /// The slots as they stand, empty entries omitted — the same contents the
+  /// glasses are written from.
+  final List<SlotContent> slots;
 
   final String? nextEvent;
 
@@ -112,7 +114,7 @@ class LensPreview extends StatelessWidget {
     }
   }
 
-  Widget _paneBody(List<String> remainingSlots) {
+  Widget _paneBody(List<SlotContent> remainingSlots) {
     switch (pane) {
       case DashboardPane.notes:
         return _notes(remainingSlots);
@@ -129,9 +131,20 @@ class LensPreview extends StatelessWidget {
     }
   }
 
-  Widget _notes(List<String> titles) => titles.isEmpty
+  Widget _notes(List<SlotContent> entries) => entries.isEmpty
       ? _lines(const ['No notes'])
-      : _lines(titles.take(4).toList());
+      : _lines([
+          for (final entry in entries.take(4)) _slotLine(entry),
+        ]);
+
+  /// "Courses · lait, pain" — the name, then the first line of the body,
+  /// because a title alone shows the arrangement but not the content, and
+  /// the lens shows both.
+  static String _slotLine(SlotContent entry) {
+    final firstLine = entry.text.split('\n').first.trim();
+    if (firstLine.isEmpty || firstLine == entry.name) return entry.name;
+    return '${entry.name} · $firstLine';
+  }
 
   Widget _lines(List<String> lines) {
     return Column(

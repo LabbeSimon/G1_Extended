@@ -147,13 +147,13 @@ class PermissionManager {
       title: 'Calendar',
       description:
           'Used when you connect calendars so events and reminders appear across devices.',
-      // permission_handler has no read-only calendar permission on Android:
-      // both of its calendar constants map to READ_CALENDAR *and*
-      // WRITE_CALENDAR. This app only reads, so it declares only
-      // READ_CALENDAR — and asking for either constant then requests a
-      // permission the manifest does not declare, which Android refuses
-      // without ever showing a dialog. device_calendar asks for the right
-      // one, so the calendar group defers to it.
+      // Delegated to device_calendar, whose permission gate is all or
+      // nothing: it reports access only when READ and WRITE are both
+      // granted, so both are declared in the manifest even though this app
+      // never writes an event. Declaring only READ made the plugin answer
+      // "no access" forever — Android silently refuses any permission the
+      // manifest does not declare, including inside a grant dialog that
+      // appears to succeed.
       permissions: [],
       requiredForCoreFlow: false,
     ),

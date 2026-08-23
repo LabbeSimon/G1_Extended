@@ -295,19 +295,23 @@ abstract final class PixelArtwork {
   ];
 
   /// Settings.
+  /// Three mixer sliders. The knobs poke a pixel above and below their
+  /// line, which is what keeps them knobs at small sizes — the previous
+  /// drawing put single-pixel notches inside dense bars, and at button size
+  /// it read as smeared text. Verified by rendering, like the rest.
   static const List<String> sliders = [
+    '...##.......',
+    '.##########.',
+    '...##.......',
     '............',
-    '..#######...',
-    '....#.......',
-    '..#######...',
+    '.......##...',
+    '.##########.',
+    '.......##...',
     '............',
-    '..#######...',
-    '......#.....',
-    '..#######...',
+    '..##........',
+    '.##########.',
+    '..##........',
     '............',
-    '..#######...',
-    '...#........',
-    '..#######...',
   ];
 
   /// The speed readout.

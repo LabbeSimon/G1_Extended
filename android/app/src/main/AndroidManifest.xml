@@ -29,6 +29,13 @@
 
     <!-- The dashboard shows the day's agenda on the glasses. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <!-- Declared because device_calendar's permission gate is all or
+         nothing: its hasPermissions() answers true only when READ and WRITE
+         are both granted, and Android silently refuses any permission the
+         manifest does not declare. Without this line the app reported "no
+         calendar access" forever, even with read access granted by hand in
+         system settings. The app itself never writes an event. -->
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
 
     <!-- Dictation and wake word, both recognised on the device. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />

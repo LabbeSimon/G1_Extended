@@ -25,6 +25,7 @@ import 'package:g1_extended/widgets/battery_gauge.dart';
 import 'package:g1_extended/widgets/crash_dialog.dart';
 import 'package:g1_extended/widgets/lens_preview.dart';
 import 'package:g1_extended/services/crash_reporter.dart';
+import 'package:g1_extended/models/g1/note_slots.dart';
 import 'package:g1_extended/services/notes_library.dart';
 import 'package:g1_extended/services/speedometer_service.dart';
 import 'package:g1_extended/widgets/bento.dart';
@@ -62,7 +63,7 @@ class _HomeScreenState extends State<HomeScreen>
   // titles from the same plan the glasses are actually sent.
   DashboardMode _dashMode = DashboardMode.dual;
   DashboardPane _dashPane = DashboardPane.notes;
-  List<String> _slotTitles = const [];
+  List<SlotContent> _slots = const [];
   StreamSubscription<void>? _notesChanges;
 
   String get _brightnessLabel =>
@@ -93,6 +94,11 @@ class _HomeScreenState extends State<HomeScreen>
     // The widget's toggle may have changed the preference while this isolate
     // slept with a stale cache of it.
     unawaited(SpeedometerService.singleton.syncWithPreference());
+
+    // And the glasses may have been reconfigured — from their own touchpad,
+    // or from a phase when only the cache was answering. Coming back to the
+    // foreground is the moment to stop showing yesterday's answer.
+    unawaited(_loadGlassesState());
 
     // After a long absence the reconnect loop settles into checking every few
     // minutes, which is right for glasses left in a drawer and wrong the
@@ -194,8 +200,16 @@ class _HomeScreenState extends State<HomeScreen>
 
     if (!_bluetooth.isConnected) return;
 
-    final brightness = await settings.readBrightness();
+    var brightness = await settings.readBrightness();
     final silent = await settings.readSilentMode();
+
+    // Right after the link comes up the firmware sometimes lets the first
+    // query time out; one more try three seconds later is what separates
+    // "the A appears by itself" from "you have to open the menu".
+    if (brightness == null && _bluetooth.isConnected) {
+      await Future.delayed(const Duration(seconds: 3));
+      brightness = await settings.readBrightness();
+    }
 
     if (!mounted) return;
     setState(() {
@@ -256,15 +270,144 @@ class _HomeScreenState extends State<HomeScreen>
     if (mounted) setState(() => _weather = weather);
   }
 
+  /// The brightness tile is itself the slider.
+  ///
+  /// The level is painted as a fill behind the tile's content, and dragging
+  /// across the tile sets it — force-setting the brightness without a trip
+  /// through two screens. Dragging leaves automatic mode, because that is
+  /// what touching a manual control means; tapping still opens the display
+  /// settings, where automatic comes back.
+  double? _brightnessDrag;
+
+  Widget _buildBrightnessTile() {
+    final fraction = _brightnessDrag ??
+        (_brightness / BrightnessSetting.maxLevel).clamp(0.0, 1.0);
+    final radius = BorderRadius.circular(AppMetrics.tileRadius);
+
+    return ClipRRect(
+      borderRadius: radius,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragUpdate: (details) {
+          final box = context.findRenderObject();
+          final width = (box is RenderBox) ? box.size.width / 2 : 180.0;
+          setState(() {
+            _brightnessDrag =
+                ((_brightnessDrag ?? fraction) + details.delta.dx / width)
+                    .clamp(0.0, 1.0);
+          });
+        },
+        onHorizontalDragEnd: (_) => _commitBrightnessDrag(),
+        onHorizontalDragCancel: () => setState(() => _brightnessDrag = null),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            const ColoredBox(color: AppColors.tile),
+            // The level itself, as ground rather than as a number alone.
+            FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: fraction,
+              child: const ColoredBox(color: AppColors.tileActive),
+            ),
+            Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: () => Navigator.of(context)
+                    .push(MaterialPageRoute(
+                      builder: (_) => const DisplaySettingsScreen(),
+                    ))
+                    .then((_) => _loadGlassesState()),
+                child: Padding(
+                  padding: AppMetrics.tilePadding,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      PixelArt(
+                        rows: _autoBrightness
+                            ? PixelArtwork.sunAuto
+                            : PixelArtwork.sun,
+                        size: 24,
+                        color: AppColors.ink,
+                      ),
+                      const Spacer(),
+                      Text(
+                        _brightnessDrag != null
+                            ? '${(_brightnessDrag! * 100).round()}%'
+                            : _brightnessLabel,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _commitBrightnessDrag() async {
+    final fraction = _brightnessDrag;
+    if (fraction == null) return;
+
+    final setting = BrightnessSetting.fromFraction(fraction, auto: false);
+    setState(() {
+      _brightness = setting.level;
+      _autoBrightness = false;
+      _brightnessDrag = null;
+    });
+    await GlassesSettingsService.singleton.setBrightness(setting);
+  }
+
+  Widget _mirrorChip(String text, {required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.inkFaint, width: 1),
+        ),
+        child: Text(
+          text.toUpperCase(),
+          style: const TextStyle(
+            fontFamily: AppTheme.technicalFont,
+            fontSize: 11,
+            letterSpacing: 1.1,
+            color: AppColors.inkMuted,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _cycleDashboardMode() async {
+    final next = DashboardMode
+        .values[(_dashMode.index + 1) % DashboardMode.values.length];
+    setState(() => _dashMode = next);
+    await GlassesSettingsService.singleton
+        .setDashboardLayout(mode: next, pane: _dashPane);
+  }
+
+  Future<void> _cycleDashboardPane() async {
+    final next = DashboardPane
+        .values[(_dashPane.index + 1) % DashboardPane.values.length];
+    setState(() => _dashPane = next);
+    await GlassesSettingsService.singleton
+        .setDashboardLayout(mode: _dashMode, pane: next);
+  }
+
   /// Reads the slot plan — the one the glasses are genuinely written from.
   Future<void> _loadLensMirror() async {
     try {
       final plan = await _bluetooth.noteSlotPlan();
-      final titles = [
+      final slots = [
         for (var slot = 1; slot <= 4; slot++)
-          if (plan[slot] != null) plan[slot]!.name,
+          if (plan[slot] != null) plan[slot]!,
       ];
-      if (mounted) setState(() => _slotTitles = titles);
+      if (mounted) setState(() => _slots = slots);
     } catch (e) {
       debugPrint('HomeScreen: could not read the slot plan: $e');
     }
@@ -332,16 +475,21 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           const PixelArt(rows: PixelArtwork.glasses, size: 16),
           const SizedBox(width: 14),
+          // The technical face the rest of the interface speaks, spaced the
+          // way the section headers are — a humanist serif title over a
+          // pixel interface read as two applications sharing a window.
           Text(
-            'G1 Extended',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w400,
-                ),
+            'G1 EXTENDED',
+            style: TextStyle(
+              fontFamily: AppTheme.technicalFont,
+              fontSize: 17,
+              letterSpacing: 3,
+              color: AppColors.ink,
+            ),
           ),
           const Spacer(),
           IconButton(
-            icon: const PixelArt(rows: PixelArtwork.sliders, size: 20),
+            icon: const PixelArt(rows: PixelArtwork.sliders, size: 24),
             tooltip: 'Settings',
             onPressed: _openGlassesSettings,
           ),
@@ -368,10 +516,6 @@ class _HomeScreenState extends State<HomeScreen>
     final batteryLabel =
         levels.isEmpty ? '--' : '${levels.reduce((a, b) => a < b ? a : b)}%';
 
-    final paneLabel = _dashMode == DashboardMode.minimal
-        ? _dashMode.label
-        : '${_dashMode.label} · ${_dashPane.label}';
-
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppMetrics.tileRadius),
       child: Container(
@@ -387,21 +531,27 @@ class _HomeScreenState extends State<HomeScreen>
                 batteryLabel: batteryLabel,
                 mode: _dashMode,
                 pane: _dashPane,
-                slots: _slotTitles,
+                slots: _slots,
                 nextEvent: _nextEvent,
               ),
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Text(
-                    paneLabel.toUpperCase(),
-                    style: const TextStyle(
-                      fontFamily: AppTheme.technicalFont,
-                      fontSize: 11,
-                      letterSpacing: 1.1,
-                      color: AppColors.inkFaint,
-                    ),
+                  // The arrangement changes right here, under the very
+                  // mirror it rearranges. It used to live two screens deep
+                  // in the display settings, which nobody thought to open
+                  // to change what the lens shows.
+                  _mirrorChip(
+                    _dashMode.label,
+                    onTap: _cycleDashboardMode,
                   ),
+                  if (_dashMode != DashboardMode.minimal) ...[
+                    const SizedBox(width: 8),
+                    _mirrorChip(
+                      _dashPane.label,
+                      onTap: _cycleDashboardPane,
+                    ),
+                  ],
                   const Spacer(),
                   Flexible(
                     child: Text(
@@ -470,19 +620,7 @@ class _HomeScreenState extends State<HomeScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: BentoTile(
-                    pixels: _autoBrightness
-                        ? PixelArtwork.sunAuto
-                        : PixelArtwork.sun,
-                    label: _brightnessLabel,
-                    onTap: () => Navigator.of(context)
-                        .push(MaterialPageRoute(
-                          builder: (_) => const DisplaySettingsScreen(),
-                        ))
-                        .then((_) => _loadGlassesState()),
-                  ),
-                ),
+                Expanded(child: _buildBrightnessTile()),
                 const SizedBox(height: AppMetrics.gutter),
                 Expanded(
                   child: BentoTile(

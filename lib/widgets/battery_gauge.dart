@@ -190,13 +190,17 @@ class GlassesBattery extends StatelessWidget {
     required this.left,
     required this.right,
     this.charging = false,
-    this.gaugeWidth = 26,
+    this.gaugeWidth = defaultGaugeWidth,
   });
 
   final int? left;
   final int? right;
   final bool charging;
   final double gaugeWidth;
+
+  /// Shared with the case readout, so the two batteries in the tile are
+  /// drawn at the same size by the same widget.
+  static const double defaultGaugeWidth = 26;
 
   /// Below this the two sides are treated as one reading.
   static const int splitThreshold = 10;
@@ -270,23 +274,34 @@ class CaseBatteryReadout extends StatelessWidget {
     final value = percentage;
     if (value == null) return const SizedBox.shrink();
 
+    // The same gauge as the glasses' own line, at the same width, labelled
+    // with the case glyph where the pair's line carries L and R. The case
+    // used to get a tiny icon and a bare number beside the glasses' full
+    // gauge — two batteries in the same tile drawn by two different
+    // languages, which read as one of them mattering less.
     return Row(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        PixelArt(
-          rows: PixelArtwork.caseClosed,
-          size: 11,
-          color: suspected ? AppColors.inkFaint : AppColors.inkMuted,
+        BatteryGauge(
+          percentage: value,
+          width: GlassesBattery.defaultGaugeWidth,
         ),
         const SizedBox(width: 8),
-        Text(
-          suspected ? '$value%?' : '$value%',
-          style: TextStyle(
-            fontFamily: AppTheme.technicalFont,
-            fontSize: 13,
-            color: suspected ? AppColors.inkFaint : AppColors.ink,
-          ),
+        PixelArt(
+          rows: PixelArtwork.caseClosed,
+          size: 14,
+          color: suspected ? AppColors.inkFaint : AppColors.inkMuted,
         ),
+        if (suspected)
+          const Text(
+            ' ?',
+            style: TextStyle(
+              fontFamily: AppTheme.technicalFont,
+              fontSize: 12,
+              color: AppColors.inkFaint,
+            ),
+          ),
       ],
     );
   }
