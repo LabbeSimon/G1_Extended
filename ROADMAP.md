@@ -20,6 +20,9 @@ hardware can confirm them:
 - [ ] Both lenses staying in step after a failed write (retries + full
       rewrite when one side missed)
 - [ ] Live translation end to end — ML Kit runs only on a device
+- [ ] Heart rate from a strap or broadcasting watch — parser is pinned by
+      tests, but only a real sensor proves the link (Settings → Sensors,
+      then `{hr}` in any card)
 - [ ] The in-app update button, whole loop, at the next release
 
 ## Blocked on information
@@ -28,6 +31,8 @@ hardware can confirm them:
       a junction, then Settings → Debug → *Copy navigation capture*, and
       attach the JSON to an issue. The parser will be fixed against what
       Maps actually sends, not what it plausibly sends.
+- [ ] **Other sport sensors** — cadence (0x1816), running pace (0x1814):
+      same shape as the heart rate work, a parser plus a token
 - [ ] **ESP32 / GNSS bike display at 500 ms** — waiting on how the module
       exposes its data (BLE? HTTP on a shared network? serial?)
 
