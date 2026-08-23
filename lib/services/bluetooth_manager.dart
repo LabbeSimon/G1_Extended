@@ -206,10 +206,9 @@ class BluetoothManager {
       // background service running so it can attempt reconnection.
       _updateBackgroundServiceNotification();
     } else {
-      // Start battery monitoring if not already running
-      if (_batteryUpdateTimer == null) {
-        _setupBatteryMonitoring();
-      }
+      // Unconditionally: it is idempotent, and the condition that used to
+      // guard it was the bug.
+      _setupBatteryMonitoring();
       // Always start the background service notification when glasses connect
       _startBackgroundService();
 
@@ -733,15 +732,62 @@ class BluetoothManager {
     });
   }
 
-  Future<void> sendCommandToGlasses(List<int> command) async {
-    if (leftGlass != null) {
-      await leftGlass!.sendData(command);
-      await Future.delayed(Duration(milliseconds: 100));
+  /// True when a write reached one temple and not the other.
+  ///
+  /// The lenses are then showing different things, and no amount of waiting
+  /// fixes it: nothing rewrites a display that already looks correct from
+  /// the app's point of view.
+  bool _displayOutOfStep = false;
+
+  bool get displayOutOfStep => _displayOutOfStep;
+
+  static const int _writeAttempts = 3;
+
+  /// Sends the same bytes to both temples, and cares whether they arrive.
+  ///
+  /// Failures used to be swallowed one level down, so a write landing on the
+  /// left and dropped on the right returned as a success and left the two
+  /// lenses disagreeing until something else happened to write to them.
+  ///
+  /// Returns true only when both sides took it.
+  Future<bool> sendCommandToGlasses(List<int> command) async {
+    final left = await _writeTo(leftGlass, command);
+    final right = await _writeTo(rightGlass, command);
+
+    if (left != right) {
+      // One temple has the new content and the other has the old. Flag it so
+      // the next sync rewrites everything rather than leaving the pair
+      // mismatched for as long as nothing else is displayed.
+      debugPrint('BluetoothManager: write reached '
+          '${left ? "left" : "right"} only — lenses out of step');
+      _displayOutOfStep = true;
+    } else if (left && right) {
+      _displayOutOfStep = false;
     }
-    if (rightGlass != null) {
-      await rightGlass!.sendData(command);
-      await Future.delayed(Duration(milliseconds: 100));
+
+    return left && right;
+  }
+
+  /// Writes to one temple, retrying a few times before giving up.
+  ///
+  /// Most write failures are momentary. Retrying costs a few hundred
+  /// milliseconds and is what keeps the two sides showing the same thing.
+  Future<bool> _writeTo(Glass? glass, List<int> command) async {
+    if (glass == null) return false;
+
+    for (var attempt = 1; attempt <= _writeAttempts; attempt++) {
+      if (await glass.sendData(command)) {
+        // The firmware drops writes that arrive back to back.
+        await Future.delayed(const Duration(milliseconds: 100));
+        return true;
+      }
+      if (attempt < _writeAttempts) {
+        await Future.delayed(Duration(milliseconds: 60 * attempt));
+      }
     }
+
+    debugPrint('BluetoothManager: gave up writing to ${glass.side} temple');
+    return false;
   }
 
   Future<void> sendText(
@@ -1102,6 +1148,14 @@ class BluetoothManager {
 
     await _writeNoteSlots();
 
+    if (_displayOutOfStep) {
+      // Rewriting is the only way back into agreement: the app cannot read
+      // what is on a lens, so it cannot tell which side is stale.
+      debugPrint('BluetoothManager: lenses out of step, rewriting both');
+      _displayOutOfStep = false;
+      await _writeNoteSlots();
+    }
+
     final dash = await dashboardController.updateDashboardCommand();
     for (var command in dash) {
       await sendCommandToGlasses(command);
@@ -1119,10 +1173,7 @@ class BluetoothManager {
     bool isDisplayEnabled = await _isGlassesDisplayEnabled();
     await setSilentMode(!isDisplayEnabled);
 
-    // Set up battery monitoring if not already set up
-    if (_batteryUpdateTimer == null && isConnected) {
-      _setupBatteryMonitoring();
-    }
+    if (isConnected) _setupBatteryMonitoring();
   }
 
   Future<void> setMicrophone(bool open) async {
@@ -1247,7 +1298,15 @@ class BluetoothManager {
     }
   }
 
-  /// Set up battery status callbacks and start periodic updates
+  /// Attaches the battery callbacks and makes sure the poll is running.
+  ///
+  /// Safe to call as often as you like, and it is called on every
+  /// connection. It used to be guarded by whether a timer field was null,
+  /// which is what made the battery reading die for good: the timer cancelled
+  /// itself when the glasses were momentarily unreachable without clearing
+  /// the field, so the guard then said monitoring was already running while
+  /// nothing was, and the callbacks stayed detached for the rest of the
+  /// session. The level read once at first pairing and never again.
   void _setupBatteryMonitoring() {
     // Set up battery response callbacks for both glasses
     if (leftGlass != null) {
@@ -1262,15 +1321,11 @@ class BluetoothManager {
       };
     }
 
-    // Start periodic battery updates every 1 minute for more accurate tracking
-    _batteryUpdateTimer?.cancel();
-    _batteryUpdateTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
-      if (isConnected) {
-        requestBatteryInfo();
-      } else {
-        timer.cancel();
-      }
-    });
+    // The periodic poll lives in _batteryTimer, started once at initialise
+    // and never cancelled. There used to be a second timer here that stopped
+    // itself whenever the glasses were briefly unreachable — see
+    // _stopBatteryMonitoring for what that cost.
+    _startBatteryTimer();
 
     // Request initial battery info immediately, then retry a few times to ensure we get it
     _requestBatteryInfoWithRetry();
@@ -1313,17 +1368,18 @@ class BluetoothManager {
     _batteryStatusController.add(_batteryStatus);
   }
 
-  /// Stop battery monitoring and clean up resources
+  /// Called when the link drops.
+  ///
+  /// Deliberately does almost nothing. It used to detach both battery
+  /// callbacks, on the reasoning that a disconnected pair has no battery to
+  /// report — but a callback on a disconnected glass simply never fires,
+  /// while a detached one stays detached, and reattaching depended on a guard
+  /// that a self-cancelling timer had already broken.
+  ///
+  /// The poll skips its work when disconnected rather than stopping, so there
+  /// is nothing here to restart and nothing to get wrong.
   void _stopBatteryMonitoring() {
     _batteryUpdateTimer?.cancel();
     _batteryUpdateTimer = null;
-
-    if (leftGlass != null) {
-      leftGlass!.onBatteryResponse = null;
-    }
-
-    if (rightGlass != null) {
-      rightGlass!.onBatteryResponse = null;
-    }
   }
 }

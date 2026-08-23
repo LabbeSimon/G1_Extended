@@ -222,21 +222,31 @@ class Glass {
     await reciever.receiveHandler(side, data);
   }
 
-  Future<void> sendData(List<int> data) async {
-    if (uartTx != null) {
-      try {
-        if (device.isConnected) {
-          await uartTx!.write(data, withoutResponse: false);
-          //debugPrint(
-          //    'Sent data to $side glass: ${data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
-        } else {
-          debugPrint('Device not connected, cannot send data to $side glass.');
-        }
-      } catch (e) {
-        debugPrint('Error sending data to $side glass: $e');
-      }
-    } else {
+  /// Writes to this temple. Returns whether the bytes actually went out.
+  ///
+  /// It used to return nothing and swallow every failure. That is what made
+  /// the two lenses show different things: a write landing on one side and
+  /// failing on the other — a moment of interference is enough — looked from
+  /// above exactly like a write that had succeeded on both, so nothing
+  /// retried and nothing noticed. The pair then stayed out of step until
+  /// something else happened to write to them.
+  Future<bool> sendData(List<int> data) async {
+    if (uartTx == null) {
       debugPrint('UART TX not available for $side glass.');
+      return false;
+    }
+
+    if (!device.isConnected) {
+      debugPrint('Device not connected, cannot send data to $side glass.');
+      return false;
+    }
+
+    try {
+      await uartTx!.write(data, withoutResponse: false);
+      return true;
+    } catch (e) {
+      debugPrint('Error sending data to $side glass: $e');
+      return false;
     }
   }
 
