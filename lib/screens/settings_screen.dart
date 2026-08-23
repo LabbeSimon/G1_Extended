@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:g1_extended/models/g1/battery.dart';
 import 'package:g1_extended/screens/settings/about_screen.dart';
 import 'package:g1_extended/screens/settings/assistant_screen.dart';
+import 'package:g1_extended/screens/settings/clocks_screen.dart';
 import 'package:g1_extended/screens/settings/custom_cards_screen.dart';
 import 'package:g1_extended/screens/settings/dashboard_screen.dart';
 import 'package:g1_extended/screens/settings/notifications_screen.dart';
@@ -313,6 +314,12 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
         title: 'Speed',
         subtitle: 'Live speed readout on the lens.',
         builder: (_) => const SpeedometerScreen(),
+      ),
+      _SettingsEntry(
+        pixels: PixelArtwork.clock,
+        title: 'World clocks',
+        subtitle: 'Other places\' time, in a note slot.',
+        builder: (_) => const ClocksScreen(),
       ),
       _SettingsEntry(
         pixels: PixelArtwork.info,

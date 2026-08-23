@@ -16,6 +16,7 @@ import 'package:g1_extended/models/g1/note.dart';
 import 'package:g1_extended/models/g1/note_slots.dart';
 import 'package:g1_extended/services/notes_library.dart';
 import 'package:g1_extended/services/widget_panel.dart';
+import 'package:g1_extended/services/world_clocks.dart';
 import 'package:g1_extended/models/g1/notification.dart';
 import 'package:g1_extended/models/g1/text.dart';
 import 'package:g1_extended/services/navigation_service.dart';
@@ -1111,11 +1112,16 @@ class BluetoothManager {
     final generated = await glassesDashboard.generateDashboardItems();
     final library = NotesLibrary.singleton;
 
+    // The extra time zones ride along as one generated note, after the
+    // dashboard's own items: pinned notes always outrank both.
+    final clocks = await WorldClocksService.singleton.slotContent();
+
     return NoteSlots.plan(
       userNotes: await library.pinnedSlots(),
       generated: [
         for (final note in generated)
           SlotContent(name: note.name, text: note.text),
+        if (clocks != null) clocks,
       ],
       // Replaces the firmware's own "Hold right touchbar to add quicknote"
       // text, and only if a slot is going spare.
