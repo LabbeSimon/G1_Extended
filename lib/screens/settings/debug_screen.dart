@@ -33,6 +33,9 @@ class _DebugPageSate extends State<DebugPage> {
 
   void _copyNavigationCapture() async {
     final capture = NavigationCapture.singleton;
+    // The recording happens in whichever isolate receives notifications —
+    // not this one. The file is the bridge.
+    await capture.ensureLoaded();
     if (capture.isEmpty) {
       _toast('Nothing captured yet. Start navigating first, then come back.');
       return;
