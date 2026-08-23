@@ -35,6 +35,7 @@ class MainActivity : FlutterActivity() {
         const val CHANNEL_APP_RETAIN = "$PACKAGE/app_retain"
         const val CHANNEL_BATTERY = "$PACKAGE/battery_optimization"
         const val CHANNEL_INSTALL = "$PACKAGE/apk_install"
+        const val CHANNEL_MEMORY = "$PACKAGE/memory"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -96,6 +97,27 @@ class MainActivity : FlutterActivity() {
             if (call.method == "sendToBackground") {
                 moveTaskToBack(true)
                 result.success(null)
+            } else {
+                result.notImplemented()
+            }
+        }
+
+        // What the system will let this process have — asked before the
+        // speech model meets a native loader that cannot fail politely.
+        MethodChannel(messenger, CHANNEL_MEMORY).setMethodCallHandler { call, result ->
+            if (call.method == "state") {
+                val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                val info = android.app.ActivityManager.MemoryInfo()
+                am.getMemoryInfo(info)
+                result.success(
+                    mapOf(
+                        "availableBytes" to info.availMem,
+                        "totalBytes" to info.totalMem,
+                        "lowMemoryThresholdBytes" to info.threshold,
+                        "systemLowMemory" to info.lowMemory,
+                        "heapLimitMb" to am.largeMemoryClass,
+                    )
+                )
             } else {
                 result.notImplemented()
             }

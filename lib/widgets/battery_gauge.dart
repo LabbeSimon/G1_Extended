@@ -95,6 +95,7 @@ class _BatteryPainter extends CustomPainter {
   /// 2-wide terminal nub. The fill occupies the 13 by 5 interior.
   static const int _cols = 20;
   static const int _rows = 9;
+  static const int _fillCols = 13;
 
   /// The bolt. While charging it replaces the fill entirely: at thirteen by
   /// five pixels a level and a bolt drawn together are mush, and the exact

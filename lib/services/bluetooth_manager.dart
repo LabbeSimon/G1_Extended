@@ -741,6 +741,14 @@ class BluetoothManager {
     });
   }
 
+  /// Sends to the left temple only.
+  ///
+  /// The protocol assigns each command an arm: notifications (0x4B) and
+  /// their allowlist (0x04) are documented left-arm commands, and
+  /// broadcasting them to the pair is how a notification could be built
+  /// correctly, chunked correctly, sent — and never appear.
+  Future<bool> sendToLeft(List<int> command) => _writeTo(leftGlass, command);
+
   /// True when a write reached one temple and not the other.
   ///
   /// The lenses are then showing different things, and no amount of waiting
@@ -945,8 +953,9 @@ class BluetoothManager {
     G1Notification notif = G1Notification(ncsNotification: notification);
     List<Uint8List> notificationChunks = await notif.constructNotification();
 
+    // Left arm only, as the protocol specifies for 0x4B.
     for (Uint8List chunk in notificationChunks) {
-      await sendCommandToGlasses(chunk);
+      await sendToLeft(chunk);
       await Future.delayed(
         Duration(milliseconds: 50),
       ); // Small delay between chunks
@@ -1123,9 +1132,10 @@ class BluetoothManager {
   Future<void> sendSetup() async {
     if (!isConnected) return;
     try {
+      // 0x04 is a left-arm command too.
       final setup = await (await G1Setup.generateSetup()).constructSetup();
       for (final command in setup) {
-        await sendCommandToGlasses(command);
+        await sendToLeft(command);
       }
     } catch (e) {
       debugPrint('BluetoothManager: could not send the allowlist: $e');
