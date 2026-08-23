@@ -31,13 +31,30 @@ class GlassesWidgetProvider : HomeWidgetProvider() {
         val speedOn = widgetData.getBoolean("speed_on", false)
         val stamp = widgetData.getString("stamp", null)
 
+        // The appearance choices, written by WidgetPanel on the Dart side.
+        // Defaults here must match WidgetOptions' defaults there, or a fresh
+        // install's widget contradicts its own settings screen.
+        val showCase = widgetData.getBoolean("opt_case", true)
+        val alwaysBoth = widgetData.getBoolean("opt_both", false)
+        val buttonRole = widgetData.getString("opt_button", "adaptive")
+
         for (widgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_glasses)
 
-            views.setTextViewText(R.id.widget_main, mainLine(connected, left, right))
-            views.setTextViewText(R.id.widget_sub, subLine(connected, casePct, stamp))
+            views.setTextViewText(
+                R.id.widget_main, mainLine(connected, left, right, alwaysBoth))
+            views.setTextViewText(
+                R.id.widget_sub,
+                subLine(connected, if (showCase) casePct else -1, stamp))
 
-            if (connected) {
+            if (buttonRole == "none") {
+                views.setViewVisibility(R.id.widget_action, android.view.View.GONE)
+            } else if (connected && buttonRole == "reconnect") {
+                // Reconnect-only: while connected there is nothing for the
+                // button to say.
+                views.setViewVisibility(R.id.widget_action, android.view.View.GONE)
+            } else if (connected) {
+                views.setViewVisibility(R.id.widget_action, android.view.View.VISIBLE)
                 // The action follows the state it will change, so "SPEED ON"
                 // means the speedometer is on, and tapping turns it off.
                 views.setTextViewText(R.id.widget_action, if (speedOn) "SPEED ON" else "SPEED OFF")
@@ -54,6 +71,7 @@ class GlassesWidgetProvider : HomeWidgetProvider() {
                     HomeWidgetBackgroundIntent.getBroadcast(context, Uri.parse("g1x://speed")),
                 )
             } else {
+                views.setViewVisibility(R.id.widget_action, android.view.View.VISIBLE)
                 views.setTextViewText(R.id.widget_action, "RECONNECT")
                 views.setInt(R.id.widget_action, "setBackgroundResource", R.drawable.widget_action_off)
                 views.setTextColor(R.id.widget_action, 0xFFF5F5F7.toInt())
@@ -72,16 +90,20 @@ class GlassesWidgetProvider : HomeWidgetProvider() {
         }
     }
 
-    private fun mainLine(connected: Boolean, left: Int, right: Int): String {
+    private fun mainLine(
+        connected: Boolean, left: Int, right: Int, alwaysBoth: Boolean,
+    ): String {
         if (!connected) return "Disconnected"
 
         // The same rule as the in-app gauge (battery_gauge.dart,
         // splitThreshold): one number when the sides agree, both when the gap
         // is worth knowing about — and when only one is shown, it is always
         // the emptier side, because that is the one that ends the day.
+        // alwaysBoth is the user overriding that rule for good.
         val gapWorthShowing = 10
         return when {
-            left >= 0 && right >= 0 && Math.abs(left - right) >= gapWorthShowing ->
+            left >= 0 && right >= 0 &&
+                (alwaysBoth || Math.abs(left - right) >= gapWorthShowing) ->
                 "L $left · R $right"
             left >= 0 && right >= 0 -> "${minOf(left, right)}%"
             left >= 0 -> "$left%"

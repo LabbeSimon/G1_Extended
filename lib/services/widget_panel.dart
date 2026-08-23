@@ -15,10 +15,79 @@ import 'package:g1_extended/services/speedometer_service.dart';
 /// Both isolates — the interface and the background service — push through
 /// here; whichever one owns the Bluetooth link at the time is the one whose
 /// numbers land.
+/// What the widget's one button does.
+enum WidgetButtonRole {
+  /// Speed toggle when connected, reconnect when not — the default.
+  adaptive('adaptive'),
+
+  /// Only ever offers reconnect, and only when disconnected.
+  reconnectOnly('reconnect'),
+
+  /// No button at all; the whole tile just opens the app.
+  none('none');
+
+  const WidgetButtonRole(this.wire);
+
+  /// The value written for the Kotlin provider to read. A rename here must
+  /// be made in GlassesWidgetProvider.kt as well — the two sides share only
+  /// these strings.
+  final String wire;
+
+  static WidgetButtonRole fromWire(String? value) => values.firstWhere(
+        (role) => role.wire == value,
+        orElse: () => adaptive,
+      );
+}
+
+/// The widget's appearance choices.
+class WidgetOptions {
+  const WidgetOptions({
+    this.showCase = true,
+    this.alwaysBothSides = false,
+    this.button = WidgetButtonRole.adaptive,
+  });
+
+  /// Whether the case battery appears when known.
+  final bool showCase;
+
+  /// Show L and R always, instead of only when they drift apart.
+  final bool alwaysBothSides;
+
+  final WidgetButtonRole button;
+}
+
 class WidgetPanel {
   const WidgetPanel._();
 
   static const String _provider = 'GlassesWidgetProvider';
+
+  // The option keys the Kotlin provider reads. Its defaults must match the
+  // ones in WidgetOptions, or a fresh install's widget would contradict the
+  // settings screen until the first save.
+  static const String _optCaseKey = 'opt_case';
+  static const String _optBothKey = 'opt_both';
+  static const String _optButtonKey = 'opt_button';
+
+  /// Reads the stored choices, defaults where nothing was ever saved.
+  static Future<WidgetOptions> readOptions() async {
+    return WidgetOptions(
+      showCase: await HomeWidget.getWidgetData<bool>(_optCaseKey) ?? true,
+      alwaysBothSides:
+          await HomeWidget.getWidgetData<bool>(_optBothKey) ?? false,
+      button: WidgetButtonRole.fromWire(
+        await HomeWidget.getWidgetData<String>(_optButtonKey),
+      ),
+    );
+  }
+
+  /// Stores the choices and redraws the widget with them at once.
+  static Future<void> saveOptions(WidgetOptions options) async {
+    await HomeWidget.saveWidgetData<bool>(_optCaseKey, options.showCase);
+    await HomeWidget.saveWidgetData<bool>(_optBothKey, options.alwaysBothSides);
+    await HomeWidget.saveWidgetData<String>(
+        _optButtonKey, options.button.wire);
+    await HomeWidget.updateWidget(androidName: _provider);
+  }
 
   static Timer? _pending;
   static String? _lastWritten;
