@@ -15,6 +15,7 @@ import 'package:g1_extended/models/dashboard/stop.dart';
 import 'package:g1_extended/screens/home_screen.dart';
 import 'package:g1_extended/services/bluetooth_background_service.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/crash_reporter.dart';
 import 'package:g1_extended/services/notes_library.dart';
 import 'package:g1_extended/services/speedometer_service.dart';
 import 'package:g1_extended/services/stops_manager.dart';
@@ -31,6 +32,13 @@ const String APP_NAME = 'G1 Extended';
 void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // First, before anything that could fail. Installing the handlers after
+    // the work has started means the failures worth catching most — the ones
+    // during start-up — are the ones that go unrecorded.
+    await CrashReporter.singleton.install();
+    await CrashReporter.singleton.begin();
+
     registerThirdPartyLicences();
 
     await _step('notifications', () async {

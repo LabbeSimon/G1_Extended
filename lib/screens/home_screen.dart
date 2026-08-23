@@ -22,6 +22,8 @@ import 'package:g1_extended/services/onboarding_service.dart';
 import 'package:g1_extended/services/open_meteo_weather_service.dart';
 import 'package:g1_extended/theme/app_theme.dart';
 import 'package:g1_extended/widgets/battery_gauge.dart';
+import 'package:g1_extended/widgets/crash_dialog.dart';
+import 'package:g1_extended/services/crash_reporter.dart';
 import 'package:g1_extended/widgets/bento.dart';
 import 'package:g1_extended/widgets/pixel_art.dart';
 import 'package:g1_extended/widgets/permission_banner.dart';
@@ -58,7 +60,20 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Leaving on purpose is what distinguishes a normal exit from a process
+    // that was killed. Without this every backgrounding would look like a
+    // crash on the next launch.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(CrashReporter.singleton.markCleanExit());
+      return;
+    }
+
     if (state != AppLifecycleState.resumed) return;
+
+    // Back in the foreground: this session is running again, so the marker
+    // has to go back or a later kill would go unnoticed.
+    unawaited(CrashReporter.singleton.markSessionRunning());
 
     // Whatever the user just did in system settings, this is the moment to
     // act on it: notification access may now be granted, and the banner may
@@ -109,7 +124,20 @@ class _HomeScreenState extends State<HomeScreen>
     // Nothing used to bring the permission screen up. The glasses would pair
     // and then sit there receiving nothing, which looks like a broken app
     // rather than an unpermitted one.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _offerPermissions());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _offerCrashReport();
+      await _offerPermissions();
+    });
+  }
+
+  /// Shows the previous session's crash, if there was one.
+  ///
+  /// Before the permission prompt: a crash is the more urgent thing to say,
+  /// and stacking two dialogs makes both easy to dismiss without reading.
+  Future<void> _offerCrashReport() async {
+    final report = CrashReporter.singleton.pending;
+    if (report == null || !mounted) return;
+    await showCrashReport(context, report);
   }
 
   Future<void> _offerPermissions() async {
