@@ -38,8 +38,11 @@ class NoteSlots {
   /// [userNotes] is keyed by the slot the wearer chose; empty entries are
   /// ignored and release their slot. [generated] fills what remains, in
   /// order, and is truncated rather than allowed to displace anything.
-  /// [hint] takes a slot only if one is still free afterwards — it is a
-  /// nicety, and losing a real note to it would not be.
+  ///
+  /// [hint] is the line telling a newcomer how to dictate a note. It is
+  /// shown only when the wearer has no notes of their own — once there is
+  /// one, the instruction has been followed and it is just a slot spent
+  /// telling someone something they know.
   ///
   /// Returns every slot from 1 to [count]. A null value means the slot
   /// should be cleared.
@@ -75,7 +78,8 @@ class NoteSlots {
       result[free[next++]] = item;
     }
 
-    if (hint != null && !hint.isEmpty && next < free.length) {
+    final hasOwnNotes = result.values.any((c) => c?.fromUser ?? false);
+    if (hint != null && !hint.isEmpty && !hasOwnNotes && next < free.length) {
       result[free[next]] = hint;
     }
 

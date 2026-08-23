@@ -92,6 +92,22 @@ void main() {
       );
       expect(plan.values.map((c) => c?.text), isNot(contains('hint')));
     });
+
+    test('it disappears as soon as there is one note of your own', () {
+      // It explains how to dictate a note. Once one exists the instruction
+      // has been followed, and repeating it costs a slot.
+      final plan = NoteSlots.plan(
+        userNotes: {1: user('door code')},
+        hint: gen('hint'),
+      );
+      expect(plan.values.map((c) => c?.text), isNot(contains('hint')));
+      expect(plan[1]!.text, 'door code');
+    });
+
+    test('but it stays for someone who has none yet', () {
+      final plan = NoteSlots.plan(generated: [gen('a')], hint: gen('hint'));
+      expect(plan.values.map((c) => c?.text), contains('hint'));
+    });
   });
 
   group('Empty means clear', () {
