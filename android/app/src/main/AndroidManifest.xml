@@ -83,7 +83,7 @@
             android:name="fr.simonlabbe.g1extended.BackgroundService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
+            android:foregroundServiceType="connectedDevice|location" />
 
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
