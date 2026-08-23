@@ -256,12 +256,10 @@ class GlassesSettingsService {
   /// Settings that live on one radio are read from and written to the right
   /// arm, per the protocol notes.
   Future<void> _sendRight(List<int> command) async {
-    final right = _bluetooth.rightGlass;
-    if (right == null) {
-      debugPrint('GlassesSettingsService: right arm not connected');
-      return;
-    }
-    await right.sendData(command);
+    // Through the manager, which relays to the owning isolate when this
+    // one holds no link — reaching for the glass object directly is how
+    // settings changes used to vanish without a word.
+    await _bluetooth.sendToRight(command);
   }
 
   Future<void> _sendBoth(List<int> command) async {

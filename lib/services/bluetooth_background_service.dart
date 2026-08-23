@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:g1_extended/main.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/glasses_relay.dart';
 import 'package:g1_extended/services/isolate_report.dart';
 import 'package:g1_extended/services/speedometer_service.dart';
 import 'package:g1_extended/services/bluetooth_reciever.dart';
@@ -285,6 +286,36 @@ class BluetoothBackgroundService {
 
     // Lets the interface ask this isolate what it actually holds.
     IsolateReport.serveFrom(service);
+
+    // Bytes from the interface isolate, which drives screens but holds no
+    // link. Without this, a settings change made while only the service
+    // was connected did nothing at all.
+    service.on(GlassesRelay.event).listen((payload) async {
+      final raw = payload?['bytes'];
+      if (raw is! List) return;
+      final bytes = [for (final b in raw) if (b is int) b];
+      if (bytes.isEmpty) return;
+
+      final manager = _bluetoothManager;
+      if (manager == null) return;
+
+      final side = payload?['side'] as String? ?? 'both';
+      if (side == 'right') {
+        await manager.sendToRight(bytes);
+      } else {
+        await manager.sendCommandToGlasses(bytes);
+      }
+    });
+
+    // The nudge after the interface has paired and handed the link over,
+    // or wants a retry brought forward.
+    service.on('reconnectNow').listen((_) async {
+      final manager = _bluetoothManager;
+      if (manager == null) return;
+      if (manager.isConnected) return;
+      manager.hurryReconnect();
+      await manager.attemptReconnectFromStorage();
+    });
 
     // Commands arriving from the home screen widget.
     //

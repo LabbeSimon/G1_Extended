@@ -14,6 +14,7 @@ import 'package:g1_extended/models/g1/case_battery.dart';
 import 'package:g1_extended/services/dashboard_controller.dart';
 import 'package:g1_extended/models/g1/note.dart';
 import 'package:g1_extended/models/g1/note_slots.dart';
+import 'package:g1_extended/services/glasses_relay.dart';
 import 'package:g1_extended/services/notes_library.dart';
 import 'package:g1_extended/services/notification_apps.dart';
 import 'package:g1_extended/services/widget_panel.dart';
@@ -777,6 +778,14 @@ class BluetoothManager {
   ///
   /// Returns true only when both sides took it.
   Future<bool> sendCommandToGlasses(List<int> command) async {
+    // No link in this isolate: hand the bytes to the isolate that has one
+    // instead of returning a silent false. True is honest here — delivery
+    // is now the owner's business, and it retries and logs.
+    if (!_ownsGlasses && leftGlass == null && rightGlass == null) {
+      GlassesRelay.send(command);
+      return true;
+    }
+
     final left = await _writeTo(leftGlass, command);
     final right = await _writeTo(rightGlass, command);
 
@@ -1147,6 +1156,16 @@ class BluetoothManager {
     } catch (e) {
       debugPrint('BluetoothManager: could not send the allowlist: $e');
     }
+  }
+
+  /// Sends to the right temple only — settings commands go there.
+  /// Relays like [sendCommandToGlasses] when this isolate holds no link.
+  Future<bool> sendToRight(List<int> command) async {
+    if (!_ownsGlasses && rightGlass == null) {
+      GlassesRelay.send(command, side: 'right');
+      return true;
+    }
+    return _writeTo(rightGlass, command);
   }
 
   /// Public so that editing or pinning a note reaches the glasses at once
