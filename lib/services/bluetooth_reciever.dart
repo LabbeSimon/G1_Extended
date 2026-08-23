@@ -99,6 +99,7 @@ class BluetoothReciever {
         await DictationService.singleton.record(
           _lastWords,
           source: DictationSource.phone,
+          saveAsNote: _captureSide == GlassSide.right,
         );
       } else {
         debugPrint('Final transcription is empty.');
@@ -231,11 +232,32 @@ class BluetoothReciever {
   /// True while a touchpad-initiated capture is running.
   bool _isCapturing = false;
 
+  /// Which temple started the running capture.
+  ///
+  /// The two mean different things: the left talks to the glasses —
+  /// commands, the assistant, plain display — while the right dictates a
+  /// note. The phone-microphone path reports its result through a callback
+  /// that has no idea which temple asked, so the side is kept here from
+  /// begin to finish.
+  GlassSide? _captureSide;
+
   /// Puts a recent notification back on the lens.
   ///
   /// Repeated taps walk further back, which is why the history keeps a
   /// cursor rather than only the newest.
+  /// Whether we answer the left tap ourselves. Off by default: the glasses
+  /// already do something with it.
+  Future<bool> _recallOnLeftTap() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('recall_on_left_tap') ?? false;
+  }
+
   Future<void> _recallNotification() async {
+    // The tap is handled in whichever isolate holds the glasses; the
+    // notifications were recorded in whichever isolate the stream reached.
+    // The file bridges the two — without this line, "Nothing recent" on a
+    // phone that buzzed all morning.
+    await NotificationHistory.singleton.ensureLoaded();
     final recalled = NotificationHistory.singleton.recallNext();
     final bt = BluetoothManager();
 
@@ -255,6 +277,7 @@ class BluetoothReciever {
       return;
     }
     _isCapturing = true;
+    _captureSide = side;
 
     final bt = BluetoothManager();
 
@@ -319,7 +342,10 @@ class BluetoothReciever {
       debugPrint(
         '[$side] Transcribed ${pcm.length} bytes in ${elapsed.inMilliseconds}ms: "$transcript"',
       );
-      await DictationService.singleton.record(transcript);
+      await DictationService.singleton.record(
+        transcript,
+        saveAsNote: side == GlassSide.right,
+      );
     } on SpeechModelMissingException {
       debugPrint('[$side] Offline speech model missing');
       await bt.sendPriorityText(
@@ -371,10 +397,22 @@ class BluetoothReciever {
 
         if (_isCapturing) {
           await _finishDictation(side);
-        } else {
-          // A release with no hold before it is a tap, a gesture nothing else
-          // uses. It brings back what just went past.
+          break;
+        }
+
+        // A tap on the left temple is the firmware's own gesture, and it
+        // already means something there: on the dashboard it opens the
+        // notification list, inside it it moves to the next one. Answering
+        // it ourselves put two handlers on one gesture and the firmware won
+        // — what the wearer saw was Even AI opening instead of a recall.
+        //
+        // So we stand aside by default. The recall still exists and is
+        // still useful when the firmware's own list is not what you want;
+        // it is behind a setting rather than fighting for the gesture.
+        if (await _recallOnLeftTap()) {
           await _recallNotification();
+        } else {
+          debugPrint('[$side] Left tap left to the firmware');
         }
         break;
 

@@ -6,6 +6,9 @@ import 'package:g1_extended/models/g1/translate.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/utils/bitmap.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'package:g1_extended/services/navigation_capture.dart';
 
 
 class DebugPage extends StatefulWidget {
@@ -26,6 +29,25 @@ class _DebugPageSate extends State<DebugPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _copyNavigationCapture() async {
+    final capture = NavigationCapture.singleton;
+    // The recording happens in whichever isolate receives notifications —
+    // not this one. The file is the bridge.
+    await capture.ensureLoaded();
+    if (capture.isEmpty) {
+      _toast('Nothing captured yet. Start navigating first, then come back.');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: capture.export()));
+    _toast('${capture.length} notifications copied as JSON.');
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _sendText() async {
@@ -223,6 +245,15 @@ class _DebugPageSate extends State<DebugPage> {
           ElevatedButton(
             onPressed: _debugTranslateCommand,
             child: const Text("Debug Translate"),
+          ),
+          const SizedBox(height: 20),
+          // The instrument for "it does not detect the Maps instructions":
+          // drive a junction or two with navigation running, come back here,
+          // copy, and paste it into a bug report. The capture holds the raw
+          // notification fields and nothing else.
+          ElevatedButton(
+            onPressed: _copyNavigationCapture,
+            child: const Text("Copy navigation capture"),
           ),
 
         ],

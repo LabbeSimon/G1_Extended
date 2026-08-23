@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Exposes only the cache directory, where downloaded updates land. The
+     installer needs a content URI; a file:// path has been refused since
+     Android 7. -->
+<paths>
+    <cache-path name="updates" path="." />
+</paths>

@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'package:g1_extended/main.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/speedometer_service.dart';
 import 'package:g1_extended/services/bluetooth_reciever.dart';
 import 'package:g1_extended/utils/battery_optimization_helper.dart';
 import 'package:flutter/foundation.dart';
@@ -7,7 +9,18 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class BluetoothBackgroundService {
-  static const String _channelId = 'bluetooth_background_service';
+  // A new id on purpose.
+  //
+  // Android ignores changes to an existing channel's importance — the user
+  // owns it once it has been created. The old channel was IMPORTANCE_MAX,
+  // so every existing install would have kept a service notification that
+  // behaves like an urgent alert no matter what this code says. Creating a
+  // different channel and deleting the old one is the only way to change it.
+  static const String _channelId = 'glasses_connection';
+  static const String _retiredChannelId = 'bluetooth_background_service';
+
+  /// The last line posted, so an unchanged status is not re-posted.
+  static String? _lastNotificationStatus;
   static const int _notificationId = 999;
 
   static Timer? _heartbeatTimer;
@@ -25,16 +38,29 @@ class BluetoothBackgroundService {
       try {
         final flutterLocalNotificationsPlugin =
             FlutterLocalNotificationsPlugin();
+        // Low, not max.
+        //
+        // The previous value was chosen "for better background processing",
+        // which it does not affect: what keeps the process alive is the
+        // foreground service type, not the channel's importance. All the
+        // importance decided was how loudly a permanent, unremarkable status
+        // line announced itself — at max it sat at the top of the shade and
+        // reappeared there every time it was refreshed.
         const AndroidNotificationChannel channel = AndroidNotificationChannel(
           _channelId,
-          'G1 Extended',
-          description: 'Maintains connection to your glasses in the background',
-          importance: Importance
-              .max, // Changed from high to max for better background processing
+          'Glasses connection',
+          description: 'The ongoing notification Android requires while the '
+              'app keeps your glasses connected.',
+          importance: Importance.low,
           playSound: false,
           enableVibration: false,
           showBadge: false,
         );
+
+        await flutterLocalNotificationsPlugin
+            .resolvePlatformSpecificImplementation<
+                    AndroidFlutterLocalNotificationsPlugin>()
+            ?.deleteNotificationChannel(_retiredChannelId);
 
         await flutterLocalNotificationsPlugin
             .resolvePlatformSpecificImplementation<
@@ -114,10 +140,11 @@ class BluetoothBackgroundService {
             'G1 Extended',
             icon: 'app_logo',
             ongoing: true,
-            importance: Importance.max,
-            priority: Priority.max,
+            importance: Importance.low,
+            priority: Priority.low,
             category: AndroidNotificationCategory.service,
-            showWhen: true,
+            onlyAlertOnce: true,
+            showWhen: false,
             usesChronometer: false,
             playSound: false,
             enableVibration: false,
@@ -216,6 +243,18 @@ class BluetoothBackgroundService {
 
     _isRunning = true;
 
+    // Storage first, and in this isolate specifically.
+    //
+    // Hive is per-isolate: this one had none, so every read and write it
+    // attempted failed silently behind a catch — the notification blocklist
+    // came back empty here, and a note dictated from the temple, which this
+    // isolate is the one to receive, had nowhere to go.
+    try {
+      await initHiveForThisIsolate();
+    } catch (e) {
+      debugPrint('BluetoothBackgroundService: storage unavailable: $e');
+    }
+
     // Initialize Bluetooth Manager and Receiver with error handling
     try {
       _bluetoothManager = BluetoothManager.singleton;
@@ -242,6 +281,28 @@ class BluetoothBackgroundService {
 
     // Start connection monitoring timer - check every 60 seconds
     _startConnectionMonitorTimer();
+
+    // Commands arriving from the home screen widget.
+    //
+    // The tap itself ran on a throwaway isolate that could do no more than
+    // write a preference and pass word here. This isolate holds the actual
+    // BluetoothManager, so this is where the request becomes an action —
+    // and it is re-broadcast afterwards so the interface isolate, if alive,
+    // follows the same change instead of discovering it at its next resume.
+    service.on('widgetCommand').listen((event) async {
+      final action = event?['action'];
+      debugPrint('BluetoothBackgroundService: widget asked for $action');
+
+      switch (action) {
+        case 'speed':
+          await SpeedometerService.singleton.syncWithPreference();
+        case 'reconnect':
+          _bluetoothManager?.hurryReconnect();
+          await _bluetoothManager?.attemptReconnectFromStorage();
+      }
+
+      service.invoke('widgetCommandApplied', {'action': action});
+    });
 
     // Listen for service stop
     service.on('stop').listen((event) {
@@ -289,14 +350,15 @@ class BluetoothBackgroundService {
       try {
         await _sendHeartbeat();
       } catch (e) {
+        // Deliberately not reconnecting from here.
+        //
+        // A failing heartbeat means the link is already down, and the link
+        // going down is what Glass listens for — its own reconnect loop is
+        // running by the time this fires. Starting another from here meant
+        // that while the glasses were away, this fired every fifteen seconds
+        // and each failure kicked off a third attempt alongside the loop and
+        // the monitor below.
         debugPrint('BluetoothBackgroundService: Heartbeat failed: $e');
-        // Heartbeat failure likely means disconnection — attempt reconnect immediately
-        try {
-          await _attemptReconnect();
-        } catch (reconnectError) {
-          debugPrint(
-              'BluetoothBackgroundService: Immediate reconnect after heartbeat failure also failed: $reconnectError');
-        }
       }
     });
   }
@@ -335,26 +397,36 @@ class BluetoothBackgroundService {
     }
   }
 
+  /// A safety net, not the mechanism.
+  ///
+  /// Reconnection belongs to Glass, which is told the moment the link drops.
+  /// This exists only for the case that leaves no event behind — the whole
+  /// stack having been torn down under us — so it runs slowly and stands
+  /// aside whenever a reconnect is already in progress.
+  ///
+  /// It used to run every fifteen seconds and reconnect unconditionally, so
+  /// with the glasses away it competed with the reconnect loop and with the
+  /// heartbeat's own retry: three attempts on the radio, roughly six hundred
+  /// wake-ups an hour between them, none aware of the others.
+  static const Duration _monitorInterval = Duration(minutes: 2);
+
   static void _startConnectionMonitorTimer() {
     _connectionMonitorTimer?.cancel();
 
-    // Monitor connection every 15 seconds and attempt reconnection if needed
-    _connectionMonitorTimer =
-        Timer.periodic(const Duration(seconds: 15), (timer) async {
+    _connectionMonitorTimer = Timer.periodic(_monitorInterval, (timer) async {
       if (!_isRunning || _bluetoothManager == null) {
         timer.cancel();
         return;
       }
 
       try {
-        final isConnected = _bluetoothManager!.isConnected;
-        if (!isConnected) {
-          debugPrint(
-              'BluetoothBackgroundService: Connection lost, attempting reconnect...');
-          await _attemptReconnect();
-        } else {
-          debugPrint('BluetoothBackgroundService: Connection status OK');
-        }
+        final manager = _bluetoothManager!;
+        if (manager.isConnected || manager.isReconnecting) return;
+
+        debugPrint(
+            'BluetoothBackgroundService: down with no reconnect running, '
+            'starting one');
+        await _attemptReconnect();
       } catch (e) {
         debugPrint('BluetoothBackgroundService: Connection monitor error: $e');
       }
@@ -381,6 +453,14 @@ class BluetoothBackgroundService {
             status = 'Disconnected - trying to reconnect...';
           }
 
+          // Nothing to say, nothing to post.
+          //
+          // This ran every sixty seconds regardless, so the same unchanged
+          // line was rewritten a thousand times a day, each rewrite moving it
+          // back to the top of the shade.
+          if (status == _lastNotificationStatus) return;
+          _lastNotificationStatus = status;
+
           final flutterLocalNotificationsPlugin =
               FlutterLocalNotificationsPlugin();
           await flutterLocalNotificationsPlugin.show(
@@ -393,12 +473,14 @@ class BluetoothBackgroundService {
                 'G1 Extended',
                 icon: 'app_logo',
                 ongoing: true,
-                importance: Importance
-                    .max, // Changed from high to max for better persistence
-                priority: Priority
-                    .max, // Changed from high to max for better persistence
+                importance: Importance.low,
+                priority: Priority.low,
                 category: AndroidNotificationCategory.service,
-                showWhen: true,
+                onlyAlertOnce: true,
+                // No timestamp. It is re-posted whenever the status changes,
+                // and a visible time turning back to "now" is what made a
+                // permanent notification look like a new one each time.
+                showWhen: false,
                 usesChronometer: false,
                 playSound: false,
                 enableVibration: false,

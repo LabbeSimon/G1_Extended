@@ -258,6 +258,32 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
           ),
           const Divider(),
 
+          _header('Temple gestures'),
+          FutureBuilder<SharedPreferences>(
+            future: SharedPreferences.getInstance(),
+            builder: (context, snapshot) {
+              final prefs = snapshot.data;
+              final on = prefs?.getBool('recall_on_left_tap') ?? false;
+              return SwitchListTile(
+                value: on,
+                title: const Text('Left tap recalls a notification'),
+                subtitle: const Text(
+                  'Off by default, because the glasses already use this '
+                  'gesture: on the dashboard it opens their own notification '
+                  'list. Turning it on puts two handlers on one tap, and the '
+                  'firmware usually wins — you get Even AI instead.',
+                ),
+                onChanged: prefs == null
+                    ? null
+                    : (value) async {
+                        await prefs.setBool('recall_on_left_tap', value);
+                        if (context.mounted) setState(() {});
+                      },
+              );
+            },
+          ),
+          const Divider(),
+
           _header('Wake word'),
           SwitchListTile(
             value: _wakeWordEnabled,
@@ -268,11 +294,12 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
                   }
                 : null,
             title: const Text('Listen for a wake word'),
-            subtitle: Text(
-              _modelInstalled
-                  ? 'Say "$_wakeWordValue" to start dictating.'
-                  : 'Download the offline model first.',
-            ),
+            // The subtitle reports what the recognizer was genuinely built
+            // with, not what the preferences wish. The failure mode this
+            // guards against had no symptom: a word the armed grammar did
+            // not contain was simply never produced, with nothing anywhere
+            // saying so.
+            subtitle: Text(_wakeWordSubtitle()),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
@@ -313,6 +340,16 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
         ],
       ),
     );
+  }
+
+  String _wakeWordSubtitle() {
+    if (!_modelInstalled) return 'Download the offline model first.';
+    final armed = _wakeWord.armedDescription;
+    if (_wakeWordEnabled && armed != null) return 'Listening for $armed.';
+    if (_wakeWordEnabled) {
+      return 'Enabled but not listening — check the microphone permission.';
+    }
+    return 'Say "$_wakeWordValue" to start dictating.';
   }
 
   Widget _header(String text) => Padding(

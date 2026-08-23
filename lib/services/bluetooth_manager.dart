@@ -13,6 +13,10 @@ import 'package:g1_extended/models/g1/battery.dart';
 import 'package:g1_extended/models/g1/case_battery.dart';
 import 'package:g1_extended/services/dashboard_controller.dart';
 import 'package:g1_extended/models/g1/note.dart';
+import 'package:g1_extended/models/g1/note_slots.dart';
+import 'package:g1_extended/services/notes_library.dart';
+import 'package:g1_extended/services/widget_panel.dart';
+import 'package:g1_extended/services/world_clocks.dart';
 import 'package:g1_extended/models/g1/notification.dart';
 import 'package:g1_extended/models/g1/text.dart';
 import 'package:g1_extended/services/navigation_service.dart';
@@ -58,6 +62,13 @@ class BluetoothManager {
     // whenever the app comes back to the foreground.
     notificationListener!.startListening();
 
+    // Editing or pinning a note reaches the glasses immediately. Waiting for
+    // the next sync meant up to a minute of the lens showing the old text,
+    // which reads as the change not having been saved.
+    _libraryChanges = NotesLibrary.singleton.changes.listen((_) {
+      unawaited(writeNoteSlots());
+    });
+
     // The displayTranscription channel was served by the iOS Swift layer only.
     // On Android nothing emits it, so the handler is gone; dictation reaches
     // the glasses through DictationService instead.
@@ -76,6 +87,24 @@ class BluetoothManager {
 
   bool get isReceivingNotifications =>
       notificationListener?.isListening ?? false;
+
+  /// True while either side is already working through a reconnect loop.
+  ///
+  /// Lets anything else that notices a dropped link stand aside instead of
+  /// starting a competing one.
+  bool get isReconnecting =>
+      (leftGlass?.isReconnecting ?? false) ||
+      (rightGlass?.isReconnecting ?? false);
+
+  /// Brings any pending reconnect attempt forward.
+  ///
+  /// After a long absence the loop settles into checking every few minutes,
+  /// which is right for a pair left in a drawer and wrong the instant the
+  /// user picks them up. Coming back to the foreground is the cue.
+  void hurryReconnect() {
+    leftGlass?.hurryReconnect();
+    rightGlass?.hurryReconnect();
+  }
 
   GlassesDashboard glassesDashboard = GlassesDashboard();
   DashboardController dashboardController = DashboardController();
@@ -101,6 +130,8 @@ class BluetoothManager {
   Glass? rightGlass;
 
   AndroidNotificationsListener? notificationListener;
+
+  StreamSubscription<void>? _libraryChanges;
 
   // Battery status management
   G1BatteryStatus _batteryStatus = G1BatteryStatus(lastUpdated: DateTime.now());
@@ -150,6 +181,7 @@ class BluetoothManager {
     _caseBattery = reading;
     if (!_caseBatteryController.isClosed) {
       _caseBatteryController.add(reading);
+      WidgetPanel.schedule();
     }
   }
 
@@ -170,6 +202,7 @@ class BluetoothManager {
 
     _lastConnectionStatus = connected;
     _connectionStatusController.add(connected);
+    WidgetPanel.schedule();
 
     if (!connected) {
       _stopBatteryMonitoring();
@@ -177,10 +210,9 @@ class BluetoothManager {
       // background service running so it can attempt reconnection.
       _updateBackgroundServiceNotification();
     } else {
-      // Start battery monitoring if not already running
-      if (_batteryUpdateTimer == null) {
-        _setupBatteryMonitoring();
-      }
+      // Unconditionally: it is idempotent, and the condition that used to
+      // guard it was the bug.
+      _setupBatteryMonitoring();
       // Always start the background service notification when glasses connect
       _startBackgroundService();
 
@@ -311,6 +343,8 @@ class BluetoothManager {
 
   /// Clean up all resources and connections
   Future<void> dispose() async {
+    await _libraryChanges?.cancel();
+    _libraryChanges = null;
     _batteryTimer?.cancel();
     _batteryTimer = null;
     // Stop battery monitoring
@@ -702,15 +736,62 @@ class BluetoothManager {
     });
   }
 
-  Future<void> sendCommandToGlasses(List<int> command) async {
-    if (leftGlass != null) {
-      await leftGlass!.sendData(command);
-      await Future.delayed(Duration(milliseconds: 100));
+  /// True when a write reached one temple and not the other.
+  ///
+  /// The lenses are then showing different things, and no amount of waiting
+  /// fixes it: nothing rewrites a display that already looks correct from
+  /// the app's point of view.
+  bool _displayOutOfStep = false;
+
+  bool get displayOutOfStep => _displayOutOfStep;
+
+  static const int _writeAttempts = 3;
+
+  /// Sends the same bytes to both temples, and cares whether they arrive.
+  ///
+  /// Failures used to be swallowed one level down, so a write landing on the
+  /// left and dropped on the right returned as a success and left the two
+  /// lenses disagreeing until something else happened to write to them.
+  ///
+  /// Returns true only when both sides took it.
+  Future<bool> sendCommandToGlasses(List<int> command) async {
+    final left = await _writeTo(leftGlass, command);
+    final right = await _writeTo(rightGlass, command);
+
+    if (left != right) {
+      // One temple has the new content and the other has the old. Flag it so
+      // the next sync rewrites everything rather than leaving the pair
+      // mismatched for as long as nothing else is displayed.
+      debugPrint('BluetoothManager: write reached '
+          '${left ? "left" : "right"} only — lenses out of step');
+      _displayOutOfStep = true;
+    } else if (left && right) {
+      _displayOutOfStep = false;
     }
-    if (rightGlass != null) {
-      await rightGlass!.sendData(command);
-      await Future.delayed(Duration(milliseconds: 100));
+
+    return left && right;
+  }
+
+  /// Writes to one temple, retrying a few times before giving up.
+  ///
+  /// Most write failures are momentary. Retrying costs a few hundred
+  /// milliseconds and is what keeps the two sides showing the same thing.
+  Future<bool> _writeTo(Glass? glass, List<int> command) async {
+    if (glass == null) return false;
+
+    for (var attempt = 1; attempt <= _writeAttempts; attempt++) {
+      if (await glass.sendData(command)) {
+        // The firmware drops writes that arrive back to back.
+        await Future.delayed(const Duration(milliseconds: 100));
+        return true;
+      }
+      if (attempt < _writeAttempts) {
+        await Future.delayed(Duration(milliseconds: 60 * attempt));
+      }
     }
+
+    debugPrint('BluetoothManager: gave up writing to ${glass.side} temple');
+    return false;
   }
 
   Future<void> sendText(
@@ -888,42 +969,48 @@ class BluetoothManager {
       return;
     }
 
-    if (isConnected) {
-      // Check if the app is in the user's notification whitelist
-      final packageName = notification.packageName ?? '';
-      if (packageName.isEmpty) {
-        debugPrint('Notification has no package name, skipping');
+    final packageName = notification.packageName ?? '';
+    if (packageName.isEmpty) {
+      debugPrint('Notification has no package name, skipping');
+      return;
+    }
+
+    try {
+      // Everything reaches the glasses unless the user excluded the app.
+      final blocklist = Hive.box('notificationBlocklist');
+      if (blocklist.get(packageName, defaultValue: false) == true) {
+        debugPrint('Notifications from $packageName are excluded, skipping');
         return;
       }
-
-      try {
-        // Everything reaches the glasses unless the user excluded the app.
-        final blocklist = Hive.box('notificationBlocklist');
-        if (blocklist.get(packageName, defaultValue: false) == true) {
-          debugPrint('Notifications from $packageName are excluded, skipping');
-          return;
-        }
-      } catch (e) {
-        debugPrint('Could not read the notification blocklist: $e, allowing');
-      }
-
-      final appName = await _getAppDisplayName(
-          packageName.isNotEmpty ? packageName : '');
-      NotificationHistory.singleton.remember(notification, appName);
-
-      NCSNotification ncsNotification = NCSNotification(
-        msgId: (notification.id ?? 1) + DateTime.now().millisecondsSinceEpoch,
-        action: 0,
-        type: 0,
-        appIdentifier: packageName.isNotEmpty ? packageName : 'fr.simonlabbe.g1extended',
-        title: notification.title ?? '',
-        subtitle: '',
-        message: notification.content ?? '',
-        displayName: appName,
-      );
-
-      sendNotification(ncsNotification);
+    } catch (e) {
+      debugPrint('Could not read the notification blocklist: $e, allowing');
     }
+
+    final appName = await _getAppDisplayName(packageName);
+
+    // Into the history whether or not the glasses are reachable. It used to
+    // sit inside the connected branch, which meant the history only recorded
+    // what this isolate happened to forward — the app's history screen could
+    // sit empty while the glasses recalled notifications happily from the
+    // other isolate, and anything arriving while the glasses were in the
+    // case was never recorded anywhere. The history's whole purpose is what
+    // you missed; what you missed is precisely what arrives disconnected.
+    NotificationHistory.singleton.remember(notification, appName);
+
+    if (!isConnected) return;
+
+    NCSNotification ncsNotification = NCSNotification(
+      msgId: (notification.id ?? 1) + DateTime.now().millisecondsSinceEpoch,
+      action: 0,
+      type: 0,
+      appIdentifier: packageName,
+      title: notification.title ?? '',
+      subtitle: '',
+      message: notification.content ?? '',
+      displayName: appName,
+    );
+
+    sendNotification(ncsNotification);
   }
 
   Future<List<int>?> _sendBmpPacket({
@@ -1000,6 +1087,77 @@ class BluetoothManager {
     await _sync();
   }
 
+  /// Fills the glasses' four note slots from a single plan.
+  ///
+  /// This used to write the dashboard's items into slots one upward and then
+  /// delete whatever was left over — every sixty seconds, unconditionally.
+  /// Quick notes, meanwhile, replayed the wearer's own text on every
+  /// reconnection. Each was right on its own and together they destroyed each
+  /// other's work on a one minute cycle, which is why a note written by hand
+  /// disappeared after a while, or on coming back to the app, seemingly at
+  /// random.
+  ///
+  /// There is one writer now, and one rule: what a person typed outranks
+  /// anything generated.
+  /// Public so that editing or pinning a note reaches the glasses at once
+  /// rather than at the next sync, up to a minute later.
+  Future<void> writeNoteSlots() => _writeNoteSlots();
+
+  /// The slot plan as it would be written right now.
+  ///
+  /// Shared between the actual write and the home screen's lens mirror, so
+  /// the preview can never drift from what the glasses are really sent —
+  /// they are the same computation, not two opinions of it.
+  Future<Map<int, SlotContent?>> noteSlotPlan() async {
+    final generated = await glassesDashboard.generateDashboardItems();
+    final library = NotesLibrary.singleton;
+
+    // The extra time zones ride along as one generated note, after the
+    // dashboard's own items: pinned notes always outrank both.
+    final clocks = await WorldClocksService.singleton.slotContent();
+
+    return NoteSlots.plan(
+      userNotes: await library.pinnedSlots(),
+      generated: [
+        for (final note in generated)
+          SlotContent(name: note.name, text: note.text),
+        if (clocks != null) clocks,
+      ],
+      // Replaces the firmware's own "Hold right touchbar to add quicknote"
+      // text, and only if a slot is going spare.
+      hint: const SlotContent(
+        name: 'G1 Extended',
+        text: 'Hold right temple to start\na spoken note, hold again\n'
+            'to save it',
+      ),
+    );
+  }
+
+  Future<void> _writeNoteSlots() async {
+    if (!isConnected) return;
+
+    final plan = await noteSlotPlan();
+
+    for (final entry in plan.entries) {
+      final content = entry.value;
+
+      if (content == null) {
+        await sendCommandToGlasses(
+          Note(noteNumber: entry.key, name: 'Empty', text: '')
+              .buildDeleteCommand(),
+        );
+        continue;
+      }
+
+      await sendNote(Note(
+        noteNumber: entry.key,
+        name: content.name,
+        text: content.text,
+        revision: await NotesLibrary.singleton.nextRevision(),
+      ));
+    }
+  }
+
   Future<void> _sync() async {
     if (!isConnected) {
       return;
@@ -1012,26 +1170,14 @@ class BluetoothManager {
       debugPrint('Error synchronizing time with glasses: $e');
     }
 
-    final notes = await glassesDashboard.generateDashboardItems();
-    for (var note in notes) {
-      await sendNote(note);
-    }
+    await _writeNoteSlots();
 
-    // Fill one remaining note slot so the firmware's default "Hold right
-    // touchbar to add quicknote" text is replaced with our own hint.
-    if (notes.length < 4) {
-      final hintNote = Note(
-        noteNumber: notes.length + 1,
-        name: 'G1 Extended',
-        text: 'Touch right touchbar\nto start/stop conversation\ntranscription',
-      );
-      await sendNote(hintNote);
-
-      // Delete remaining note slots so stale notes don't show
-      for (int i = notes.length + 2; i <= 4; i++) {
-        final emptyNote = Note(noteNumber: i, name: 'Empty', text: '');
-        await sendCommandToGlasses(emptyNote.buildDeleteCommand());
-      }
+    if (_displayOutOfStep) {
+      // Rewriting is the only way back into agreement: the app cannot read
+      // what is on a lens, so it cannot tell which side is stale.
+      debugPrint('BluetoothManager: lenses out of step, rewriting both');
+      _displayOutOfStep = false;
+      await _writeNoteSlots();
     }
 
     final dash = await dashboardController.updateDashboardCommand();
@@ -1051,10 +1197,7 @@ class BluetoothManager {
     bool isDisplayEnabled = await _isGlassesDisplayEnabled();
     await setSilentMode(!isDisplayEnabled);
 
-    // Set up battery monitoring if not already set up
-    if (_batteryUpdateTimer == null && isConnected) {
-      _setupBatteryMonitoring();
-    }
+    if (isConnected) _setupBatteryMonitoring();
   }
 
   Future<void> setMicrophone(bool open) async {
@@ -1179,7 +1322,15 @@ class BluetoothManager {
     }
   }
 
-  /// Set up battery status callbacks and start periodic updates
+  /// Attaches the battery callbacks and makes sure the poll is running.
+  ///
+  /// Safe to call as often as you like, and it is called on every
+  /// connection. It used to be guarded by whether a timer field was null,
+  /// which is what made the battery reading die for good: the timer cancelled
+  /// itself when the glasses were momentarily unreachable without clearing
+  /// the field, so the guard then said monitoring was already running while
+  /// nothing was, and the callbacks stayed detached for the rest of the
+  /// session. The level read once at first pairing and never again.
   void _setupBatteryMonitoring() {
     // Set up battery response callbacks for both glasses
     if (leftGlass != null) {
@@ -1194,15 +1345,11 @@ class BluetoothManager {
       };
     }
 
-    // Start periodic battery updates every 1 minute for more accurate tracking
-    _batteryUpdateTimer?.cancel();
-    _batteryUpdateTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
-      if (isConnected) {
-        requestBatteryInfo();
-      } else {
-        timer.cancel();
-      }
-    });
+    // The periodic poll lives in _batteryTimer, started once at initialise
+    // and never cancelled. There used to be a second timer here that stopped
+    // itself whenever the glasses were briefly unreachable — see
+    // _stopBatteryMonitoring for what that cost.
+    _startBatteryTimer();
 
     // Request initial battery info immediately, then retry a few times to ensure we get it
     _requestBatteryInfoWithRetry();
@@ -1243,19 +1390,21 @@ class BluetoothManager {
 
     // Broadcast the updated status
     _batteryStatusController.add(_batteryStatus);
+    WidgetPanel.schedule();
   }
 
-  /// Stop battery monitoring and clean up resources
+  /// Called when the link drops.
+  ///
+  /// Deliberately does almost nothing. It used to detach both battery
+  /// callbacks, on the reasoning that a disconnected pair has no battery to
+  /// report — but a callback on a disconnected glass simply never fires,
+  /// while a detached one stays detached, and reattaching depended on a guard
+  /// that a self-cancelling timer had already broken.
+  ///
+  /// The poll skips its work when disconnected rather than stopping, so there
+  /// is nothing here to restart and nothing to get wrong.
   void _stopBatteryMonitoring() {
     _batteryUpdateTimer?.cancel();
     _batteryUpdateTimer = null;
-
-    if (leftGlass != null) {
-      leftGlass!.onBatteryResponse = null;
-    }
-
-    if (rightGlass != null) {
-      rightGlass!.onBatteryResponse = null;
-    }
   }
 }

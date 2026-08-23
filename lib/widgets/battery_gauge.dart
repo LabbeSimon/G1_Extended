@@ -85,80 +85,88 @@ class _BatteryPainter extends CustomPainter {
   final bool charging;
   final bool hollow;
 
+  /// The battery drawn on a fixed grid of whole pixels, like every other
+  /// glyph in the app. It used to be rounded rectangles with an anti-aliased
+  /// bolt — the one smooth object on an interface drawn entirely in squares,
+  /// which is exactly the kind of thing that looks like it wandered in from
+  /// another application.
+  ///
+  /// The grid is 20 by 9: a 17-wide body with notched corners, a gap, and a
+  /// 2-wide terminal nub. The fill occupies the 13 by 5 interior.
+  static const int _cols = 20;
+  static const int _rows = 9;
+  static const int _fillCols = 13;
+
+  /// The bolt. While charging it replaces the fill entirely: at thirteen by
+  /// five pixels a level and a bolt drawn together are mush, and the exact
+  /// percentage is written in text right beside the gauge anyway.
+  static const List<String> _bolt = [
+    '......###....',
+    '.....###.....',
+    '...######....',
+    '.....###.....',
+    '....###......',
+  ];
+
   @override
   void paint(Canvas canvas, Size size) {
-    const stroke = 1.4;
-    final capWidth = size.width * 0.07;
-    final bodyWidth = size.width - capWidth - 2;
+    // Whole pixels only. A fractional cell is what turns crisp squares into
+    // a smear, so the scale is floored and the drawing centred in the rest.
+    final cell = (size.height / _rows).floorToDouble().clamp(1.0, 1000.0);
+    final left = ((size.width - cell * _cols) / 2).floorToDouble();
+    final top = ((size.height - cell * _rows) / 2).floorToDouble();
 
-    final body = Rect.fromLTWH(
-      stroke / 2,
-      stroke / 2,
-      bodyWidth,
-      size.height - stroke,
-    );
-    final radius = Radius.circular(size.height * 0.18);
-
-    final outline = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
+    // No anti-aliasing: these are meant to be squares, and blending their
+    // edges is what put hairline seams between adjacent cells.
+    final ink = Paint()
+      ..isAntiAlias = false
       ..color = hollow ? AppColors.inkMuted : AppColors.ink;
 
-    canvas.drawRRect(RRect.fromRectAndRadius(body, radius), outline);
+    final lit = fraction <= 0
+        ? 0
+        : (fraction.clamp(0.0, 1.0) * _fillCols).round().clamp(1, _fillCols);
 
-    // The terminal nub on the right.
-    final cap = Rect.fromLTWH(
-      body.right + 2,
-      size.height * 0.3,
-      capWidth,
-      size.height * 0.4,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(cap, Radius.circular(capWidth / 2)),
-      Paint()..color = hollow ? AppColors.inkMuted : AppColors.ink,
-    );
-
-    if (fraction <= 0) return;
-
-    // Fill inset far enough that it never touches the outline.
-    final inset = body.deflate(stroke + 1.2);
-    if (inset.width <= 0) return;
-
-    final fill = Rect.fromLTWH(
-      inset.left,
-      inset.top,
-      inset.width * fraction.clamp(0.0, 1.0),
-      inset.height,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(fill, Radius.circular(size.height * 0.1)),
-      Paint()..color = hollow ? AppColors.inkMuted : AppColors.ink,
-    );
-
-    if (charging) _paintBolt(canvas, body);
+    // Runs, not cells: one rectangle per horizontal stretch, the same trick
+    // PixelArt uses, so neighbouring cells cannot seam.
+    for (var r = 0; r < _rows; r++) {
+      var c = 0;
+      while (c < _cols) {
+        if (!_cellOn(c, r, lit)) {
+          c++;
+          continue;
+        }
+        var end = c;
+        while (end + 1 < _cols && _cellOn(end + 1, r, lit)) {
+          end++;
+        }
+        canvas.drawRect(
+          Rect.fromLTWH(
+              left + c * cell, top + r * cell, (end - c + 1) * cell, cell),
+          ink,
+        );
+        c = end + 1;
+      }
+    }
   }
 
-  /// A bolt punched out of the fill, so it reads at any level.
-  void _paintBolt(Canvas canvas, Rect body) {
-    final w = body.width;
-    final h = body.height;
-    final path = Path()
-      ..moveTo(body.left + w * 0.52, body.top + h * 0.12)
-      ..lineTo(body.left + w * 0.38, body.top + h * 0.54)
-      ..lineTo(body.left + w * 0.50, body.top + h * 0.54)
-      ..lineTo(body.left + w * 0.44, body.top + h * 0.90)
-      ..lineTo(body.left + w * 0.62, body.top + h * 0.44)
-      ..lineTo(body.left + w * 0.50, body.top + h * 0.44)
-      ..close();
+  bool _cellOn(int c, int r, int lit) {
+    // The terminal nub, floating one cell off the body.
+    if (c >= 18) return r >= 3 && r <= 5;
+    if (c == 17) return false;
 
-    canvas.drawPath(path, Paint()..blendMode = BlendMode.clear);
-    canvas.drawPath(
-      path,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..color = AppColors.ink,
-    );
+    // The body outline, corners notched the pixel-art way.
+    final corner = (c == 0 || c == 16) && (r == 0 || r == 8);
+    if (corner) return false;
+    if (r == 0 || r == 8 || c == 0 || c == 16) return true;
+
+    final interior = c >= 2 && c <= 14 && r >= 2 && r <= 6;
+    if (!interior) return false;
+
+    if (charging) {
+      final bc = c - 2, br = r - 2;
+      return _bolt[br][bc] == '#';
+    }
+    return (c - 2) < lit;
   }
 
   @override
@@ -182,13 +190,17 @@ class GlassesBattery extends StatelessWidget {
     required this.left,
     required this.right,
     this.charging = false,
-    this.gaugeWidth = 26,
+    this.gaugeWidth = defaultGaugeWidth,
   });
 
   final int? left;
   final int? right;
   final bool charging;
   final double gaugeWidth;
+
+  /// Shared with the case readout, so the two batteries in the tile are
+  /// drawn at the same size by the same widget.
+  static const double defaultGaugeWidth = 26;
 
   /// Below this the two sides are treated as one reading.
   static const int splitThreshold = 10;
@@ -206,31 +218,65 @@ class GlassesBattery extends StatelessWidget {
     return left < right ? left : right;
   }
 
+  /// The glasses' own glyph, mirroring the case's.
+  ///
+  /// The case line carried a pictogram and this one did not, so the two
+  /// readings in the same tile were not each other's equals — the case
+  /// looked labelled and the glasses looked like the default. Same glyph
+  /// size, same colour, same side.
+  static Widget _glyph() => const Padding(
+        padding: EdgeInsets.only(left: 8),
+        child: PixelArt(
+          rows: PixelArtwork.glasses,
+          size: 14,
+          color: AppColors.inkMuted,
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     if (!shouldSplit(left, right)) {
-      return BatteryGauge(
-        percentage: lowest(left, right),
-        charging: charging,
-        width: gaugeWidth,
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          BatteryGauge(
+            percentage: lowest(left, right),
+            charging: charging,
+            width: gaugeWidth,
+          ),
+          _glyph(),
+        ],
       );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        BatteryGauge(
-          label: 'L',
-          percentage: left,
-          charging: charging,
-          width: gaugeWidth,
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            BatteryGauge(
+              label: 'L',
+              percentage: left,
+              charging: charging,
+              width: gaugeWidth,
+            ),
+            _glyph(),
+          ],
         ),
         const SizedBox(height: 8),
-        BatteryGauge(
-          label: 'R',
-          percentage: right,
-          charging: charging,
-          width: gaugeWidth,
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            BatteryGauge(
+              label: 'R',
+              percentage: right,
+              charging: charging,
+              width: gaugeWidth,
+            ),
+            _glyph(),
+          ],
         ),
       ],
     );
@@ -253,8 +299,7 @@ class CaseBatteryReadout extends StatelessWidget {
   final int? percentage;
 
   /// True when the value came from a byte believed to be the case level
-  /// rather than the documented state change. Shown differently so a reading
-  /// nobody has confirmed is never mistaken for one that is.
+  /// rather than the documented state change.
   final bool suspected;
 
   @override
@@ -262,22 +307,33 @@ class CaseBatteryReadout extends StatelessWidget {
     final value = percentage;
     if (value == null) return const SizedBox.shrink();
 
+    // A guess is not shown at all. It used to appear with a question mark,
+    // on the reasoning that a marked guess beats no information — but a
+    // number on a screen is read as a number, the mark is not, and being
+    // told 40% when the case holds 90% is worse than being told nothing.
+    // The byte it came from is consistent with the case level and equally
+    // consistent with a duplicate of something else; until a capture
+    // settles that, silence is the honest output.
+    if (suspected) return const SizedBox.shrink();
+
+    // The same gauge as the glasses' own line, at the same width, labelled
+    // with the case glyph where the pair's line carries L and R. The case
+    // used to get a tiny icon and a bare number beside the glasses' full
+    // gauge — two batteries in the same tile drawn by two different
+    // languages, which read as one of them mattering less.
     return Row(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        PixelArt(
-          rows: PixelArtwork.caseClosed,
-          size: 11,
-          color: suspected ? AppColors.inkFaint : AppColors.inkMuted,
+        BatteryGauge(
+          percentage: value,
+          width: GlassesBattery.defaultGaugeWidth,
         ),
         const SizedBox(width: 8),
-        Text(
-          suspected ? '$value%?' : '$value%',
-          style: TextStyle(
-            fontFamily: AppTheme.technicalFont,
-            fontSize: 13,
-            color: suspected ? AppColors.inkFaint : AppColors.ink,
-          ),
+        const PixelArt(
+          rows: PixelArtwork.caseClosed,
+          size: 14,
+          color: AppColors.inkMuted,
         ),
       ],
     );

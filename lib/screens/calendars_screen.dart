@@ -60,7 +60,10 @@ class CalendarsPageState extends State<CalendarsPage> {
     final index = boxCals.indexWhere((c) => c.id == calendar.id);
 
     if (index == -1) {
-      _calendarBox.add(DashboardCalendar(id: calendar.id!, enabled: true));
+      // Absent from the box means enabled — the box holds exclusions, the
+      // same shape as the notification blocklist. So the first toggle of an
+      // untouched calendar is the user turning it off.
+      _calendarBox.add(DashboardCalendar(id: calendar.id!, enabled: false));
     } else {
       final cal = boxCals[index];
       cal.enabled = !cal.enabled;
@@ -88,15 +91,20 @@ class CalendarsPageState extends State<CalendarsPage> {
         itemCount: _calendars.length,
         itemBuilder: (BuildContext context, int index) {
           final calendar = _calendars[index];
+          // Every calendar flows to the glasses unless excluded here, so an
+          // untouched one shows as on. The old default showed everything as
+          // off, which described a world where the agenda needed this screen
+          // visited before it would work — and it did, which is exactly the
+          // trap that was fixed.
           final isEnabled = _calendarBox.values
               .firstWhere((c) => c.id == calendar.id,
                   orElse: () =>
-                      DashboardCalendar(id: calendar.id!, enabled: false))
+                      DashboardCalendar(id: calendar.id!, enabled: true))
               .enabled;
 
           return ListTile(
             title: Text(calendar.name ?? 'No name'),
-            subtitle: Text('ID: ${calendar.id ?? 'No ID'}'),
+            subtitle: Text(calendar.accountName ?? ''),
             trailing: Switch(
               value: isEnabled,
               onChanged: (value) {

@@ -1,5 +1,11 @@
 # G1 Extended
 
+> **Not an official app.** G1 Extended is an independent companion for the
+> Even Realities G1, not made by, affiliated with, or endorsed by Even
+> Realities. Free, no accounts, no telemetry — and everything about it,
+> including its extension catalogue, is forbidden to be sold.
+> See [TERMS.md](TERMS.md).
+
 [![Build](https://github.com/LabbeSimon/G1_Extended/actions/workflows/build_apk.yml/badge.svg)](https://github.com/LabbeSimon/G1_Extended/actions/workflows/build_apk.yml)
 [![Release](https://img.shields.io/github/v/release/LabbeSimon/G1_Extended?label=release)](https://github.com/LabbeSimon/G1_Extended/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/LabbeSimon/G1_Extended/total?label=downloads)](https://github.com/LabbeSimon/G1_Extended/releases)
@@ -18,6 +24,27 @@ events it discards, and push your own data to the lens, including from a
 microcontroller of your own.
 
 No account. No telemetry. Nothing leaves your phone.
+
+## Download
+
+**[Latest release →](https://github.com/LabbeSimon/G1_Extended/releases/latest)**
+— the signed APK is attached to every release, and once installed the app
+updates itself from its banner: one tap downloads the new version and opens
+Android's installer.
+
+Testing the next version early: pre-releases are published on the
+[releases page](https://github.com/LabbeSimon/G1_Extended/releases) from the
+`beta` branch. They never appear in the in-app update check — stable stays
+stable unless you opt in by hand.
+
+## The app in pictures
+
+<!-- Screenshots land in docs/screenshots/ — see the README there for the
+     expected names. Until they do, the sections below say more than any
+     placeholder would. -->
+
+*Screenshots are coming with the 1.1.2 release; the layout they will show
+is described honestly in the sections below.*
 
 ## What it does
 
@@ -43,6 +70,45 @@ No account. No telemetry. Nothing leaves your phone.
 - Speech recognition runs on the device, through Vosk or the platform recogniser
 - Optional wake word
 - No audio is ever uploaded
+
+## Running in the background
+
+The glasses need the phone to keep two Bluetooth links open and to answer a
+heartbeat, or the firmware drops the connection after 32 seconds. That is not
+something Android lets an app do quietly, so it runs as a foreground service
+with a persistent notification. There is no way around the notification and
+no attempt to hide it.
+
+What that costs, and what it does not:
+
+- **Heartbeat every 15 seconds while connected.** Required by the protocol.
+- **Reconnect attempts while disconnected**, spaced by how long the glasses
+  have been gone: every 2 seconds for the first half minute, then easing to
+  once every 5 minutes after an hour. Roughly 115 attempts in the first hour
+  of absence, then 12 an hour. Opening the app brings the next one forward.
+- **Battery level read every 90 seconds while connected.**
+- **No location polling.** Location is read once when weather is refreshed,
+  and continuously only while the speedometer card is on screen.
+- **No background network activity.** Nothing is synced, uploaded or
+  reported. See [PRIVACY.md](PRIVACY.md).
+
+### Doze, App Standby and OEM battery managers
+
+Android suspends background work when the screen has been off for a while,
+and several manufacturers go considerably further than Android does. A
+foreground service survives Doze; it does not always survive an OEM task
+killer.
+
+Ask for the battery optimisation exemption when the app offers it — it is in
+the permissions screen, and without it the connection will drop whenever the
+phone sleeps. On devices from manufacturers that ignore that exemption, the
+app also has to be allowed to start automatically and be locked in the recent
+apps list. Those settings live in different places on every brand;
+[dontkillmyapp.com](https://dontkillmyapp.com) lists them per manufacturer.
+
+If the connection drops overnight despite all of that, it is worth reporting
+with the device model — that is the kind of thing no amount of reading the
+code will reveal.
 
 ## What it does not do
 
@@ -95,6 +161,11 @@ features listed above.
 The badges above are rendered by GitHub when you read this page. They are not
 part of the app and the app never contacts those hosts — see
 [PRIVACY.md](PRIVACY.md) for the three it does contact.
+
+## Roadmap
+
+What works, what waits on a device, and what is open for anyone to take:
+[ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 

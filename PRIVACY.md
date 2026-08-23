@@ -21,51 +21,41 @@ named, on your device, and none of it is uploaded anywhere.
 | Notification access | Mirroring your phone notifications onto the glasses | No |
 | Calendar | Showing the day's agenda on the glasses | No |
 
-## The only three network requests
+## Every network request, and what triggers it
 
-The app contacts three hosts. All three are optional, and none is operated by us.
+The app contacts nothing on its own schedule except the update check below,
+and that one has a switch. Everything else happens only when you press the
+thing that needs it. None of these hosts is operated by us.
 
-**1. `api.open-meteo.com`** — the weather forecast, only if you enable the
+**`api.open-meteo.com`** — the weather forecast, only if you enable the
 weather widget. The request contains your latitude and longitude **rounded to
-two decimal places**, roughly a 1 km square. That is precise enough for a
-forecast and too coarse to identify a building or an address. Nothing else is
-sent: no device identifier, no account, no timestamped history. Open-Meteo's
-own privacy policy applies to that request:
-<https://open-meteo.com/en/terms>.
+two decimal places**, roughly a 1 km square — precise enough for a forecast,
+too coarse to identify a building. No device identifier, no account, no
+timestamped history. Open-Meteo's policy: <https://open-meteo.com/en/terms>.
 
-**2. `alphacephei.com`** — a one-off download of the offline speech
-recognition model, and only if you turn on glasses-microphone dictation or the
-wake word. It is a plain file download. No audio and no data about you is sent,
-then or ever. After that download, speech recognition runs entirely on your
-phone.
+**`alphacephei.com`** — a one-off download of the offline speech recognition
+model, only if you turn on glasses-microphone dictation or the wake word. A
+plain file download; no audio and nothing about you is sent, then or ever.
+After it, speech recognition runs entirely on your phone.
 
-**3. `api.github.com`** — an update check, at most once every 12 hours, and
-only while "Check for updates" is on in Settings > About. It is an
-unauthenticated `GET` for the latest release number of this repository. No
-account, no device identifier and nothing about your usage is sent; as with any
-web request, GitHub sees the connecting IP address. Nothing is downloaded or
-installed automatically: if a newer version exists the app shows a banner and,
-if you tap it, opens the release page in your browser. Turn the switch off and
-the request is never made.
+**`api.github.com`** — the update check, at most once every 12 hours, only
+while "Check for updates" is on in Settings > About. An unauthenticated GET
+for the latest release number; GitHub sees the connecting IP, as with any web
+request. Nothing downloads by itself. Tapping the update banner downloads
+the APK from the release **and opens Android's own install sheet — the
+system confirms every install itself**; a long-press opens the release page
+instead. Switch off, and the request is never made.
 
-**Your own endpoints.** Two features send data to a host you choose and the
-app has never heard of: a custom card pulling `{value}` from a web address, and
-the assistant.
+**`raw.githubusercontent.com`** — the extension catalogue, fetched only when
+you press "Fetch the catalogue" on the Extensions screen. Never polled in
+the background.
 
-The assistant is off, and has no default host. Nothing happens until you type
-an address in. What is sent is the **text** of your question — the audio never
-travels, because speech is turned into text on the phone by the offline model
-first. Point it at a machine on your own network and the question does not
-leave your home. Point it at a commercial service and that is a decision you
-made in a field you filled. An API key, if the service needs one, is kept in
-the Android keystore. These are the only requests the app makes on your behalf rather
-than its own: it never adds one, never picks the host, and fetches no more
-often than the interval you set. We have no idea what those addresses are and
-no way to find out.
-
-With the weather widget off, glasses dictation unused, update checks disabled,
-no assistant configured and no custom card using a source, the app makes no
-network requests at all.
+**Addresses inside cards you install or write** — a custom card, yours or an
+extension's, may read a value from an https URL. The exact URLs are visible
+on each card in "My cards" before and after installing, and each card can be
+disabled. These are fetched at the card's stated interval while the card is
+enabled — this is the one category that polls, it polls the address you
+approved, and extensions may not poll more often than every five minutes.
 
 ## Speed
 

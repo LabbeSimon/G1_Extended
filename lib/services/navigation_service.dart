@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:notification_listener_service/notification_event.dart';
+
+import 'package:g1_extended/services/navigation_capture.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:g1_extended/services/bluetooth_manager.dart';
@@ -74,6 +76,18 @@ class NavigationService {
   /// Handles a navigation notification. Returns true when it consumed it, so
   /// the caller does not also send it down the normal notification path.
   Future<bool> handle(ServiceNotificationEvent notification) async {
+    // Raw material for the debug screen's capture, recorded for every
+    // notification from a navigation app — including the ones isNavigation
+    // rejects, because "it does not detect the instructions" is exactly a
+    // claim about what gets rejected.
+    final package = notification.packageName ?? '';
+    if (supportedApps.containsKey(package)) {
+      NavigationCapture.singleton.record(
+        notification,
+        ongoing: notification.onGoing == true,
+      );
+    }
+
     if (!isNavigation(notification)) return false;
     if (!await isEnabled()) return true;
 

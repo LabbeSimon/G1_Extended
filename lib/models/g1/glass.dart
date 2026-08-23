@@ -222,21 +222,31 @@ class Glass {
     await reciever.receiveHandler(side, data);
   }
 
-  Future<void> sendData(List<int> data) async {
-    if (uartTx != null) {
-      try {
-        if (device.isConnected) {
-          await uartTx!.write(data, withoutResponse: false);
-          //debugPrint(
-          //    'Sent data to $side glass: ${data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
-        } else {
-          debugPrint('Device not connected, cannot send data to $side glass.');
-        }
-      } catch (e) {
-        debugPrint('Error sending data to $side glass: $e');
-      }
-    } else {
+  /// Writes to this temple. Returns whether the bytes actually went out.
+  ///
+  /// It used to return nothing and swallow every failure. That is what made
+  /// the two lenses show different things: a write landing on one side and
+  /// failing on the other — a moment of interference is enough — looked from
+  /// above exactly like a write that had succeeded on both, so nothing
+  /// retried and nothing noticed. The pair then stayed out of step until
+  /// something else happened to write to them.
+  Future<bool> sendData(List<int> data) async {
+    if (uartTx == null) {
       debugPrint('UART TX not available for $side glass.');
+      return false;
+    }
+
+    if (!device.isConnected) {
+      debugPrint('Device not connected, cannot send data to $side glass.');
+      return false;
+    }
+
+    try {
+      await uartTx!.write(data, withoutResponse: false);
+      return true;
+    } catch (e) {
+      debugPrint('Error sending data to $side glass: $e');
+      return false;
     }
   }
 
@@ -298,22 +308,62 @@ class Glass {
   }
 
   /// Schedule a persistent reconnection attempt with exponential backoff
-  /// How long to wait before reconnect attempt [attempt], counting from one.
+  /// True while this side is working its way through a reconnect loop.
   ///
-  /// Doubling, then flat at thirty seconds. The ceiling matters more than the
-  /// curve: the loop now runs for as long as the app does, so an unbounded
-  /// backoff would drift towards intervals long enough that putting the
-  /// glasses back on means waiting minutes for them to notice.
-  static Duration reconnectDelayFor(int attempt) {
-    if (attempt <= 1) return const Duration(seconds: 2);
-    final seconds = (1 << attempt.clamp(1, 5)).clamp(2, 30);
-    return Duration(seconds: seconds);
+  /// Exposed so that nothing else starts a second one. Three separate places
+  /// used to react to a disconnection independently, none aware of the
+  /// others.
+  bool get isReconnecting => _isReconnecting;
+
+  /// How long to wait before the next reconnect attempt.
+  ///
+  /// Keyed on how long the glasses have been gone rather than on how many
+  /// attempts have been made, because that is the thing that actually
+  /// predicts the answer. Most disconnections are a second of interference
+  /// and resolve immediately; a pair left in the case will not come back for
+  /// hours, and polling for them every thirty seconds the whole time is what
+  /// drains a phone overnight.
+  ///
+  /// Attempts in the first hour of absence: about 115. Every hour after
+  /// that: 12. Under the previous flat thirty second ceiling it was 120 an
+  /// hour, for as long as the app ran — and that was only one of the three
+  /// loops then running at once.
+  ///
+  /// The first half minute is deliberately faster than it used to be.
+  /// Stepping out of range and back is the common case and should be
+  /// invisible.
+  static Duration reconnectDelayFor(Duration sinceDisconnect) {
+    if (sinceDisconnect < const Duration(seconds: 30)) {
+      return const Duration(seconds: 2);
+    }
+    if (sinceDisconnect < const Duration(minutes: 2)) {
+      return const Duration(seconds: 5);
+    }
+    if (sinceDisconnect < const Duration(minutes: 10)) {
+      return const Duration(seconds: 15);
+    }
+    if (sinceDisconnect < const Duration(hours: 1)) {
+      return const Duration(minutes: 1);
+    }
+    return const Duration(minutes: 5);
   }
+
+  /// Brings the next attempt forward, for when something suggests the glasses
+  /// may be back: the app returning to the foreground, Bluetooth being turned
+  /// on again. Without this, a pair picked up after two hours would wait up
+  /// to five minutes to be noticed.
+  void hurryReconnect() {
+    if (!_isReconnecting) return;
+    _disconnectedAt = DateTime.now();
+  }
+
+  DateTime? _disconnectedAt;
 
   void _scheduleReconnect() {
     if (_isReconnecting) return;
     _isReconnecting = true;
     _connectRetries = 0;
+    _disconnectedAt = DateTime.now();
 
     Future<void> attemptReconnect() async {
       // No attempt limit.
@@ -330,7 +380,9 @@ class Glass {
       // purpose.
       while (_isReconnecting) {
         _connectRetries++;
-        final delay = reconnectDelayFor(_connectRetries);
+        final since =
+            DateTime.now().difference(_disconnectedAt ?? DateTime.now());
+        final delay = reconnectDelayFor(since);
         debugPrint(
           '[$side Glass] Auto-reconnect attempt $_connectRetries in ${delay.inSeconds}s',
         );

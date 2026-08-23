@@ -117,7 +117,10 @@ class Checklist extends DashboardWidget {
         if (i + j >= items.length) {
           break;
         }
-        lines.add('${NoteSupportedIcons.CHECK} ${items[i + j].title}');
+        // An empty box, not a check: these are things to do. Rendering a
+        // tick in front of every pending item announced the opposite of
+        // the truth on every checklist ever shown.
+        lines.add('${NoteSupportedIcons.CHECKBOX} ${items[i + j].title}');
       }
 
       notes.add(Note(

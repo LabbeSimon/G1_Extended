@@ -21,6 +21,9 @@
          turned into a number on the phone; no position is ever transmitted. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Lets the update button hand a downloaded APK to the system
+         installer. The system still confirms every install itself. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
@@ -29,6 +32,13 @@
 
     <!-- The dashboard shows the day's agenda on the glasses. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <!-- Declared because device_calendar's permission gate is all or
+         nothing: its hasPermissions() answers true only when READ and WRITE
+         are both granted, and Android silently refuses any permission the
+         manifest does not declare. Without this line the app reported "no
+         calendar access" forever, even with read access granted by hand in
+         system settings. The app itself never writes an event. -->
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
 
     <!-- Dictation and wake word, both recognised on the device. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -83,7 +93,7 @@
             android:name="fr.simonlabbe.g1extended.BackgroundService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
+            android:foregroundServiceType="connectedDevice|location" />
 
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
@@ -110,6 +120,39 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="fr.simonlabbe.g1extended.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- The home screen widget. Exported because the launcher, another
+             application, is what delivers APPWIDGET_UPDATE to it. -->
+        <receiver
+            android:name=".GlassesWidgetProvider"
+            android:exported="true"
+            android:label="G1 Extended">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/glasses_widget_info" />
+        </receiver>
+
+        <!-- Receives the widget's button taps and runs the Dart callback for
+             them on a background engine, without opening the app. -->
+        <receiver
+            android:name="es.antonborri.home_widget.HomeWidgetBackgroundReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="es.antonborri.home_widget.action.BACKGROUND" />
             </intent-filter>
         </receiver>
     </application>

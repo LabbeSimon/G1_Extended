@@ -15,7 +15,10 @@ import 'package:g1_extended/models/dashboard/stop.dart';
 import 'package:g1_extended/screens/home_screen.dart';
 import 'package:g1_extended/services/bluetooth_background_service.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
-import 'package:g1_extended/services/quick_notes_service.dart';
+import 'package:g1_extended/services/crash_reporter.dart';
+import 'package:home_widget/home_widget.dart';
+import 'package:g1_extended/services/widget_panel.dart';
+import 'package:g1_extended/services/notes_library.dart';
 import 'package:g1_extended/services/speedometer_service.dart';
 import 'package:g1_extended/services/stops_manager.dart';
 import 'package:g1_extended/services/voice_pipeline.dart';
@@ -31,6 +34,13 @@ const String APP_NAME = 'G1 Extended';
 void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // First, before anything that could fail. Installing the handlers after
+    // the work has started means the failures worth catching most — the ones
+    // during start-up — are the ones that go unrecorded.
+    await CrashReporter.singleton.install();
+    await CrashReporter.singleton.begin();
+
     registerThirdPartyLicences();
 
     await _step('notifications', () async {
@@ -56,8 +66,23 @@ void main() async {
       BluetoothBackgroundService.requestBatteryOptimizationExemption,
     );
     await _step('bluetooth', BluetoothManager.singleton.initialize);
-    await _step('quick notes', QuickNotesService.singleton.start);
+    // Brings forward anything the four-slot version wrote, before anything
+    // reads the box.
+    await _step('notes', NotesLibrary.singleton.migrate);
     await _step('speedometer', SpeedometerService.singleton.start);
+    await _step('home widget', () async {
+      // The callback below runs widget taps on a background engine; the
+      // listener mirrors, in this isolate, whatever the background service
+      // just did about one.
+      await HomeWidget.registerInteractivityCallback(widgetInteractionCallback);
+      FlutterBackgroundService().on('widgetCommandApplied').listen((event) {
+        unawaited(SpeedometerService.singleton.syncWithPreference());
+        if (event?['action'] == 'reconnect') {
+          BluetoothManager.singleton.hurryReconnect();
+        }
+      });
+      WidgetPanel.schedule();
+    });
     await _step('voice pipeline', VoicePipeline.singleton.start);
     await _step('legacy service', _startLegacyBackgroundService);
 
@@ -181,6 +206,15 @@ class _StartupFailure extends StatelessWidget {
     );
   }
 }
+
+/// Hive, for whichever isolate is asking.
+///
+/// It used to run only from main — that is, only in the interface isolate.
+/// The background service runs in its own isolate with its own Hive
+/// instance, uninitialised, so everything it tried to read or write there
+/// failed: the notification blocklist read as empty, and anything the
+/// glasses' touchpad triggered could not reach storage at all.
+Future<void> initHiveForThisIsolate() => _initHive();
 
 Future<void> _initHive() async {
   try {

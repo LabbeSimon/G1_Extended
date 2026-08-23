@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:vosk_flutter/vosk_flutter.dart';
 
+import 'package:g1_extended/models/speech_model.dart';
 import 'package:g1_extended/services/vosk_model_manager.dart';
 import 'package:g1_extended/services/wake_word_vocabulary.dart';
 
@@ -111,8 +112,39 @@ class WakeWordService {
     }
   }
 
+  /// The model id [_model] was loaded from, and the word the current
+  /// recognizer's grammar was built with.
+  ///
+  /// These exist because both were once assumed instead of checked. The
+  /// recognizer was kept across stop/start "for a quick restart", so setting
+  /// a new wake word rebuilt nothing: the grammar still said "computer", the
+  /// new word was classified as [unk] forever, and no error said so anywhere.
+  /// Switching language had the same shape one level up — the service kept
+  /// its cached English model after the French one was selected, and
+  /// "souffleur" is not a word the English lexicon can ever produce.
+  String? _armedModelId;
+  String? _armedWord;
+
+  /// What is actually armed right now, for the settings screen to show.
+  ///
+  /// Null when not listening. The point is to make the silent failure
+  /// impossible: if this says « souffleur · Français », that is what the
+  /// recognizer was genuinely built with, not what the preferences wish.
+  String? get armedDescription {
+    if (!_isListening || _armedWord == null) return null;
+    final model = SpeechModel.byId(_armedModelId ?? '');
+    return '$_armedWord · ${model.languageLabel}';
+  }
+
   /// Loads the shared offline model, downloading it if allowed.
   Future<bool> _ensureModel({bool allowDownload = false}) async {
+    // A cached model is only a shortcut while it is still the selected one.
+    if (_model != null && _armedModelId != _models.model.id) {
+      debugPrint('WakeWordService: model changed '
+          '($_armedModelId -> ${_models.model.id}), dropping the old one');
+      _recognizer = null;
+      _model = null;
+    }
     if (_model != null) return true;
 
     if (allowDownload && !await _models.isModelInstalled()) {
@@ -133,6 +165,7 @@ class WakeWordService {
       return false;
     }
 
+    _armedModelId = _models.model.id;
     _eventController.add(
       WakeWordEvent(type: WakeWordEventType.modelDownloadComplete),
     );
@@ -165,6 +198,7 @@ class WakeWordService {
           '[unk]',
         ],
       );
+      _armedWord = _wakeWord;
       debugPrint(
         'WakeWordService: Recognizer created with grammar: [$_wakeWord, [unk]]',
       );
@@ -366,8 +400,11 @@ class WakeWordService {
     }
 
     try {
-      // Create recognizer if needed
-      if (_recognizer == null) {
+      // Rebuild whenever the recognizer no longer matches the configured
+      // word — not merely when it is missing. Keeping it across a word
+      // change is precisely how "souffleur" ended up spoken at a grammar
+      // that still said "computer".
+      if (_recognizer == null || _armedWord != _wakeWord) {
         if (!await _createRecognizer()) {
           return false;
         }
@@ -422,9 +459,13 @@ class WakeWordService {
       _resultSubscription = null;
 
       await _speechService?.stop();
+      // Disposed, not merely stopped and dropped. The platform side keeps a
+      // single microphone service alive; abandoning it while holding no
+      // reference means the next initSpeechService finds it already taken
+      // and the second enable of the toggle fails where the first worked.
+      await _speechService?.dispose();
       _speechService = null;
 
-      // Keep recognizer for quick restart
       _isListening = false;
       _isPaused = false;
 

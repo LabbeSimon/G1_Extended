@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:g1_extended/services/notification_history.dart';
 
@@ -105,4 +107,83 @@ void main() {
           'n${NotificationHistory.capacity + 4}');
     });
   });
+
+  group('The file bridges the isolates', () {
+    late Directory dir;
+    final history = NotificationHistory.singleton;
+
+    setUp(() {
+      dir = Directory.systemTemp.createTempSync('notif-hist-');
+      NotificationHistory.directoryForTest = dir;
+      history.resetForTest();
+      history.clear();
+    });
+
+    tearDown(() {
+      NotificationHistory.directoryForTest = null;
+      history.resetForTest();
+      dir.deleteSync(recursive: true);
+    });
+
+    test('what one life records, the next life reads', () async {
+      // Life one: the isolate that receives notifications.
+      history.rememberForTest(RecalledNotification(
+        app: 'Signal',
+        title: 'Léa',
+        body: 'on se voit à 18h ?',
+        at: DateTime.now(),
+      ));
+      await history.flushForTest();
+
+      // Life two: the isolate holding the glasses, born empty.
+      history.resetForTest();
+      await history.ensureLoaded();
+
+      final recalled = history.recallNext();
+      expect(recalled, isNotNull,
+          reason: '"Nothing recent" on a phone that buzzed all morning '
+              'is the bug this exists to prevent');
+      expect(recalled!.body, 'on se voit à 18h ?');
+    });
+
+    test('expiry applies on load too — a six hour old file is not news',
+        () async {
+      history.rememberForTest(RecalledNotification(
+        app: 'Old',
+        title: 'stale',
+        body: 'stale',
+        at: DateTime.now().subtract(const Duration(hours: 7)),
+      ));
+      await history.flushForTest();
+      history.resetForTest();
+
+      await history.ensureLoaded();
+      expect(history.recallNext(), isNull);
+    });
+
+    test('a damaged file reads as empty, never as a crash', () async {
+      File('${dir.path}/notification-history.json')
+          .writeAsStringSync('{not json');
+      await history.ensureLoaded();
+      expect(history.isEmpty, isTrue);
+    });
+
+    test('clearing clears the file as well, not just the memory', () async {
+      history.rememberForTest(RecalledNotification(
+        app: 'A', title: 't', body: 'b', at: DateTime.now(),
+      ));
+      await history.flushForTest();
+
+      history.clear();
+      // give the async flush a beat
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      history.resetForTest();
+      await history.ensureLoaded();
+      expect(history.isEmpty, isTrue,
+          reason: 'a cleared history that resurrects from its mirror was '
+              'not cleared');
+    });
+  });
+
 }

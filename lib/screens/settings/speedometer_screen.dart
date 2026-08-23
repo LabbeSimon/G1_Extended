@@ -16,6 +16,9 @@ class _SpeedometerScreenState extends State<SpeedometerScreen> {
   bool _loading = true;
   bool _enabled = false;
   SpeedUnit _unit = SpeedUnit.kmh;
+  bool _decimals = false;
+  bool _comma = false;
+  bool _clock = false;
 
   @override
   void initState() {
@@ -26,12 +29,30 @@ class _SpeedometerScreenState extends State<SpeedometerScreen> {
   Future<void> _load() async {
     final enabled = await _speedometer.isEnabled();
     final unit = await _speedometer.readUnit();
+    final decimals = await _speedometer.showsDecimals();
+    final comma = await _speedometer.usesDecimalComma();
+    final clock = await _speedometer.showsClock();
     if (!mounted) return;
     setState(() {
       _enabled = enabled;
       _unit = unit;
+      _decimals = decimals;
+      _comma = comma;
+      _clock = clock;
       _loading = false;
     });
+  }
+
+  /// A sample of what the lens will read, using the settings as they stand.
+  String _preview({bool round = false}) {
+    final speed = SpeedometerService.format(
+      7.6, // roughly 27.4 km/h
+      _unit,
+      decimals: round ? false : _decimals,
+      decimalComma: _comma,
+    );
+    final base = speed ?? '';
+    return _clock ? SpeedometerService.withClock(base, DateTime.now()) : base;
   }
 
   @override
@@ -78,6 +99,43 @@ class _SpeedometerScreenState extends State<SpeedometerScreen> {
                 ),
               ],
             ),
+          ),
+          const Divider(),
+
+          SwitchListTile(
+            value: _decimals,
+            title: const Text('Show a tenth'),
+            subtitle: Text('${_preview()} instead of ${_preview(round: true)}. '
+                'Steadier to read on a bicycle, where whole numbers flicker '
+                'between two values at a constant pace.'),
+            onChanged: (value) async {
+              await _speedometer.setDecimals(value);
+              if (mounted) setState(() => _decimals = value);
+            },
+          ),
+          SwitchListTile(
+            value: _comma,
+            title: const Text('Decimal comma'),
+            subtitle: const Text(
+              'Writes 27,4 rather than 27.4. The glasses\' font has the '
+              'character, so this is a preference, not a limitation.',
+            ),
+            onChanged: (value) async {
+              await _speedometer.setDecimalComma(value);
+              if (mounted) setState(() => _comma = value);
+            },
+          ),
+          SwitchListTile(
+            value: _clock,
+            title: const Text('Show the time beside it'),
+            subtitle: const Text(
+              'The lens is 640 by 200. Every character spent here is one not '
+              'spent on what you are reading, so this is off by default.',
+            ),
+            onChanged: (value) async {
+              await _speedometer.setShowClock(value);
+              if (mounted) setState(() => _clock = value);
+            },
           ),
           const Divider(),
 
