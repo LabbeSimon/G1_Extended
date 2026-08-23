@@ -116,6 +116,14 @@ class _AboutScreenState extends State<AboutScreen> {
             subtitle: Text('Version $_version'),
             onTap: _tapVersion,
           ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Text(
+              'An independent companion for the Even Realities G1 — not '
+              'made by, affiliated with, or endorsed by Even Realities.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ),
           const Divider(),
 
           SwitchListTile(
@@ -150,6 +158,17 @@ class _AboutScreenState extends State<AboutScreen> {
             subtitle: const Text('github.com/LabbeSimon/G1_Extended'),
             onTap: () => launchUrl(Uri.parse(repository),
                 mode: LaunchMode.externalApplication),
+          ),
+          ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: const Text('Terms of use'),
+            subtitle: const Text(
+                'Unofficial, free, nothing for sale, your installs are '
+                'your call.'),
+            onTap: () => launchUrl(
+              Uri.parse('$repository/blob/main/TERMS.md'),
+              mode: LaunchMode.externalApplication,
+            ),
           ),
           ListTile(
             leading: const Icon(Icons.shield_outlined),

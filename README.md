@@ -1,5 +1,11 @@
 # G1 Extended
 
+> **Not an official app.** G1 Extended is an independent companion for the
+> Even Realities G1, not made by, affiliated with, or endorsed by Even
+> Realities. Free, no accounts, no telemetry — and everything about it,
+> including its extension catalogue, is forbidden to be sold.
+> See [TERMS.md](TERMS.md).
+
 [![Build](https://github.com/LabbeSimon/G1_Extended/actions/workflows/build_apk.yml/badge.svg)](https://github.com/LabbeSimon/G1_Extended/actions/workflows/build_apk.yml)
 [![Release](https://img.shields.io/github/v/release/LabbeSimon/G1_Extended?label=release)](https://github.com/LabbeSimon/G1_Extended/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/LabbeSimon/G1_Extended/total?label=downloads)](https://github.com/LabbeSimon/G1_Extended/releases)
