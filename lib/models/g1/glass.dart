@@ -151,6 +151,15 @@ class Glass {
     }
     if (uartRx != null) {
       await uartRx!.setNotifyValue(true);
+
+      // Cancel before subscribing again.
+      //
+      // Service discovery runs on every connection, reconnections included,
+      // and this assignment used to replace the field while leaving the
+      // previous subscription alive and listening. After three reconnections
+      // every incoming packet was handled three times: three notifications
+      // pushed to the glasses, one touchpad press read as three.
+      await notificationSubscription?.cancel();
       notificationSubscription = uartRx!.lastValueStream.listen(
         handleNotification,
       );
@@ -289,20 +298,39 @@ class Glass {
   }
 
   /// Schedule a persistent reconnection attempt with exponential backoff
+  /// How long to wait before reconnect attempt [attempt], counting from one.
+  ///
+  /// Doubling, then flat at thirty seconds. The ceiling matters more than the
+  /// curve: the loop now runs for as long as the app does, so an unbounded
+  /// backoff would drift towards intervals long enough that putting the
+  /// glasses back on means waiting minutes for them to notice.
+  static Duration reconnectDelayFor(int attempt) {
+    if (attempt <= 1) return const Duration(seconds: 2);
+    final seconds = (1 << attempt.clamp(1, 5)).clamp(2, 30);
+    return Duration(seconds: seconds);
+  }
+
   void _scheduleReconnect() {
     if (_isReconnecting) return;
     _isReconnecting = true;
     _connectRetries = 0;
 
     Future<void> attemptReconnect() async {
-      while (_isReconnecting && _connectRetries < 50) {
+      // No attempt limit.
+      //
+      // There used to be fifty, which at a thirty second ceiling is about
+      // twenty-five minutes — after which the glasses were abandoned for the
+      // lifetime of the process. Put them in the case over lunch and they
+      // would never come back without restarting the app, which is
+      // indistinguishable from the reconnection not existing.
+      //
+      // Giving up made sense when each attempt was expensive. It is not: a
+      // failed BLE connect to an absent device costs a scan window every
+      // thirty seconds, and the loop ends the moment someone disconnects on
+      // purpose.
+      while (_isReconnecting) {
         _connectRetries++;
-        // Exponential backoff: 2s, 4s, 8s, 16s, capped at 30s
-        final delay = Duration(
-          seconds: (_connectRetries <= 1)
-              ? 2
-              : (2 << (_connectRetries - 1).clamp(0, 4)).clamp(2, 30),
-        );
+        final delay = reconnectDelayFor(_connectRetries);
         debugPrint(
           '[$side Glass] Auto-reconnect attempt $_connectRetries in ${delay.inSeconds}s',
         );
@@ -323,7 +351,7 @@ class Glass {
         }
       }
       _isReconnecting = false;
-      debugPrint('[$side Glass] Auto-reconnect gave up after $_connectRetries attempts');
+      debugPrint('[$side Glass] Auto-reconnect stopped after $_connectRetries attempts');
     }
 
     attemptReconnect();
