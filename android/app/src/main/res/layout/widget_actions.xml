@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A row of three actions. The same ink and ground as the app, drawn flat:
+     a widget that tries to look like a card sits badly on every wallpaper. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/actions_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:background="@drawable/widget_tile"
+    android:padding="8dp"
+    android:baselineAligned="false">
+
+    <TextView
+        android:id="@+id/action_note"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:layout_marginEnd="6dp"
+        android:gravity="center"
+        android:background="@drawable/widget_action_off"
+        android:textColor="#F5F5F7"
+        android:textSize="11sp"
+        android:letterSpacing="0.08"
+        android:fontFamily="monospace"
+        android:text="NOTE" />
+
+    <TextView
+        android:id="@+id/action_captions"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:layout_marginEnd="6dp"
+        android:gravity="center"
+        android:background="@drawable/widget_action_off"
+        android:textColor="#F5F5F7"
+        android:textSize="11sp"
+        android:letterSpacing="0.08"
+        android:fontFamily="monospace"
+        android:text="CAPTIONS" />
+
+    <TextView
+        android:id="@+id/action_silent"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:background="@drawable/widget_action_off"
+        android:textColor="#F5F5F7"
+        android:textSize="11sp"
+        android:letterSpacing="0.08"
+        android:fontFamily="monospace"
+        android:text="SILENT" />
+</LinearLayout>

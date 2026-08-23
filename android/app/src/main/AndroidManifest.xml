@@ -153,6 +153,20 @@
                 android:resource="@xml/glasses_widget_info" />
         </receiver>
 
+        <!-- The actions row, separate from the status tile: one answers how
+             the glasses are, the other does the thing. -->
+        <receiver
+            android:name=".ActionsWidgetProvider"
+            android:exported="true"
+            android:label="G1 Extended — actions">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/actions_widget_info" />
+        </receiver>
+
         <!-- Receives the widget's button taps and runs the Dart callback for
              them on a background engine, without opening the app. -->
         <receiver

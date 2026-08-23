@@ -18,6 +18,9 @@ import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/crash_reporter.dart';
 import 'package:home_widget/home_widget.dart';
 import 'package:g1_extended/services/widget_panel.dart';
+import 'package:g1_extended/screens/live_captions_screen.dart';
+import 'package:g1_extended/screens/quick_note_screen.dart';
+import 'package:g1_extended/services/glasses_settings_service.dart';
 import 'package:g1_extended/services/notes_library.dart';
 import 'package:g1_extended/services/speedometer_service.dart';
 import 'package:g1_extended/services/stops_manager.dart';
@@ -88,7 +91,17 @@ void main() async {
         if (event?['action'] == 'reconnect') {
           BluetoothManager.singleton.hurryReconnect();
         }
+        if (event?['action'] == 'silent') {
+          // The widget wrote the preference; only an isolate with a link
+          // can put it on the glasses.
+          unawaited(GlassesSettingsService.singleton
+              .setSilentMode(event?['value'] == true));
+        }
       });
+
+      // A widget tap that opens the app says where it wants to go.
+      unawaited(_followWidgetLaunch());
+      HomeWidget.widgetClicked.listen(_openFromWidget);
       WidgetPanel.schedule();
     });
     await _step('voice pipeline', VoicePipeline.singleton.start);
@@ -99,6 +112,36 @@ void main() async {
     debugPrint('Fatal error during app initialization: $e\n$stackTrace');
     runApp(_StartupFailure(error: e));
   }
+}
+
+/// Opens the screen a widget tap asked for.
+///
+/// Both doors need a screen — writing a note and reading captions are
+/// things you look at — so they launch the app rather than acting in the
+/// background. Anything unrecognised opens the app and nothing more, which
+/// is the right answer to a link from an older or newer widget.
+void _openFromWidget(Uri? uri) {
+  if (uri == null) return;
+
+  final navigator = G1ExtendedApp.navigatorKey.currentState;
+  if (navigator == null) return;
+
+  switch (uri.host) {
+    case 'note':
+      navigator.push(MaterialPageRoute(builder: (_) => const QuickNoteScreen()));
+    case 'captions':
+      navigator
+          .push(MaterialPageRoute(builder: (_) => const LiveCaptionsScreen()));
+  }
+}
+
+/// The tap that started the app, as opposed to one arriving while it runs.
+Future<void> _followWidgetLaunch() async {
+  final uri = await HomeWidget.initiallyLaunchedFromHomeWidget();
+  if (uri == null) return;
+  // After the first frame: there is no navigator before it.
+  WidgetsBinding.instance
+      .addPostFrameCallback((_) => _openFromWidget(uri));
 }
 
 /// Runs one start-up step without letting it take the whole app down.

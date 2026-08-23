@@ -80,6 +80,15 @@ class WidgetPanel {
     );
   }
 
+  /// Keeps the actions row in step with the app.
+  ///
+  /// Only the silent toggle has state to show; note and captions are doors,
+  /// and a door does not need redrawing.
+  static Future<void> reflectSilent(bool silent) async {
+    await HomeWidget.saveWidgetData<bool>('silent_on', silent);
+    await HomeWidget.updateWidget(androidName: 'ActionsWidgetProvider');
+  }
+
   /// Stores the choices and redraws the widget with them at once.
   static Future<void> saveOptions(WidgetOptions options) async {
     await HomeWidget.saveWidgetData<bool>(_optCaseKey, options.showCase);
@@ -171,6 +180,21 @@ Future<void> widgetInteractionCallback(Uri? uri) async {
 
     case 'reconnect':
       _tellTheApp({'action': 'reconnect'});
+
+    case 'silent':
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      // The preference the glasses' display follows. Inverted here and
+      // applied by whichever isolate holds the link, which is the only one
+      // that can actually write to the temples.
+      final silent = !(prefs.getBool('silent_mode') ?? false);
+      await prefs.setBool('silent_mode', silent);
+
+      // Redrawn on the tap, not when the service gets round to confirming.
+      await HomeWidget.saveWidgetData<bool>('silent_on', silent);
+      await HomeWidget.updateWidget(androidName: 'ActionsWidgetProvider');
+
+      _tellTheApp({'action': 'silent', 'value': silent});
   }
 }
 

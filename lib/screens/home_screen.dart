@@ -27,6 +27,7 @@ import 'package:g1_extended/widgets/lens_preview.dart';
 import 'package:g1_extended/services/crash_reporter.dart';
 import 'package:g1_extended/models/g1/note_slots.dart';
 import 'package:g1_extended/services/notes_library.dart';
+import 'package:g1_extended/services/widget_panel.dart';
 import 'package:g1_extended/services/speedometer_service.dart';
 import 'package:g1_extended/widgets/bento.dart';
 import 'package:g1_extended/widgets/pixel_art.dart';
@@ -436,6 +437,9 @@ class _HomeScreenState extends State<HomeScreen>
     if (!_bluetooth.isConnected) return;
     final next = !_silentMode;
     await GlassesSettingsService.singleton.setSilentMode(next);
+    // The actions widget shows this too, and a home screen contradicting
+    // the app it belongs to is worse than a home screen with no widget.
+    unawaited(WidgetPanel.reflectSilent(next));
     if (mounted) setState(() => _silentMode = next);
   }
 
