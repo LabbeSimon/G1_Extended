@@ -92,10 +92,22 @@ class _BatteryPainter extends CustomPainter {
   /// another application.
   ///
   /// The grid is 20 by 9: a 17-wide body with notched corners, a gap, and a
-  /// 2-wide terminal nub. The fill occupies the 13 by 5 interior.
+  /// 2-wide terminal nub. The interior is 13 by 5.
   static const int _cols = 20;
   static const int _rows = 9;
   static const int _fillCols = 13;
+
+  /// The level is drawn as separate bars rather than one solid block.
+  ///
+  /// A continuous fill reads as an analogue quantity and invites the eye to
+  /// judge a length, which at thirteen pixels wide it cannot do — 60% and
+  /// 70% are one pixel apart. Four bars with gaps make it a count instead,
+  /// which is what the eye is actually good at, and it matches the way the
+  /// rest of the interface is built out of discrete squares.
+  ///
+  /// Four bars of two columns, one column of gap between them: 4×2 + 3×1 =
+  /// 11 of the 13 interior columns, leaving a column of margin each side.
+  static const int _bars = 4;
 
   /// The bolt. While charging it replaces the fill entirely: at thirteen by
   /// five pixels a level and a bolt drawn together are mush, and the exact
@@ -122,9 +134,12 @@ class _BatteryPainter extends CustomPainter {
       ..isAntiAlias = false
       ..color = hollow ? AppColors.inkMuted : AppColors.ink;
 
+    // How many bars are lit. Rounded up while any charge remains, so a
+    // nearly-flat battery still shows one bar rather than reading as the
+    // same nothing as an unknown one.
     final lit = fraction <= 0
         ? 0
-        : (fraction.clamp(0.0, 1.0) * _fillCols).round().clamp(1, _fillCols);
+        : (fraction.clamp(0.0, 1.0) * _bars).ceil().clamp(1, _bars);
 
     // Runs, not cells: one rectangle per horizontal stretch, the same trick
     // PixelArt uses, so neighbouring cells cannot seam.
@@ -166,7 +181,14 @@ class _BatteryPainter extends CustomPainter {
       final bc = c - 2, br = r - 2;
       return _bolt[br][bc] == '#';
     }
-    return (c - 2) < lit;
+
+    // Bars, not a block. Column 2 is margin; each bar is two columns wide
+    // with one column of gap after it.
+    final within = c - 3;
+    if (within < 0) return false;
+    final bar = within ~/ 3;
+    final offset = within % 3;
+    return bar < lit && offset < 2;
   }
 
   @override
