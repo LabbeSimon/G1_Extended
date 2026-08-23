@@ -1,3 +1,5 @@
+import 'package:g1_extended/models/g1/text.dart';
+
 class SendResultPacket {
   final int command;
   final int seq;
@@ -15,7 +17,11 @@ class SendResultPacket {
     this.seq = 0,
     this.totalPackages = 1,
     this.currentPackage = 0,
-    this.screenStatus = 0x31, // Example value
+    // Plain text by default (0x70), new content (0x01). It was 0x31 —
+    // "Even AI displaying" — described as an example value and used as a
+    // default everywhere, which is how ordinary text came to open the
+    // assistant's screen.
+    this.screenStatus = AIStatus.TEXT_SHOW | ScreenAction.NEW_CONTENT,
     this.newCharPos0 = 0,
     this.newCharPos1 = 0,
     this.pageNumber = 1,

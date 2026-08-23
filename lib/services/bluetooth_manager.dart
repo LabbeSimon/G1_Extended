@@ -363,6 +363,7 @@ class BluetoothManager {
     _startBatteryTimer();
 
     // Propagate to glasses
+    _externalHeartbeat = managed;
     leftGlass?.setExternalHeartbeatManaged(managed);
     rightGlass?.setExternalHeartbeatManaged(managed);
   }
@@ -432,6 +433,7 @@ class BluetoothManager {
         device: BluetoothDevice(remoteId: DeviceIdentifier(leftUid)),
         side: GlassSide.left,
       );
+      _adoptHeartbeatPolicy(leftGlass!);
       leftGlass!.onConnectionStateChanged = _notifyConnectionStatusChanged;
       await leftGlass!.connect();
       _setReconnect(leftGlass!);
@@ -444,6 +446,7 @@ class BluetoothManager {
         device: BluetoothDevice(remoteId: DeviceIdentifier(rightUid)),
         side: GlassSide.right,
       );
+      _adoptHeartbeatPolicy(rightGlass!);
       rightGlass!.onConnectionStateChanged = _notifyConnectionStatusChanged;
       await rightGlass!.connect();
       _setReconnect(rightGlass!);
@@ -545,18 +548,48 @@ class BluetoothManager {
   Future<void> handOffToOwner() async {
     if (_ownsGlasses) return;
 
-    debugPrint('BluetoothManager: pairing done, handing the link over');
+    // Never let go on faith.
+    //
+    // This used to disconnect first and notify afterwards. In beta.3 the
+    // owner was never running — it only started once glasses connected,
+    // and after the isolate arbitration the owner is the one who connects
+    // — so the link was dropped and handed to nobody. The glasses went
+    // away mid-action and did not come back, which is not a timeout: it is
+    // this method, working exactly as written.
+    //
+    // So the owner is started and confirmed alive before anything is let
+    // go. A link held by the wrong isolate is imperfect; no link at all is
+    // broken, and imperfect beats broken every time.
+    await BluetoothBackgroundService.start();
+
+    final owner = await _waitForOwner();
+    if (!owner) {
+      debugPrint('BluetoothManager: owner did not come up, keeping the link');
+      return;
+    }
+
+    debugPrint('BluetoothManager: owner is up, handing the link over');
     await leftGlass?.disconnect();
     await rightGlass?.disconnect();
     leftGlass = null;
     rightGlass = null;
 
-    // A first pairing is exactly when the owner is not yet running — it
-    // only autostarts when a stored pairing already exists. Starting it is
-    // what makes the nudge below land on ears; invoking a stopped service
-    // goes nowhere, silently.
-    await BluetoothBackgroundService.start();
     GlassesRelay.reconnect();
+  }
+
+  /// Waits for the owning service to report itself running.
+  ///
+  /// Polled rather than awaited on a signal: the service bus carries no
+  /// reply to "are you there", and its own isRunning is the honest answer.
+  Future<bool> _waitForOwner({
+    Duration limit = const Duration(seconds: 10),
+  }) async {
+    final deadline = DateTime.now().add(limit);
+    while (DateTime.now().isBefore(deadline)) {
+      if (await BluetoothBackgroundService.isRunning()) return true;
+      await Future.delayed(const Duration(milliseconds: 400));
+    }
+    return false;
   }
 
   Future<void> startScanAndConnect({required OnUpdate onUpdate}) async {
@@ -676,6 +709,7 @@ class BluetoothManager {
         device: result.device,
         side: GlassSide.left,
       );
+      _adoptHeartbeatPolicy(glass);
       glass.onConnectionStateChanged = _notifyConnectionStatusChanged;
       leftGlass = glass;
       onUpdate("Left glass found: ${glass.name}");
@@ -691,6 +725,7 @@ class BluetoothManager {
         device: result.device,
         side: GlassSide.right,
       );
+      _adoptHeartbeatPolicy(glass);
       glass.onConnectionStateChanged = _notifyConnectionStatusChanged;
       rightGlass = glass;
       onUpdate("Right glass found: ${glass.name}");
@@ -865,6 +900,59 @@ class BluetoothManager {
     });
   }
 
+  /// One writer at a time, across everything.
+  ///
+  /// Thirty-three call sites reach the radio — notifications in chunks,
+  /// note slots, the dashboard, the allowlist, the heartbeat on its own
+  /// timer — and none of them waited for the others. Dart interleaves at
+  /// every await, so a heartbeat fired in the middle of a chunked
+  /// notification and went out between two of its fragments; worse, two
+  /// callers each writing "left then right" produced left, left, right,
+  /// right. The firmware sees a broken sequence and closes the link, which
+  /// is what disconnecting in the middle of an action looks like.
+  ///
+  /// A chain of futures rather than a lock object: each caller waits on the
+  /// one before it and hands the baton to the next, and a caller that
+  /// throws still passes it on.
+  Future<void>? _writeBaton;
+
+  Future<T> _serialised<T>(Future<T> Function() action) {
+    final previous = _writeBaton ?? Future<void>.value();
+    final handover = Completer<void>();
+    _writeBaton = handover.future;
+
+    return previous
+        .then((_) => action())
+        .whenComplete(() => handover.complete());
+  }
+
+  /// Whether the heartbeat is beaten from outside this object.
+  ///
+  /// Remembered, because reconnecting builds fresh Glass objects and each
+  /// arrives believing it should beat its own — which left two heartbeats
+  /// running unsynchronised after every reconnection.
+  bool _externalHeartbeat = false;
+
+  /// Beats both temples, in the queue with everything else.
+  ///
+  /// The protocol drops the link after 32 seconds without one, so this
+  /// cannot be a write that jumps the queue — but neither can it be
+  /// starved. Nothing queued takes more than a couple of seconds.
+  Future<void> sendHeartbeats() => _serialised(() async {
+        for (final glass in [leftGlass, rightGlass]) {
+          if (glass?.isConnected != true) continue;
+          try {
+            await glass!.sendHeartbeat();
+          } catch (e) {
+            debugPrint('BluetoothManager: heartbeat to ${glass!.side}: $e');
+          }
+        }
+      });
+
+  /// Applies the remembered heartbeat arrangement to a newly built Glass.
+  void _adoptHeartbeatPolicy(Glass glass) =>
+      glass.setExternalHeartbeatManaged(_externalHeartbeat);
+
   /// True when a write reached one temple and not the other.
   ///
   /// The lenses are then showing different things, and no amount of waiting
@@ -883,15 +971,19 @@ class BluetoothManager {
   /// lenses disagreeing until something else happened to write to them.
   ///
   /// Returns true only when both sides took it.
-  Future<bool> sendCommandToGlasses(List<int> command) async {
+  Future<bool> sendCommandToGlasses(List<int> command) {
     // No link in this isolate: hand the bytes to the isolate that has one
     // instead of returning a silent false. True is honest here — delivery
     // is now the owner's business, and it retries and logs.
     if (!_ownsGlasses && leftGlass == null && rightGlass == null) {
       GlassesRelay.send(command);
-      return true;
+      return Future.value(true);
     }
 
+    return _serialised(() => _writeBothNow(command));
+  }
+
+  Future<bool> _writeBothNow(List<int> command) async {
     final left = await _writeTo(leftGlass, command);
     final right = await _writeTo(rightGlass, command);
 
@@ -1266,12 +1358,12 @@ class BluetoothManager {
 
   /// Sends to the right temple only — settings commands go there.
   /// Relays like [sendCommandToGlasses] when this isolate holds no link.
-  Future<bool> sendToRight(List<int> command) async {
+  Future<bool> sendToRight(List<int> command) {
     if (!_ownsGlasses && rightGlass == null) {
       GlassesRelay.send(command, side: 'right');
-      return true;
+      return Future.value(true);
     }
-    return _writeTo(rightGlass, command);
+    return _serialised(() => _writeTo(rightGlass, command));
   }
 
   /// Public so that editing or pinning a note reaches the glasses at once

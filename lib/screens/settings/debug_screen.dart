@@ -6,6 +6,7 @@ import 'package:g1_extended/models/g1/translate.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/utils/bitmap.dart';
 import 'dart:convert';
+import 'package:g1_extended/models/g1/text.dart';
 import 'package:g1_extended/services/isolate_report.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -31,6 +32,39 @@ class _DebugPageSate extends State<DebugPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Sends the same line under each candidate status byte, announcing
+  /// each one first so the wearer can tell which is which.
+  void _sweepScreenStatus() async {
+    final bluetooth = BluetoothManager.singleton;
+    if (!bluetooth.isConnected) {
+      _toast('Glasses are not connected.');
+      return;
+    }
+
+    const candidates = <int, String>{
+      0x71: 'text show',
+      0x31: 'AI displaying',
+      0x41: 'AI complete',
+      0x51: 'AI manual',
+      0x01: 'no status',
+    };
+
+    _toast('Sweeping — watch the lens, 4 seconds each.');
+
+    for (final entry in candidates.entries) {
+      final label = '0x${entry.key.toRadixString(16).padLeft(2, '0')}  '
+          '${entry.value}';
+      final packets = TextMessage(label)
+          .constructSendTextWithStatus(entry.key);
+      for (final packet in packets) {
+        await bluetooth.sendCommandToGlasses(packet);
+      }
+      await Future.delayed(const Duration(seconds: 4));
+    }
+
+    _toast('Done. Which one stayed out of Even AI?');
   }
 
   void _copyIsolateReport() async {
@@ -281,6 +315,19 @@ class _DebugPageSate extends State<DebugPage> {
           ElevatedButton(
             onPressed: _copyIsolateReport,
             child: const Text("Copy isolate report"),
+          ),
+          const SizedBox(height: 20),
+          // Which status byte stops the glasses opening Even AI.
+          //
+          // The high nibble of a text packet's status byte says what kind
+          // of thing is on screen, and this app had it announcing Even AI
+          // for everything. The value that means plain text was read off
+          // community notes rather than a specification, so rather than
+          // trusting it: send the same line under each candidate, a few
+          // seconds apart, and watch which one leaves the lens alone.
+          ElevatedButton(
+            onPressed: _sweepScreenStatus,
+            child: const Text("Sweep text status bytes"),
           ),
 
         ],

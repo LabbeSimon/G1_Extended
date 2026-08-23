@@ -4,14 +4,30 @@ import 'package:g1_extended/models/g1/commands.dart';
 import 'package:g1_extended/models/g1/even_ai.dart';
 import 'package:flutter/foundation.dart';
 
-// Define AIStatus and ScreenAction constants
+/// The status byte of a text packet, which is two fields in one.
+///
+/// The high nibble tells the glasses *what kind of thing* is on screen and
+/// the low nibble what to do with it. This app had the high nibble wrong
+/// everywhere: every piece of text — a teleprompter line, a speed reading,
+/// a dictation echo — went out announcing itself as Even AI output, so the
+/// glasses did the reasonable thing and opened the Even AI screen. Two
+/// different constants in this codebase, 0x20 | 0x10 here and 0x31 in
+/// even_ai.dart, both said the same thing: Even AI is displaying.
 class AIStatus {
-  static const int DISPLAYING = 0x20;
+  /// Even AI is producing this, more to come.
+  static const int DISPLAYING = 0x30;
+
+  /// Even AI has finished producing this.
   static const int DISPLAY_COMPLETE = 0x40;
+
+  /// Plain text, nothing to do with the assistant. What almost everything
+  /// this app sends actually is.
+  static const int TEXT_SHOW = 0x70;
 }
 
 class ScreenAction {
-  static const int NEW_CONTENT = 0x10;
+  /// Replace what is on screen with what follows.
+  static const int NEW_CONTENT = 0x01;
 }
 
 class TextMessage {
@@ -23,7 +39,7 @@ class TextMessage {
     required String textMessage,
     int pageNumber = 1,
     int maxPages = 1,
-    int screenStatus = ScreenAction.NEW_CONTENT | AIStatus.DISPLAYING,
+    int screenStatus = ScreenAction.NEW_CONTENT | AIStatus.TEXT_SHOW,
     int seq = 0,
   }) {
     List<int> textBytes = utf8.encode(textMessage);
@@ -65,6 +81,20 @@ class TextMessage {
     return lines;
   }
 
+  /// The same packets, under a caller-chosen status byte. For the debug
+  /// sweep that establishes which value the firmware treats as plain text.
+  List<List<int>> constructSendTextWithStatus(int screenStatus) {
+    final chunks = <List<int>>[];
+    final bytes = utf8.encode(text);
+    chunks.add(_sendTextPacket(
+      textMessage: text,
+      screenStatus: screenStatus,
+    ));
+    debugPrint('constructSendTextWithStatus: ${bytes.length} byte(s) at '
+        '0x${screenStatus.toRadixString(16)}');
+    return chunks;
+  }
+
   List<List<int>> constructSendText() {
     List<String> lines = _formatTextLines(text);
     int totalPages = ((lines.length + 4) / 5).ceil(); // 5 lines per page
@@ -73,7 +103,7 @@ class TextMessage {
 
     if (totalPages > 1) {
       debugPrint("Composeing $totalPages pages");
-      int screenStatus = AIStatus.DISPLAYING | ScreenAction.NEW_CONTENT;
+      int screenStatus = AIStatus.TEXT_SHOW | ScreenAction.NEW_CONTENT;
 
       packets.add(_sendTextPacket(
         textMessage: lines[0],
@@ -101,7 +131,7 @@ class TextMessage {
 
       String text = pageLines.join('\n');
       lastPageText = text;
-      int screenStatus = AIStatus.DISPLAYING | ScreenAction.NEW_CONTENT;
+      int screenStatus = AIStatus.TEXT_SHOW | ScreenAction.NEW_CONTENT;
 
       packets.add(_sendTextPacket(
         textMessage: text,
@@ -112,7 +142,7 @@ class TextMessage {
     }
 
     // After all pages, send the last page again with DISPLAY_COMPLETE status
-    int screenStatus = AIStatus.DISPLAY_COMPLETE;
+    int screenStatus = AIStatus.TEXT_SHOW | ScreenAction.NEW_CONTENT;
 
     packets.add(_sendTextPacket(
       textMessage: lastPageText,
@@ -146,7 +176,7 @@ class TextMessage {
     }
 
     String pageText = pageLines.join('\n');
-    int screenStatus = AIStatus.DISPLAYING | ScreenAction.NEW_CONTENT;
+    int screenStatus = AIStatus.TEXT_SHOW | ScreenAction.NEW_CONTENT;
 
     return _sendTextPacket(
       textMessage: pageText,

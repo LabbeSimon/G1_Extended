@@ -411,9 +411,12 @@ class BluetoothBackgroundService {
   static void _startHeartbeatTimer() {
     _heartbeatTimer?.cancel();
 
-    // Send heartbeat every 15 seconds (protocol disconnects after 32 seconds without heartbeat)
+    // Every eight seconds, not fifteen. The protocol drops the link after
+    // thirty-two, and the beat now waits its turn in the write queue behind
+    // whatever is in flight — fifteen left two chances and no margin for
+    // that wait. Eight leaves four.
     _heartbeatTimer =
-        Timer.periodic(const Duration(seconds: 15), (timer) async {
+        Timer.periodic(const Duration(seconds: 8), (timer) async {
       if (!_isRunning || _bluetoothManager == null) {
         timer.cancel();
         return;
@@ -437,13 +440,10 @@ class BluetoothBackgroundService {
 
   static Future<void> _sendHeartbeat() async {
     try {
-      if (_bluetoothManager?.leftGlass?.isConnected == true) {
-        await _bluetoothManager!.leftGlass!.sendHeartbeat();
-      }
-
-      if (_bluetoothManager?.rightGlass?.isConnected == true) {
-        await _bluetoothManager!.rightGlass!.sendHeartbeat();
-      }
+      // Through the manager, which puts it in the same queue as every
+      // other write. Reaching for the Glass objects directly is how the
+      // beat came to land between two fragments of a chunked notification.
+      await _bluetoothManager?.sendHeartbeats();
 
       debugPrint('BluetoothBackgroundService: Heartbeat sent');
     } catch (e) {
