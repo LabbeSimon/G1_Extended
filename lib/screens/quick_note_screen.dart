@@ -291,7 +291,10 @@ class _NoteEditorState extends State<_NoteEditor> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Saved as you type. Pinned notes reach the glasses at once.',
+                  'Saved as you type. Pinned notes reach the glasses at once.\n\n'
+                  'Start a line with "[] " for a checkbox on the lens, '
+                  '"[x] " for a checked one, "- " works too. Numbers like '
+                  '"1." are shown as written.',
                   style: TextStyle(fontSize: 12),
                 ),
               ],

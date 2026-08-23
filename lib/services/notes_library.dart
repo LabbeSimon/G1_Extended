@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import 'package:g1_extended/models/g1/note_markup.dart';
 import 'package:g1_extended/models/g1/note_slots.dart';
 import 'package:g1_extended/models/note_entry.dart';
 
@@ -192,7 +193,9 @@ class NotesLibrary {
       if (slot == null || entry.isEmpty) continue;
       result[slot] = SlotContent(
         name: entry.displayTitle,
-        text: entry.body,
+        // Checkbox markup becomes the firmware's glyphs here, at the border
+        // between phone and lens. The stored note keeps what was typed.
+        text: NoteMarkup.toLens(entry.body),
         fromUser: true,
       );
     }
