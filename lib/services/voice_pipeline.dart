@@ -45,6 +45,18 @@ class VoicePipeline {
     });
 
     _inputSubscription = _input.stateStream.listen(_onInputState);
+
+    // Not awaited, and after the first frames.
+    //
+    // Resuming means handing a forty megabyte model to a native loader,
+    // which is slow at best and fatal at worst. Blocking start-up on it
+    // would trade a wake word that does not listen for an app that does not
+    // open — and the guards inside decline outright when the moment is
+    // wrong.
+    unawaited(Future.delayed(
+      const Duration(seconds: 3),
+      _wakeWord.resumeIfEnabled,
+    ));
   }
 
   Future<void> stop() async {

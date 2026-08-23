@@ -35,6 +35,7 @@ class MainActivity : FlutterActivity() {
         const val CHANNEL_APP_RETAIN = "$PACKAGE/app_retain"
         const val CHANNEL_BATTERY = "$PACKAGE/battery_optimization"
         const val CHANNEL_INSTALL = "$PACKAGE/apk_install"
+        const val CHANNEL_MEMORY = "$PACKAGE/memory"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,7 +45,17 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        BackgroundService.stopService(this, null)
+
+        // The background service is deliberately left running.
+        //
+        // It used to be stopped here, which defeated the one thing it
+        // exists for: holding the Bluetooth link while the app is not on
+        // screen. onDestroy fires when the activity goes away for any
+        // reason — the user swiping it out of recents, the system
+        // reclaiming it, or the process dying — so the glasses disconnected
+        // every time, including as a second casualty of any crash. The
+        // service stops when it is told to, from the app's own control, and
+        // not before.
     }
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
@@ -86,6 +97,27 @@ class MainActivity : FlutterActivity() {
             if (call.method == "sendToBackground") {
                 moveTaskToBack(true)
                 result.success(null)
+            } else {
+                result.notImplemented()
+            }
+        }
+
+        // What the system will let this process have — asked before the
+        // speech model meets a native loader that cannot fail politely.
+        MethodChannel(messenger, CHANNEL_MEMORY).setMethodCallHandler { call, result ->
+            if (call.method == "state") {
+                val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+                val info = android.app.ActivityManager.MemoryInfo()
+                am.getMemoryInfo(info)
+                result.success(
+                    mapOf(
+                        "availableBytes" to info.availMem,
+                        "totalBytes" to info.totalMem,
+                        "lowMemoryThresholdBytes" to info.threshold,
+                        "systemLowMemory" to info.lowMemory,
+                        "heapLimitMb" to am.largeMemoryClass,
+                    )
+                )
             } else {
                 result.notImplemented()
             }

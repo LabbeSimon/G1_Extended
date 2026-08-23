@@ -1,7 +1,10 @@
 import 'dart:convert';
-import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
+import 'package:hive/hive.dart';
 
 import 'package:g1_extended/models/g1/commands.dart';
+import 'package:g1_extended/services/notification_apps.dart';
 
 class G1Setup {
   bool calendarEnable;
@@ -10,17 +13,48 @@ class G1Setup {
   bool iosMailEnable;
   App app;
 
-  /// The glasses keep their own allowlist, which used to be filled from the
-  /// same box the phone filters with. Two filters over one setting is how you
-  /// end up with notifications that vanish for reasons nobody can explain, so
-  /// the firmware filter is switched off and the phone decides alone.
-  static G1Setup generateSetup() {
+  /// The allowlist the glasses filter on.
+  ///
+  /// This used to send an empty list with the feature switched off, on the
+  /// reasoning that two filters over one setting cause notifications to
+  /// vanish for reasons nobody can explain and the phone should decide
+  /// alone. The reasoning was sound and the assumption underneath it was
+  /// wrong: for an allowlist, "off" is not "let everything through". The
+  /// glasses discarded every notification and their counter sat at zero —
+  /// no error, nothing in a log, just an app that seemed not to forward
+  /// anything.
+  ///
+  /// So the list is populated, from every application seen posting a
+  /// notification minus the ones the wearer excluded. The phone still
+  /// filters first and immediately; this exists so the glasses do not
+  /// overrule it.
+  static Future<G1Setup> generateSetup() async {
+    final excluded = <String>{};
+    try {
+      final blocklist = Hive.box('notificationBlocklist');
+      for (final key in blocklist.keys) {
+        if (key is String && blocklist.get(key) == true) excluded.add(key);
+      }
+    } catch (e) {
+      // No blocklist available in this isolate: allow everything seen
+      // rather than nothing, which is the failure being fixed here.
+      debugPrint('G1Setup: no blocklist to read: $e');
+    }
+
+    final allowed = await NotificationApps.singleton.allowed(excluded);
+
     return G1Setup(
       calendarEnable: true,
       callEnable: true,
       msgEnable: true,
       iosMailEnable: true,
-      app: App(list: const [], enable: false),
+      app: App(
+        list: [
+          for (final entry in allowed.entries)
+            AppItem(id: entry.key, name: entry.value),
+        ],
+        enable: true,
+      ),
     );
   }
 

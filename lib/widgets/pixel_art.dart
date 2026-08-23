@@ -199,18 +199,26 @@ abstract final class PixelArtwork {
   ];
 
   /// Silent mode.
+  /// The crescent that means silent, drawn solid.
+  ///
+  /// It was an outline before — a thin arc open to the right, which at
+  /// button size read as the letter C and not as a moon at all. What makes
+  /// a crescent legible is a solid body with the bite offset up and to the
+  /// right, so the horns taper and the belly stays thick. Checked by
+  /// rendering it, alongside a struck bell, a Zzz and the glasses struck
+  /// through: all three of those were mush at twelve pixels.
   static const List<String> moon = [
     '............',
-    '.....####...',
-    '...##...##..',
-    '..#......##.',
-    '..#.........',
-    '.#..........',
-    '.#..........',
-    '..#.........',
-    '..#......##.',
-    '...##...##..',
-    '.....####...',
+    '...####.....',
+    '..######....',
+    '.#######....',
+    '.######.....',
+    '.#####......',
+    '.#####......',
+    '.######.....',
+    '.#######....',
+    '..######....',
+    '...####.....',
     '............',
   ];
 

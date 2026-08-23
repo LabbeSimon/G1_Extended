@@ -15,6 +15,7 @@ import 'package:g1_extended/services/dashboard_controller.dart';
 import 'package:g1_extended/models/g1/note.dart';
 import 'package:g1_extended/models/g1/note_slots.dart';
 import 'package:g1_extended/services/notes_library.dart';
+import 'package:g1_extended/services/notification_apps.dart';
 import 'package:g1_extended/services/widget_panel.dart';
 import 'package:g1_extended/services/world_clocks.dart';
 import 'package:g1_extended/models/g1/notification.dart';
@@ -213,6 +214,10 @@ class BluetoothManager {
       // Unconditionally: it is idempotent, and the condition that used to
       // guard it was the bug.
       _setupBatteryMonitoring();
+      // The allowlist first: until the glasses have it, they discard every
+      // notification that arrives.
+      unawaited(sendSetup());
+
       // Always start the background service notification when glasses connect
       _startBackgroundService();
 
@@ -736,6 +741,14 @@ class BluetoothManager {
     });
   }
 
+  /// Sends to the left temple only.
+  ///
+  /// The protocol assigns each command an arm: notifications (0x4B) and
+  /// their allowlist (0x04) are documented left-arm commands, and
+  /// broadcasting them to the pair is how a notification could be built
+  /// correctly, chunked correctly, sent — and never appear.
+  Future<bool> sendToLeft(List<int> command) => _writeTo(leftGlass, command);
+
   /// True when a write reached one temple and not the other.
   ///
   /// The lenses are then showing different things, and no amount of waiting
@@ -940,8 +953,9 @@ class BluetoothManager {
     G1Notification notif = G1Notification(ncsNotification: notification);
     List<Uint8List> notificationChunks = await notif.constructNotification();
 
+    // Left arm only, as the protocol specifies for 0x4B.
     for (Uint8List chunk in notificationChunks) {
-      await sendCommandToGlasses(chunk);
+      await sendToLeft(chunk);
       await Future.delayed(
         Duration(milliseconds: 50),
       ); // Small delay between chunks
@@ -987,6 +1001,17 @@ class BluetoothManager {
     }
 
     final appName = await _getAppDisplayName(packageName);
+
+    // The glasses filter on their own allowlist, so an application they
+    // have never been told about is discarded on arrival. Telling them at
+    // the moment it first appears is what makes the *next* notification
+    // from it arrive, rather than leaving it invisible until the ten
+    // minute resync.
+    if (await NotificationApps.singleton.remember(packageName, appName)) {
+      debugPrint('BluetoothManager: first notification from $packageName, '
+          'refreshing the glasses allowlist');
+      unawaited(sendSetup());
+    }
 
     // Into the history whether or not the glasses are reachable. It used to
     // sit inside the connected branch, which meant the history only recorded
@@ -1099,6 +1124,24 @@ class BluetoothManager {
   ///
   /// There is one writer now, and one rule: what a person typed outranks
   /// anything generated.
+  /// Tells the glasses which applications may show notifications.
+  ///
+  /// Sent on connection and whenever a new application appears, not only on
+  /// the ten minute cycle: a freshly connected pair with a stale or empty
+  /// allowlist silently drops everything until the cycle comes round.
+  Future<void> sendSetup() async {
+    if (!isConnected) return;
+    try {
+      // 0x04 is a left-arm command too.
+      final setup = await (await G1Setup.generateSetup()).constructSetup();
+      for (final command in setup) {
+        await sendToLeft(command);
+      }
+    } catch (e) {
+      debugPrint('BluetoothManager: could not send the allowlist: $e');
+    }
+  }
+
   /// Public so that editing or pinning a note reaches the glasses at once
   /// rather than at the next sync, up to a minute later.
   Future<void> writeNoteSlots() => _writeNoteSlots();
@@ -1186,12 +1229,7 @@ class BluetoothManager {
     }
 
     // every 10 minutes sync G1Setup
-    if (DateTime.now().minute % 10 == 0) {
-      final setup = await G1Setup.generateSetup().constructSetup();
-      for (var command in setup) {
-        await sendCommandToGlasses(command);
-      }
-    }
+    if (DateTime.now().minute % 10 == 0) await sendSetup();
 
     // Sync silent mode setting with glasses
     bool isDisplayEnabled = await _isGlassesDisplayEnabled();
