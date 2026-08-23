@@ -1118,8 +1118,8 @@ class BluetoothManager {
       // text, and only if a slot is going spare.
       hint: const SlotContent(
         name: 'G1 Extended',
-        text: 'Touch right touchbar\nto start/stop conversation\n'
-            'transcription',
+        text: 'Hold right temple to start\na spoken note, hold again\n'
+            'to save it',
       ),
     );
 

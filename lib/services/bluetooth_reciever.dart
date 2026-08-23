@@ -99,6 +99,7 @@ class BluetoothReciever {
         await DictationService.singleton.record(
           _lastWords,
           source: DictationSource.phone,
+          saveAsNote: _captureSide == GlassSide.right,
         );
       } else {
         debugPrint('Final transcription is empty.');
@@ -231,6 +232,15 @@ class BluetoothReciever {
   /// True while a touchpad-initiated capture is running.
   bool _isCapturing = false;
 
+  /// Which temple started the running capture.
+  ///
+  /// The two mean different things: the left talks to the glasses —
+  /// commands, the assistant, plain display — while the right dictates a
+  /// note. The phone-microphone path reports its result through a callback
+  /// that has no idea which temple asked, so the side is kept here from
+  /// begin to finish.
+  GlassSide? _captureSide;
+
   /// Puts a recent notification back on the lens.
   ///
   /// Repeated taps walk further back, which is why the history keeps a
@@ -255,6 +265,7 @@ class BluetoothReciever {
       return;
     }
     _isCapturing = true;
+    _captureSide = side;
 
     final bt = BluetoothManager();
 
@@ -319,7 +330,10 @@ class BluetoothReciever {
       debugPrint(
         '[$side] Transcribed ${pcm.length} bytes in ${elapsed.inMilliseconds}ms: "$transcript"',
       );
-      await DictationService.singleton.record(transcript);
+      await DictationService.singleton.record(
+        transcript,
+        saveAsNote: side == GlassSide.right,
+      );
     } on SpeechModelMissingException {
       debugPrint('[$side] Offline speech model missing');
       await bt.sendPriorityText(
