@@ -8,6 +8,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:g1_extended/services/device_abis.dart';
+
 /// A release newer than the one running.
 class AvailableUpdate {
   final String version;
@@ -58,6 +60,15 @@ class UpdateService {
   /// Checking more often than this is pointless and rude to the API.
   static const Duration minimumInterval = Duration(hours: 12);
 
+  /// Betas move in hours, not days.
+  ///
+  /// Twelve hours is right for a stable release and absurd for someone
+  /// testing: a build finishes, and the phone that asked for betas learns
+  /// about it the following afternoon. The endpoint is a plain
+  /// unauthenticated GET and GitHub's limit is sixty an hour unauthenticated
+  /// — half-hourly is nowhere near it.
+  static const Duration betaInterval = Duration(minutes: 30);
+
   /// Whether this install follows the beta channel.
   ///
   /// Off by default, and deliberately not a switch anyone trips over:
@@ -107,7 +118,8 @@ class UpdateService {
         final since = DateTime.now().difference(
           DateTime.fromMillisecondsSinceEpoch(last),
         );
-        if (since < minimumInterval) return null;
+        final wait = await isBeta() ? betaInterval : minimumInterval;
+        if (since < wait) return null;
       }
     }
 
@@ -152,7 +164,7 @@ class UpdateService {
       if (tag == null || url == null) return null;
 
       final notes = (json['body'] as String?)?.trim();
-      final apk = pickApkAsset(json);
+      final apk = pickApkAsset(json, abis: await DeviceAbis.supported());
 
       return AvailableUpdate(
         version: normalise(tag),
@@ -192,23 +204,55 @@ class UpdateService {
 
   /// The APK among a release's assets, as (url, size).
   ///
-  /// By suffix, not by exact name: the asset is named after the tag, and
+  /// By suffix, never by exact name: the asset is named after the tag, and
   /// tying this to today's naming would quietly break the update button the
   /// day the naming changes.
+  ///
+  /// Releases carry one build per processor architecture plus a universal
+  /// one that contains them all. Picking the matching build halves the
+  /// download — the native code for architectures this phone cannot run is
+  /// most of the difference — so [abis] is consulted first, most preferred
+  /// architecture first, and the universal build is the fallback for a
+  /// release that has no split or an architecture we do not recognise.
   @visibleForTesting
-  static (String, int)? pickApkAsset(Map<String, dynamic> release) {
+  static (String, int)? pickApkAsset(
+    Map<String, dynamic> release, {
+    List<String> abis = const [],
+  }) {
     final assets = release['assets'];
     if (assets is! List) return null;
 
+    final apks = <String, (String, int)>{};
     for (final asset in assets) {
       if (asset is! Map) continue;
-      final name = asset['name'] as String? ?? '';
+      final name = (asset['name'] as String? ?? '').toLowerCase();
       final url = asset['browser_download_url'] as String?;
-      if (url == null || !name.toLowerCase().endsWith('.apk')) continue;
-      return (url, (asset['size'] as num?)?.toInt() ?? 0);
+      if (url == null || !name.endsWith('.apk')) continue;
+      apks[name] = (url, (asset['size'] as num?)?.toInt() ?? 0);
+    }
+    if (apks.isEmpty) return null;
+
+    for (final abi in abis) {
+      final wanted = abi.toLowerCase();
+      for (final entry in apks.entries) {
+        if (entry.key.contains(wanted)) return entry.value;
+      }
+    }
+
+    // No match: prefer a build that names no architecture at all over one
+    // that names the wrong one, which would install and then not run.
+    for (final entry in apks.entries) {
+      if (!_namesAnArchitecture(entry.key)) return entry.value;
     }
     return null;
   }
+
+  static const List<String> _knownAbis = [
+    'arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86',
+  ];
+
+  static bool _namesAnArchitecture(String name) =>
+      _knownAbis.any(name.contains);
 
   /// Downloads the update's APK into the cache, reporting progress 0..1.
   ///
