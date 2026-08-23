@@ -65,6 +65,17 @@ Self-contained, and none needs the glasses' protocol knowledge to start:
 - [ ] **Translations of the app itself** — the interface is English-only;
       an l10n pass is welcome groundwork
 
+## Investigated, waiting for a volunteer device
+
+- [ ] **Glasses battery in the system's own device list** — Samsung's
+      battery widget only lists the Galaxy ecosystem and takes no third
+      parties, but Android's CompanionDeviceManager is the official route
+      to the same end: associate the glasses as a companion device and
+      publish their battery, and they appear under Settings → Connected
+      devices like a pair of earbuds (One UI often surfaces that in the
+      quick panel too). Pure native work, behaviour varies by One UI
+      version, and it cannot be verified without a device in hand.
+
 ## Decisions pending
 
 - [ ] Split APKs per ABI — the translation engine pushed the universal APK
