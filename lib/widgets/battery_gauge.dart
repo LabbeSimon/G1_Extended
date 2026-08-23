@@ -218,31 +218,65 @@ class GlassesBattery extends StatelessWidget {
     return left < right ? left : right;
   }
 
+  /// The glasses' own glyph, mirroring the case's.
+  ///
+  /// The case line carried a pictogram and this one did not, so the two
+  /// readings in the same tile were not each other's equals — the case
+  /// looked labelled and the glasses looked like the default. Same glyph
+  /// size, same colour, same side.
+  static Widget _glyph() => const Padding(
+        padding: EdgeInsets.only(left: 8),
+        child: PixelArt(
+          rows: PixelArtwork.glasses,
+          size: 14,
+          color: AppColors.inkMuted,
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     if (!shouldSplit(left, right)) {
-      return BatteryGauge(
-        percentage: lowest(left, right),
-        charging: charging,
-        width: gaugeWidth,
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          BatteryGauge(
+            percentage: lowest(left, right),
+            charging: charging,
+            width: gaugeWidth,
+          ),
+          _glyph(),
+        ],
       );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        BatteryGauge(
-          label: 'L',
-          percentage: left,
-          charging: charging,
-          width: gaugeWidth,
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            BatteryGauge(
+              label: 'L',
+              percentage: left,
+              charging: charging,
+              width: gaugeWidth,
+            ),
+            _glyph(),
+          ],
         ),
         const SizedBox(height: 8),
-        BatteryGauge(
-          label: 'R',
-          percentage: right,
-          charging: charging,
-          width: gaugeWidth,
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            BatteryGauge(
+              label: 'R',
+              percentage: right,
+              charging: charging,
+              width: gaugeWidth,
+            ),
+            _glyph(),
+          ],
         ),
       ],
     );
@@ -265,14 +299,22 @@ class CaseBatteryReadout extends StatelessWidget {
   final int? percentage;
 
   /// True when the value came from a byte believed to be the case level
-  /// rather than the documented state change. Shown differently so a reading
-  /// nobody has confirmed is never mistaken for one that is.
+  /// rather than the documented state change.
   final bool suspected;
 
   @override
   Widget build(BuildContext context) {
     final value = percentage;
     if (value == null) return const SizedBox.shrink();
+
+    // A guess is not shown at all. It used to appear with a question mark,
+    // on the reasoning that a marked guess beats no information — but a
+    // number on a screen is read as a number, the mark is not, and being
+    // told 40% when the case holds 90% is worse than being told nothing.
+    // The byte it came from is consistent with the case level and equally
+    // consistent with a duplicate of something else; until a capture
+    // settles that, silence is the honest output.
+    if (suspected) return const SizedBox.shrink();
 
     // The same gauge as the glasses' own line, at the same width, labelled
     // with the case glyph where the pair's line carries L and R. The case
@@ -288,20 +330,11 @@ class CaseBatteryReadout extends StatelessWidget {
           width: GlassesBattery.defaultGaugeWidth,
         ),
         const SizedBox(width: 8),
-        PixelArt(
+        const PixelArt(
           rows: PixelArtwork.caseClosed,
           size: 14,
-          color: suspected ? AppColors.inkFaint : AppColors.inkMuted,
+          color: AppColors.inkMuted,
         ),
-        if (suspected)
-          const Text(
-            ' ?',
-            style: TextStyle(
-              fontFamily: AppTheme.technicalFont,
-              fontSize: 12,
-              color: AppColors.inkFaint,
-            ),
-          ),
       ],
     );
   }
