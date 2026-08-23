@@ -145,7 +145,10 @@ class BluetoothManager {
   bool _lastConnectionStatus = false;
 
   get isConnected =>
-      leftGlass?.isConnected == true && rightGlass?.isConnected == true;
+      (leftGlass?.isConnected == true && rightGlass?.isConnected == true) ||
+      // The interface's copy holds no link; its truth arrives by message.
+      (!_ownsGlasses && leftGlass == null && rightGlass == null &&
+          _remoteConnected);
   get isScanning => _isScanning;
 
   /// Stream of battery status updates
@@ -451,7 +454,104 @@ class BluetoothManager {
     if (leftGlass?.isConnected == true && rightGlass?.isConnected == true) {
       _notifyConnectionStatusChanged();
       await _sync();
+      // Reconnecting from storage in a non-owning isolate happens only as
+      // a fallback; the link still belongs with the service.
+      await handOffToOwner();
     }
+  }
+
+  /// What the owning isolate believes, mirrored here.
+  ///
+  /// The interface's copy holds no link, so connection and battery must
+  /// arrive as messages from the service. Only read when this isolate is
+  /// not the owner and has no link of its own — during pairing the local
+  /// truth wins.
+  bool _remoteConnected = false;
+
+  /// Ingests a state broadcast from the owning isolate and pushes it into
+  /// the same streams the screens already listen to, so nothing above this
+  /// line knows or cares which isolate produced the numbers.
+  void adoptRemoteState(Map<dynamic, dynamic> state) {
+    if (_ownsGlasses) return;
+
+    final wasConnected = isConnected;
+    _remoteConnected = state['connected'] == true;
+
+    final now = DateTime.now();
+    final left = (state['left'] as num?)?.toInt();
+    final right = (state['right'] as num?)?.toInt();
+    final charging = state['charging'] == true;
+
+    if (left != null || right != null) {
+      _batteryStatus = G1BatteryStatus(
+        leftBattery: left == null
+            ? _batteryStatus.leftBattery
+            : G1BatteryInfo(
+                percentage: left,
+                voltage: 0,
+                isCharging: charging,
+                side: GlassSide.left,
+                timestamp: now,
+              ),
+        rightBattery: right == null
+            ? _batteryStatus.rightBattery
+            : G1BatteryInfo(
+                percentage: right,
+                voltage: 0,
+                isCharging: charging,
+                side: GlassSide.right,
+                timestamp: now,
+              ),
+        lastUpdated: now,
+      );
+      _batteryStatusController.add(_batteryStatus);
+    }
+
+    final casePct = (state['case'] as num?)?.toInt();
+    if (casePct != null) {
+      updateCaseBattery(CaseBattery(
+        percentage: casePct,
+        source: state['caseConfirmed'] == true
+            ? CaseBatterySource.stateChange
+            : CaseBatterySource.polledCandidate,
+        at: now,
+      ));
+    }
+
+    if (wasConnected != isConnected) {
+      _connectionStatusController.add(isConnected);
+    }
+  }
+
+  /// This isolate's view, in the broadcast's shape — what the owner sends.
+  Map<String, Object?> stateSnapshot() => {
+        'connected': isConnected == true,
+        'left': _batteryStatus.leftBattery?.percentage,
+        'right': _batteryStatus.rightBattery?.percentage,
+        'charging': _batteryStatus.isAnyCharging,
+        'case': caseBattery?.percentage,
+        'caseConfirmed': caseBattery?.isConfirmed,
+      };
+
+  /// Hands a freshly paired link over to the owning isolate.
+  ///
+  /// Pairing has to happen in the interface — it is a screen, driven by
+  /// taps — but the interface's link dies with the activity. Keeping it
+  /// was how two isolates came to hold the same pair at once: doubled
+  /// writes, split battery readings, and a link that vanished whenever
+  /// the app was swiped away. So the moment pairing succeeds and the ids
+  /// are stored, this side lets go and the service picks the pair up from
+  /// storage. The two second gap is the price of a single owner.
+  Future<void> handOffToOwner() async {
+    if (_ownsGlasses) return;
+
+    debugPrint('BluetoothManager: pairing done, handing the link over');
+    await leftGlass?.disconnect();
+    await rightGlass?.disconnect();
+    leftGlass = null;
+    rightGlass = null;
+
+    GlassesRelay.reconnect();
   }
 
   Future<void> startScanAndConnect({required OnUpdate onUpdate}) async {
@@ -632,6 +732,7 @@ class BluetoothManager {
             ); // Increased delay for stability
             _notifyConnectionStatusChanged();
             await _sync();
+            await handOffToOwner();
           }
         }
       } catch (e) {

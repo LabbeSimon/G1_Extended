@@ -287,6 +287,22 @@ class BluetoothBackgroundService {
     // Lets the interface ask this isolate what it actually holds.
     IsolateReport.serveFrom(service);
 
+    // The interface holds no link; its screens live on these broadcasts.
+    // Sent on every change and every battery packet — small maps, rare
+    // events, and the alternative is an interface that answers from the
+    // state it had at startup.
+    void broadcastState() {
+      try {
+        service.invoke('glassesState', _bluetoothManager!.stateSnapshot());
+      } catch (e) {
+        debugPrint('BluetoothBackgroundService: broadcast failed: $e');
+      }
+    }
+
+    _bluetoothManager!.connectionStatusStream.listen((_) => broadcastState());
+    _bluetoothManager!.batteryStatusStream.listen((_) => broadcastState());
+    _bluetoothManager!.caseBatteryStream.listen((_) => broadcastState());
+
     // Bytes from the interface isolate, which drives screens but holds no
     // link. Without this, a settings change made while only the service
     // was connected did nothing at all.

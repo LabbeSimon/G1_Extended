@@ -69,6 +69,11 @@ void main() async {
     // The background service owns the glasses and runs the timers.
     await _step('bluetooth',
         () => BluetoothManager.singleton.initialize(ownsGlasses: false));
+    // The service owns the glasses and broadcasts what it sees; this copy
+    // feeds those broadcasts into the streams every screen already uses.
+    FlutterBackgroundService().on('glassesState').listen((state) {
+      if (state != null) BluetoothManager.singleton.adoptRemoteState(state);
+    });
     // Brings forward anything the four-slot version wrote, before anything
     // reads the box.
     await _step('notes', NotesLibrary.singleton.migrate);
