@@ -151,7 +151,11 @@ void main() {
           pane: DashboardPane.notes,
           sequence: 0x31,
         ),
-        [0x06, 0x07, 0x00, 0x31, 0x06, 0x02, 0x05],
+        // The legacy DASHBOARD_MINIMAL ended in 0x00, and this test used
+        // to claim 0x05 while calling itself a reproduction of those very
+        // bytes — asserting a guess against a name that promised the
+        // capture. The capture wins.
+        [0x06, 0x07, 0x00, 0x31, 0x06, 0x02, 0x00],
       );
     });
 
@@ -164,13 +168,30 @@ void main() {
       expect(command[1], command.length);
     });
 
-    test('forces an empty pane on minimal, which has no room for one', () {
+    test('zeroes the pane byte on minimal, which has no room for one', () {
+      // Zero, matching what the official app was observed to send — not
+      // the "empty" pane id, which was a guess that looked more expressive
+      // and corresponded to nothing on the wire.
       final command = DashboardLayoutCommand.build(
         mode: DashboardMode.minimal,
         pane: DashboardPane.calendar,
         sequence: 1,
       );
-      expect(command[6], DashboardPane.empty.id);
+      expect(command[6], 0x00);
+    });
+
+    test('the chosen pane survives in the modes that have one', () {
+      // The counterpart to the rule above: zeroing must apply to minimal
+      // alone, or choosing a pane would quietly do nothing.
+      for (final mode in [DashboardMode.full, DashboardMode.dual]) {
+        final command = DashboardLayoutCommand.build(
+          mode: mode,
+          pane: DashboardPane.calendar,
+          sequence: 1,
+        );
+        expect(command[6], DashboardPane.calendar.id,
+            reason: '$mode dropped the pane');
+      }
     });
 
     test('wraps the sequence into a byte', () {

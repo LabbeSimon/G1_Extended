@@ -95,7 +95,6 @@ class _BatteryPainter extends CustomPainter {
   /// 2-wide terminal nub. The interior is 13 by 5.
   static const int _cols = 20;
   static const int _rows = 9;
-  static const int _fillCols = 13;
 
   /// The level is drawn as separate bars rather than one solid block.
   ///
