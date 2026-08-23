@@ -294,7 +294,13 @@ abstract final class DashboardLayoutCommand {
       sequence & 0xFF,
       0x06, // subcommand: set dashboard mode
       mode.id,
-      mode.hasSecondaryPane ? pane.id : DashboardPane.empty.id,
+      // Zero when the mode has no second pane, not the "empty" pane id.
+      //
+      // The official app's captured commands end in 0x00 for minimal, and
+      // those bytes are the authority here — the protocol was read off the
+      // wire, not from a specification. Sending 0x05 was a guess that
+      // looked more expressive and matched nothing.
+      mode.hasSecondaryPane ? pane.id : 0x00,
     ]);
   }
 }
