@@ -25,14 +25,6 @@ hardware can confirm them:
       then `{hr}` in any card)
 - [ ] The in-app update button, whole loop, at the next release
 
-## Known debt
-
-- [ ] The notification history is held in memory per isolate, and the
-      notification stream reaches only one — the history screen may
-      under-report for the same reason the Maps capture did before it was
-      persisted (navigation_capture.dart shows the fix shape;
-      notification_history.dart needs the same)
-
 ## Blocked on information
 
 - [ ] **Google Maps instructions parsing** — needs a real capture: navigate
