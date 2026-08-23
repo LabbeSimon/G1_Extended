@@ -551,6 +551,11 @@ class BluetoothManager {
     leftGlass = null;
     rightGlass = null;
 
+    // A first pairing is exactly when the owner is not yet running — it
+    // only autostarts when a stored pairing already exists. Starting it is
+    // what makes the nudge below land on ears; invoking a stopped service
+    // goes nowhere, silently.
+    await BluetoothBackgroundService.start();
     GlassesRelay.reconnect();
   }
 

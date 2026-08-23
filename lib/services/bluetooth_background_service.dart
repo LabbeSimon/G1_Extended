@@ -9,6 +9,7 @@ import 'package:g1_extended/utils/battery_optimization_helper.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class BluetoothBackgroundService {
   // A new id on purpose.
@@ -98,6 +99,26 @@ class BluetoothBackgroundService {
           onBackground: _onIosBackground,
         ),
       );
+
+      // The owner has to exist before anything can connect.
+      //
+      // autoStart is false, and until now the service was only started once
+      // the glasses connected — which worked when the interface also
+      // connected on its own. Now that the interface never connects, the
+      // circle closes on nothing: the owner starts on connection, and the
+      // owner is the one who connects. Caught on an emulator, where the
+      // service simply never appeared. So: a stored pairing at app start
+      // means there is something to own, and the service starts then and
+      // there. No pairing stored means there is nothing to hold, and the
+      // first pairing's handoff starts it instead.
+      final prefs = await SharedPreferences.getInstance();
+      final hasPairing =
+          prefs.getString('left') != null || prefs.getString('right') != null;
+      if (hasPairing) {
+        debugPrint(
+            'BluetoothBackgroundService: stored pairing found, starting the owner');
+        await start();
+      }
     } catch (e) {
       // Handle platform-specific errors (e.g., when running tests)
       debugPrint(
