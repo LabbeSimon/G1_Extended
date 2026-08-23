@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'package:g1_extended/models/g1/note_markup.dart';
 import 'package:g1_extended/models/g1/note_slots.dart';
@@ -10,83 +13,185 @@ import 'package:g1_extended/models/note_entry.dart';
 
 /// Every note the phone holds, and which four are on the glasses.
 ///
-/// The hardware keeps four notes. The app used to keep exactly four as well,
-/// one per slot, so writing a fifth meant destroying one — and there was no
-/// way to keep something written last week without giving up a slot to it.
-/// The library holds as many as you like; pinning decides which four the
-/// glasses get.
+/// The hardware keeps four notes. The app used to keep exactly four as
+/// well, so writing a fifth meant destroying one; the library holds as many
+/// as you like and pinning decides which four go across. Pinning a fifth is
+/// refused rather than resolved by evicting something — silently dropping
+/// what someone wrote is the failure this whole area suffered from.
 ///
-/// Pinning a fifth is refused rather than resolved by evicting something.
-/// Silently dropping a note the wearer wrote is the failure this whole area
-/// has been suffering from, and doing it deliberately would not be an
-/// improvement over doing it by accident.
+/// Stored as one JSON file rather than in Hive, and that is the point.
+/// Hive is per-isolate: the interface has one instance and the background
+/// service another, and the service is the isolate that holds the glasses
+/// — so it is the one that receives a note dictated from the temple. Two
+/// Hive instances over one box file do not see each other's writes and can
+/// lose them outright, which is why a note could be confirmed on the lens
+/// and be absent from the notes screen a second later. A file, re-read
+/// whenever the other isolate has touched it, is what they can share.
 class NotesLibrary {
   NotesLibrary._internal();
   static final NotesLibrary singleton = NotesLibrary._internal();
   factory NotesLibrary() => singleton;
 
-  static const String _boxName = 'quickNotes';
-  static const String _entryPrefix = 'note_';
-  static const String _revisionKey = 'revision';
-  static const String _migratedKey = 'migrated_to_library';
-
   /// The firmware exposes slots 1 to 4.
   static const int slotCount = NoteSlots.count;
+
+  static const String _fileName = 'notes.json';
+
+  /// The box the four-slot and Hive-backed versions wrote to.
+  static const String _legacyBox = 'quickNotes';
 
   final StreamController<void> _changes = StreamController<void>.broadcast();
 
   /// Fires whenever anything is added, edited, pinned or removed.
   Stream<void> get changes => _changes.stream;
 
-  Future<Box> _openBox() async => Hive.isBoxOpen(_boxName)
-      ? Hive.box(_boxName)
-      : await Hive.openBox(_boxName);
+  /// Overridable so tests need no platform channel.
+  @visibleForTesting
+  static Directory? directoryForTest;
 
-  /// Brings forward anything written by the four-slot version.
-  ///
-  /// That version stored one entry per slot under `slot_N`. Those are real
-  /// notes somebody wrote, so they become library entries pinned to the slot
-  /// they were already in, rather than being left behind in a format nothing
-  /// reads any more.
-  Future<void> migrate() async {
-    final box = await _openBox();
-    if (box.get(_migratedKey) == true) return;
+  final Map<String, NoteEntry> _entries = {};
+  int _revision = 0;
 
-    for (var slot = 1; slot <= slotCount; slot++) {
-      final stored = box.get('slot_$slot');
-      if (stored is! Map) continue;
+  /// The modification time this isolate last read. Comparing it is a stat
+  /// call — cheap enough to do before every read, which is what keeps the
+  /// two isolates honest with each other.
+  DateTime? _seenAt;
+  bool _loaded = false;
 
-      final title = stored['title'] as String? ?? '';
-      final body = stored['body'] as String? ?? '';
-      if (title.isEmpty && body.isEmpty) continue;
-
-      final entry = NoteEntry(
-        id: _newId(),
-        title: title,
-        body: body,
-        updatedAt: DateTime.now(),
-        pinnedSlot: slot,
-      );
-      await box.put('$_entryPrefix${entry.id}', entry.toMap());
-      debugPrint('NotesLibrary: brought slot $slot forward as ${entry.id}');
-    }
-
-    for (var slot = 1; slot <= slotCount; slot++) {
-      await box.delete('slot_$slot');
-    }
-    await box.put(_migratedKey, true);
+  Future<File> _file() async {
+    final dir = directoryForTest ?? await getApplicationDocumentsDirectory();
+    return File('${dir.path}/$_fileName');
   }
 
-  /// Every note, most recently touched first, pinned ones ahead of the rest.
-  Future<List<NoteEntry>> all() async {
-    final box = await _openBox();
-    final entries = <NoteEntry>[];
+  Future<void> _load({bool force = false}) async {
+    final file = await _file();
 
-    for (final key in box.keys) {
-      if (key is! String || !key.startsWith(_entryPrefix)) continue;
-      final entry = NoteEntry.fromMap(box.get(key));
-      if (entry != null) entries.add(entry);
+    if (!await file.exists()) {
+      _loaded = true;
+      return;
     }
+
+    final modified = await file.lastModified();
+    if (!force && _loaded && _seenAt != null && !modified.isAfter(_seenAt!)) {
+      return;
+    }
+
+    try {
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is! Map) return;
+
+      _entries.clear();
+      final list = decoded['notes'];
+      if (list is List) {
+        for (final raw in list) {
+          final entry = NoteEntry.fromMap(raw);
+          if (entry != null) _entries[entry.id] = entry;
+        }
+      }
+      // Never let a reload walk the revision backwards: the glasses use it
+      // to tell one write from the next, and a repeat looks like no change.
+      final stored = decoded['revision'];
+      if (stored is int && stored > _revision) _revision = stored;
+
+      _seenAt = modified;
+      _loaded = true;
+    } catch (e) {
+      debugPrint('NotesLibrary: unreadable store, starting empty: $e');
+      _loaded = true;
+    }
+  }
+
+  /// Writes through a temporary file and renames it into place, so a note
+  /// is never half-written — the same reasoning as the speech model's
+  /// staging directory.
+  Future<void> _save() async {
+    final file = await _file();
+    final temporary = File('${file.path}.writing');
+
+    final payload = jsonEncode({
+      'revision': _revision,
+      'notes': [for (final entry in _entries.values) entry.toMap()],
+    });
+
+    try {
+      await temporary.writeAsString(payload, flush: true);
+      await temporary.rename(file.path);
+      _seenAt = await file.lastModified();
+    } catch (e) {
+      debugPrint('NotesLibrary: could not save: $e');
+    }
+  }
+
+  /// Brings forward anything an older version wrote.
+  ///
+  /// Two shapes have existed: one Hive entry per slot, then Hive entries
+  /// keyed `note_<id>`. Both are real notes somebody wrote, so both become
+  /// library entries rather than being left in a format nothing reads.
+  Future<void> migrate() async {
+    await _load(force: true);
+
+    Box? box;
+    try {
+      box = Hive.isBoxOpen(_legacyBox)
+          ? Hive.box(_legacyBox)
+          : await Hive.openBox(_legacyBox);
+    } catch (e) {
+      // No Hive in this isolate, or no such box. Nothing to bring forward.
+      debugPrint('NotesLibrary: no legacy store to migrate: $e');
+      return;
+    }
+
+    var imported = 0;
+
+    for (final key in box.keys.toList()) {
+      if (key is! String) continue;
+
+      if (key.startsWith('note_')) {
+        final entry = NoteEntry.fromMap(box.get(key));
+        if (entry != null && !_entries.containsKey(entry.id)) {
+          _entries[entry.id] = entry;
+          imported++;
+        }
+        await box.delete(key);
+        continue;
+      }
+
+      if (key.startsWith('slot_')) {
+        final slot = int.tryParse(key.substring(5));
+        final stored = box.get(key);
+        if (slot != null && stored is Map) {
+          final title = stored['title'] as String? ?? '';
+          final body = stored['body'] as String? ?? '';
+          if (title.isNotEmpty || body.isNotEmpty) {
+            final entry = NoteEntry(
+              id: _newId(),
+              title: title,
+              body: body,
+              updatedAt: DateTime.now(),
+              pinnedSlot: slot >= 1 && slot <= slotCount ? slot : null,
+            );
+            _entries[entry.id] = entry;
+            imported++;
+          }
+        }
+        await box.delete(key);
+        continue;
+      }
+
+      if (key == 'revision') {
+        final stored = box.get(key);
+        if (stored is int && stored > _revision) _revision = stored;
+      }
+    }
+
+    if (imported > 0) debugPrint('NotesLibrary: brought $imported note(s) forward');
+    await _save();
+  }
+
+  /// Every note, pinned ones first in slot order, then most recent.
+  Future<List<NoteEntry>> all() async {
+    await _load();
+    final entries = _entries.values.toList();
 
     entries.sort((a, b) {
       if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
@@ -100,8 +205,8 @@ class NotesLibrary {
   }
 
   Future<NoteEntry?> byId(String id) async {
-    final box = await _openBox();
-    return NoteEntry.fromMap(box.get('$_entryPrefix$id'));
+    await _load();
+    return _entries[id];
   }
 
   /// Creates a note. Pins it only if a slot happens to be free.
@@ -110,7 +215,8 @@ class NotesLibrary {
     String body = '',
     bool pinIfPossible = false,
   }) async {
-    final slot = pinIfPossible ? await firstFreeSlot() : null;
+    await _load();
+    final slot = pinIfPossible ? _firstFreeSlot() : null;
 
     final entry = NoteEntry(
       id: _newId(),
@@ -120,24 +226,37 @@ class NotesLibrary {
       pinnedSlot: slot,
     );
 
-    await _put(entry);
+    _entries[entry.id] = entry;
+    await _save();
+    _changes.add(null);
     return entry;
   }
 
-  /// Writes an edited note. Silently does nothing for an unknown id.
-  Future<void> update(NoteEntry entry) =>
-      _put(entry.copyWith(updatedAt: DateTime.now()));
+  /// Writes an edited note. Unknown ids are ignored.
+  Future<void> update(NoteEntry entry) async {
+    await _load();
+    if (!_entries.containsKey(entry.id)) return;
+    _entries[entry.id] = entry.copyWith(updatedAt: DateTime.now());
+    await _save();
+    _changes.add(null);
+  }
 
   Future<void> remove(String id) async {
-    final box = await _openBox();
-    await box.delete('$_entryPrefix$id');
+    await _load();
+    _entries.remove(id);
+    await _save();
     _changes.add(null);
   }
 
   /// The lowest slot with nothing in it, or null when all four are taken.
   Future<int?> firstFreeSlot() async {
+    await _load();
+    return _firstFreeSlot();
+  }
+
+  int? _firstFreeSlot() {
     final taken = {
-      for (final entry in await all())
+      for (final entry in _entries.values)
         if (entry.pinnedSlot != null) entry.pinnedSlot!,
     };
     for (var slot = 1; slot <= slotCount; slot++) {
@@ -148,41 +267,45 @@ class NotesLibrary {
 
   /// Puts a note on the glasses.
   ///
-  /// [slot] picks one; leaving it out takes the first free one. Refused
-  /// rather than resolved when there is no room, so the interface can say
-  /// which note is in the way instead of quietly removing it.
+  /// Refused rather than resolved when there is no room, so the interface
+  /// can name what is in the way instead of quietly removing it.
   Future<PinResult> pin(String id, {int? slot}) async {
-    final entry = await byId(id);
+    await _load();
+    final entry = _entries[id];
     if (entry == null) return const PinResult.ok();
 
     if (slot == null) {
-      final free = await firstFreeSlot();
+      final free = _firstFreeSlot();
       if (free == null) {
         return const PinResult.refused(PinRefusal.noFreeSlot);
       }
-      await _put(entry.copyWith(pinnedSlot: free));
+      _entries[id] = entry.copyWith(pinnedSlot: free);
+      await _save();
+      _changes.add(null);
       return const PinResult.ok();
     }
 
     if (slot < 1 || slot > slotCount) return const PinResult.ok();
 
-    final occupant = (await all()).where((e) => e.pinnedSlot == slot).cast<NoteEntry?>().firstWhere(
-          (e) => e!.id != id,
-          orElse: () => null,
-        );
-
-    if (occupant != null) {
-      return PinResult.refused(PinRefusal.slotTaken, occupiedBy: occupant);
+    for (final other in _entries.values) {
+      if (other.id != id && other.pinnedSlot == slot) {
+        return PinResult.refused(PinRefusal.slotTaken, occupiedBy: other);
+      }
     }
 
-    await _put(entry.copyWith(pinnedSlot: slot));
+    _entries[id] = entry.copyWith(pinnedSlot: slot);
+    await _save();
+    _changes.add(null);
     return const PinResult.ok();
   }
 
   Future<void> unpin(String id) async {
-    final entry = await byId(id);
+    await _load();
+    final entry = _entries[id];
     if (entry == null) return;
-    await _put(entry.copyWith(clearPin: true));
+    _entries[id] = entry.copyWith(clearPin: true);
+    await _save();
+    _changes.add(null);
   }
 
   /// What the glasses should show, keyed by slot.
@@ -202,22 +325,22 @@ class NotesLibrary {
     return result;
   }
 
-  /// A counter that only ever moves forward, shared by every slot.
-  ///
-  /// The revision used to come from the clock, which wraps every 256 seconds,
-  /// so two writes minutes apart could carry the same value or the newer one
-  /// a lower value than the older.
+  /// A counter that only ever moves forward, shared by every slot and by
+  /// both isolates — the glasses use it to tell one write from the next.
   Future<int> nextRevision() async {
-    final box = await _openBox();
-    final next = ((box.get(_revisionKey) as int?) ?? 0) + 1;
-    await box.put(_revisionKey, next);
-    return next;
+    await _load();
+    _revision += 1;
+    await _save();
+    return _revision;
   }
 
-  Future<void> _put(NoteEntry entry) async {
-    final box = await _openBox();
-    await box.put('$_entryPrefix${entry.id}', entry.toMap());
-    _changes.add(null);
+  /// For tests that simulate a second isolate.
+  @visibleForTesting
+  void resetForTest() {
+    _entries.clear();
+    _revision = 0;
+    _seenAt = null;
+    _loaded = false;
   }
 
   static final Random _random = Random();

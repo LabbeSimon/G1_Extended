@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:g1_extended/main.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/speedometer_service.dart';
 import 'package:g1_extended/services/bluetooth_reciever.dart';
@@ -241,6 +242,18 @@ class BluetoothBackgroundService {
     }
 
     _isRunning = true;
+
+    // Storage first, and in this isolate specifically.
+    //
+    // Hive is per-isolate: this one had none, so every read and write it
+    // attempted failed silently behind a catch — the notification blocklist
+    // came back empty here, and a note dictated from the temple, which this
+    // isolate is the one to receive, had nowhere to go.
+    try {
+      await initHiveForThisIsolate();
+    } catch (e) {
+      debugPrint('BluetoothBackgroundService: storage unavailable: $e');
+    }
 
     // Initialize Bluetooth Manager and Receiver with error handling
     try {

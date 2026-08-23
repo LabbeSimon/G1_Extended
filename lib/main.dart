@@ -207,6 +207,15 @@ class _StartupFailure extends StatelessWidget {
   }
 }
 
+/// Hive, for whichever isolate is asking.
+///
+/// It used to run only from main — that is, only in the interface isolate.
+/// The background service runs in its own isolate with its own Hive
+/// instance, uninitialised, so everything it tried to read or write there
+/// failed: the notification blocklist read as empty, and anything the
+/// glasses' touchpad triggered could not reach storage at all.
+Future<void> initHiveForThisIsolate() => _initHive();
+
 Future<void> _initHive() async {
   try {
     // Initialize Hive
