@@ -44,6 +44,45 @@ No account. No telemetry. Nothing leaves your phone.
 - Optional wake word
 - No audio is ever uploaded
 
+## Running in the background
+
+The glasses need the phone to keep two Bluetooth links open and to answer a
+heartbeat, or the firmware drops the connection after 32 seconds. That is not
+something Android lets an app do quietly, so it runs as a foreground service
+with a persistent notification. There is no way around the notification and
+no attempt to hide it.
+
+What that costs, and what it does not:
+
+- **Heartbeat every 15 seconds while connected.** Required by the protocol.
+- **Reconnect attempts while disconnected**, spaced by how long the glasses
+  have been gone: every 2 seconds for the first half minute, then easing to
+  once every 5 minutes after an hour. Roughly 115 attempts in the first hour
+  of absence, then 12 an hour. Opening the app brings the next one forward.
+- **Battery level read every 90 seconds while connected.**
+- **No location polling.** Location is read once when weather is refreshed,
+  and continuously only while the speedometer card is on screen.
+- **No background network activity.** Nothing is synced, uploaded or
+  reported. See [PRIVACY.md](PRIVACY.md).
+
+### Doze, App Standby and OEM battery managers
+
+Android suspends background work when the screen has been off for a while,
+and several manufacturers go considerably further than Android does. A
+foreground service survives Doze; it does not always survive an OEM task
+killer.
+
+Ask for the battery optimisation exemption when the app offers it — it is in
+the permissions screen, and without it the connection will drop whenever the
+phone sleeps. On devices from manufacturers that ignore that exemption, the
+app also has to be allowed to start automatically and be locked in the recent
+apps list. Those settings live in different places on every brand;
+[dontkillmyapp.com](https://dontkillmyapp.com) lists them per manufacturer.
+
+If the connection drops overnight despite all of that, it is worth reporting
+with the device model — that is the kind of thing no amount of reading the
+code will reveal.
+
 ## What it does not do
 
 This is a fork of [AGiXT/mobile](https://github.com/AGiXT/mobile) with everything

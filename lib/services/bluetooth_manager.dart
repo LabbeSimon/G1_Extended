@@ -77,6 +77,24 @@ class BluetoothManager {
   bool get isReceivingNotifications =>
       notificationListener?.isListening ?? false;
 
+  /// True while either side is already working through a reconnect loop.
+  ///
+  /// Lets anything else that notices a dropped link stand aside instead of
+  /// starting a competing one.
+  bool get isReconnecting =>
+      (leftGlass?.isReconnecting ?? false) ||
+      (rightGlass?.isReconnecting ?? false);
+
+  /// Brings any pending reconnect attempt forward.
+  ///
+  /// After a long absence the loop settles into checking every few minutes,
+  /// which is right for a pair left in a drawer and wrong the instant the
+  /// user picks them up. Coming back to the foreground is the cue.
+  void hurryReconnect() {
+    leftGlass?.hurryReconnect();
+    rightGlass?.hurryReconnect();
+  }
+
   GlassesDashboard glassesDashboard = GlassesDashboard();
   DashboardController dashboardController = DashboardController();
   StopsManager stopsManager = StopsManager();

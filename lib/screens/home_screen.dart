@@ -64,6 +64,12 @@ class _HomeScreenState extends State<HomeScreen>
     // act on it: notification access may now be granted, and the banner may
     // now be wrong.
     _bluetooth.retryNotificationListener();
+
+    // After a long absence the reconnect loop settles into checking every few
+    // minutes, which is right for glasses left in a drawer and wrong the
+    // moment someone picks them up and opens the app. Opening the app is the
+    // clearest cue there is.
+    _bluetooth.hurryReconnect();
     _permissionBanner.currentState?.refresh();
     _loadNextEvent();
   }

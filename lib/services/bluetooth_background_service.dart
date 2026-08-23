@@ -289,14 +289,15 @@ class BluetoothBackgroundService {
       try {
         await _sendHeartbeat();
       } catch (e) {
+        // Deliberately not reconnecting from here.
+        //
+        // A failing heartbeat means the link is already down, and the link
+        // going down is what Glass listens for — its own reconnect loop is
+        // running by the time this fires. Starting another from here meant
+        // that while the glasses were away, this fired every fifteen seconds
+        // and each failure kicked off a third attempt alongside the loop and
+        // the monitor below.
         debugPrint('BluetoothBackgroundService: Heartbeat failed: $e');
-        // Heartbeat failure likely means disconnection — attempt reconnect immediately
-        try {
-          await _attemptReconnect();
-        } catch (reconnectError) {
-          debugPrint(
-              'BluetoothBackgroundService: Immediate reconnect after heartbeat failure also failed: $reconnectError');
-        }
       }
     });
   }
@@ -335,26 +336,36 @@ class BluetoothBackgroundService {
     }
   }
 
+  /// A safety net, not the mechanism.
+  ///
+  /// Reconnection belongs to Glass, which is told the moment the link drops.
+  /// This exists only for the case that leaves no event behind — the whole
+  /// stack having been torn down under us — so it runs slowly and stands
+  /// aside whenever a reconnect is already in progress.
+  ///
+  /// It used to run every fifteen seconds and reconnect unconditionally, so
+  /// with the glasses away it competed with the reconnect loop and with the
+  /// heartbeat's own retry: three attempts on the radio, roughly six hundred
+  /// wake-ups an hour between them, none aware of the others.
+  static const Duration _monitorInterval = Duration(minutes: 2);
+
   static void _startConnectionMonitorTimer() {
     _connectionMonitorTimer?.cancel();
 
-    // Monitor connection every 15 seconds and attempt reconnection if needed
-    _connectionMonitorTimer =
-        Timer.periodic(const Duration(seconds: 15), (timer) async {
+    _connectionMonitorTimer = Timer.periodic(_monitorInterval, (timer) async {
       if (!_isRunning || _bluetoothManager == null) {
         timer.cancel();
         return;
       }
 
       try {
-        final isConnected = _bluetoothManager!.isConnected;
-        if (!isConnected) {
-          debugPrint(
-              'BluetoothBackgroundService: Connection lost, attempting reconnect...');
-          await _attemptReconnect();
-        } else {
-          debugPrint('BluetoothBackgroundService: Connection status OK');
-        }
+        final manager = _bluetoothManager!;
+        if (manager.isConnected || manager.isReconnecting) return;
+
+        debugPrint(
+            'BluetoothBackgroundService: down with no reconnect running, '
+            'starting one');
+        await _attemptReconnect();
       } catch (e) {
         debugPrint('BluetoothBackgroundService: Connection monitor error: $e');
       }
