@@ -129,12 +129,41 @@ class Glass {
       // Once connected, proceed with service discovery and setup
       debugPrint('[$side Glass] Connected, discovering services...');
       await discoverServices();
-      debugPrint('[$side Glass] Services discovered, setting up MTU...');
-      await device.requestMtu(251);
-      debugPrint('[$side Glass] Setting connection priority...');
-      await device.requestConnectionPriority(
-        connectionPriorityRequest: ConnectionPriority.high,
-      );
+
+      // Only negotiate the MTU when it has not been negotiated.
+      //
+      // The Bluetooth specification allows the exchange once per link, and
+      // firmwares differ in how they take a second request: some ignore it,
+      // some drop the whole connection. Re-running this setup on a link
+      // that is already up — which every takeover and reconnection path
+      // does — must therefore be harmless, and checking first is what
+      // makes it so.
+      final mtu = device.mtuNow;
+      if (mtu < 200) {
+        debugPrint('[$side Glass] Negotiating MTU (currently $mtu)...');
+        try {
+          await device.requestMtu(251);
+        } catch (e) {
+          // A refusal is survivable: packets are chunked to 180 bytes
+          // anyway. A disconnect over asking twice is not, hence the guard
+          // above; this catch covers stacks that error instead.
+          ConnectionJournal.singleton.record('mtu refused', detail: {
+            'side': side.name,
+            'error': '$e',
+          });
+        }
+      } else {
+        debugPrint('[$side Glass] MTU already $mtu, leaving it alone');
+      }
+
+      try {
+        await device.requestConnectionPriority(
+          connectionPriorityRequest: ConnectionPriority.high,
+        );
+      } catch (e) {
+        debugPrint('[$side Glass] Priority request failed, continuing: $e');
+      }
+
       startHeartbeat();
       debugPrint(
         '[$side Glass] Setup complete - connection established successfully',

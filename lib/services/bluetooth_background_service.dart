@@ -358,13 +358,26 @@ class BluetoothBackgroundService {
     // only here: each engine registers its own Bluetooth plugin, and a
     // connect from the interface would open a second native GATT client to
     // the same temples.
+    var pairingInFlight = false;
     service.on('startPairing').listen((_) async {
       final manager = _bluetoothManager;
       if (manager == null) return;
+
+      // The interface repeats its ask until answered, so answer first —
+      // this is the handshake — and let repeats of an ask already being
+      // served fall through rather than start parallel scans.
+      service.invoke('pairingUpdate', {'message': 'Scanning…'});
+      if (pairingInFlight) return;
+      pairingInFlight = true;
+
       ConnectionJournal.singleton.record('pairing request received');
-      await manager.startScanAndConnect(onUpdate: (message) {
-        service.invoke('pairingUpdate', {'message': message});
-      });
+      try {
+        await manager.startScanAndConnect(onUpdate: (message) {
+          service.invoke('pairingUpdate', {'message': message});
+        });
+      } finally {
+        pairingInFlight = false;
+      }
     });
 
     // The nudge after the interface has paired and handed the link over,

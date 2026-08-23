@@ -428,6 +428,29 @@ class BluetoothManager {
     final leftUid = await _getLastG1UsedUid(GlassSide.left);
     final rightUid = await _getLastG1UsedUid(GlassSide.right);
 
+    // From a clean slate, always.
+    //
+    // A takeover can find the platform holding a half-open link — another
+    // engine's client, a previous session's leftovers. Building fresh
+    // Glass objects on top of that state is how setup steps end up running
+    // twice on one link, and a firmware that tolerates a clean second
+    // connection may not tolerate that. Costs a second when there was
+    // something to clear, nothing when there was not.
+    for (final uid in [leftUid, rightUid]) {
+      if (uid == null) continue;
+      try {
+        final device = BluetoothDevice(remoteId: DeviceIdentifier(uid));
+        if (device.isConnected) {
+          ConnectionJournal.singleton
+              .record('clearing stale link before takeover', detail: {'id': uid});
+          await device.disconnect();
+          await Future.delayed(const Duration(milliseconds: 800));
+        }
+      } catch (e) {
+        debugPrint('BluetoothManager: stale-link check failed: $e');
+      }
+    }
+
     if (leftUid != null) {
       leftGlass = Glass(
         name: await _getLastG1UsedName(GlassSide.left) ?? 'Left Glass',
@@ -568,9 +591,29 @@ class BluetoothManager {
     // this side asks it to, and mirrors its progress.
     if (!_ownsGlasses) {
       ConnectionJournal.singleton.record('pairing requested, relaying');
+
+      // Permissions first, and from here: the dialogs need an Activity,
+      // which a background service does not have. Asking after the relay
+      // meant the service's scan started permission-less and found nothing
+      // — a connect button that silently did nothing at all.
+      try {
+        await _requestPermissions();
+      } catch (e) {
+        debugPrint('BluetoothManager: permission request failed: $e');
+      }
+
       onUpdate('Looking for your glasses…');
       await BluetoothBackgroundService.start();
-      GlassesRelay.pair();
+
+      // The service starts asynchronously, and an event invoked before its
+      // listeners exist is simply lost — the other half of the dead
+      // button. So the ask is repeated until the service answers, and the
+      // first answer is the handshake.
+      final acked = await GlassesRelay.pairWithHandshake();
+      if (!acked) {
+        ConnectionJournal.singleton.record('pairing relay never answered');
+        onUpdate('The connection service did not answer. Try once more.');
+      }
       return;
     }
 

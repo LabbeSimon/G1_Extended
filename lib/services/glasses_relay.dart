@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 
@@ -26,15 +28,41 @@ abstract final class GlassesRelay {
     }
   }
 
-  /// Asks the owner to scan for and pair new glasses.
+  /// Asks the owner to scan and pair, and does not take silence for an
+  /// answer.
   ///
-  /// Pairing is radio work, and radio work happens in exactly one isolate.
-  /// Progress comes back as 'pairingUpdate' events and state broadcasts.
-  static void pair() {
+  /// The service starts asynchronously; an event invoked before its
+  /// listeners are registered is lost without a trace. So the ask repeats
+  /// until the service says anything back on 'pairingUpdate' — its first
+  /// message doubles as the handshake — and gives up loudly after ten
+  /// seconds rather than leaving a button that did nothing.
+  static Future<bool> pairWithHandshake({
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final service = FlutterBackgroundService();
+    final acked = Completer<bool>();
+
+    late StreamSubscription<Map<String, dynamic>?> sub;
+    sub = service.on('pairingUpdate').listen((_) {
+      if (!acked.isCompleted) acked.complete(true);
+    });
+
+    final deadline = DateTime.now().add(timeout);
     try {
-      FlutterBackgroundService().invoke('startPairing');
-    } catch (e) {
-      debugPrint('GlassesRelay: could not ask for pairing: $e');
+      while (!acked.isCompleted && DateTime.now().isBefore(deadline)) {
+        try {
+          service.invoke('startPairing');
+        } catch (e) {
+          debugPrint('GlassesRelay: pairing invoke failed: $e');
+        }
+        await Future.any([
+          acked.future,
+          Future.delayed(const Duration(milliseconds: 800)),
+        ]);
+      }
+      return acked.isCompleted;
+    } finally {
+      await sub.cancel();
     }
   }
 
