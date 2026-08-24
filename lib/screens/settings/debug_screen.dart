@@ -7,6 +7,9 @@ import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/utils/bitmap.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+
+import 'package:g1_extended/services/notification_apps.dart';
 
 import 'package:g1_extended/services/navigation_capture.dart';
 
@@ -77,16 +80,29 @@ class _DebugPageSate extends State<DebugPage> {
       return;
     }
 
+    // Under our own identity, freshly allowlisted. The button used to send
+    // as "chat.fluffy.fluffychat" — an app that had never posted a real
+    // notification here, so it was never in the allowlist the glasses
+    // filter on, and the firmware discarded the send without a trace. The
+    // button could not work, and its silence read as the whole pipeline
+    // being broken. Upstream has the same flaw; real notifications working
+    // there is why nobody noticed.
+    final self = (await PackageInfo.fromPlatform()).packageName;
+    await NotificationApps.singleton.remember(self, 'G1 Extended');
+    await bluetoothManager.sendSetup();
+    await Future.delayed(const Duration(milliseconds: 500));
+
     await bluetoothManager.sendNotification(
       NCSNotification(
         msgId: 1234567890,
-        appIdentifier: "chat.fluffy.fluffychat",
+        appIdentifier: self,
         title: "Hello",
         subtitle: "subtitle",
         message: message,
         displayName: "DEV",
       ),
     );
+    _showInfoSnackBar('Sent as $self, allowlist refreshed first');
   }
 
   void _sendImage() async {
