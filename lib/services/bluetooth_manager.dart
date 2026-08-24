@@ -1030,6 +1030,10 @@ class BluetoothManager {
     // case was never recorded anywhere. The history's whole purpose is what
     // you missed; what you missed is precisely what arrives disconnected.
     NotificationHistory.singleton.remember(notification, appName);
+    // A note slot is a channel this app already knows works; keep it fresh
+    // in parallel with the 0x4B send below rather than waiting for the next
+    // periodic sync, up to a minute away.
+    unawaited(writeNoteSlots());
 
     if (!isConnected) return;
 
@@ -1165,6 +1169,27 @@ class BluetoothManager {
   /// rather than at the next sync, up to a minute later.
   Future<void> writeNoteSlots() => _writeNoteSlots();
 
+  /// The most recent notification, shaped for a note slot's name/text split.
+  ///
+  /// A note is one unchunked packet with single-byte length fields, unlike
+  /// the multi-chunk 0x4B notification — so both parts are cut hard rather
+  /// than risk a payload the firmware refuses.
+  SlotContent? _latestNotificationSlot() {
+    final items = NotificationHistory.singleton.items;
+    if (items.isEmpty) return null;
+    final latest = items.first;
+
+    final body = latest.body.isEmpty
+        ? latest.title
+        : (latest.title.isEmpty ? latest.body : '${latest.title}\n${latest.body}');
+    if (body.isEmpty) return null;
+
+    String cut(String s, int max) =>
+        s.length <= max ? s : '${s.substring(0, max - 1)}…';
+
+    return SlotContent(name: cut(latest.app, 20), text: cut(body, 120));
+  }
+
   /// The slot plan as it would be written right now.
   ///
   /// Shared between the actual write and the home screen's lens mirror, so
@@ -1178,11 +1203,19 @@ class BluetoothManager {
     // dashboard's own items: pinned notes always outrank both.
     final clocks = await WorldClocksService.singleton.slotContent();
 
+    // Standing in for the 0x4B notification banner, which is unconfirmed on
+    // real hardware right now: whatever arrived last, in a slot, until that
+    // is trusted again. Below the dashboard's own items since those are
+    // curated by the wearer, above the clock since news is more urgent than
+    // the time.
+    final notification = _latestNotificationSlot();
+
     return NoteSlots.plan(
       userNotes: await library.pinnedSlots(),
       generated: [
         for (final note in generated)
           SlotContent(name: note.name, text: note.text),
+        if (notification != null) notification,
         if (clocks != null) clocks,
       ],
       // Replaces the firmware's own "Hold right touchbar to add quicknote"
