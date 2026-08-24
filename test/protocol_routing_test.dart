@@ -3,11 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:g1_extended/models/g1/commands.dart';
 import 'package:g1_extended/models/g1/notification.dart';
 
-/// The protocol assigns each command an arm, and getting it wrong is silent:
-/// a notification built correctly, chunked correctly and sent to the wrong
-/// radio simply never appears. These pin the header shape the document
-/// specifies for 0x4B — the routing itself is asserted by the code that
-/// calls sendToLeft, and named here so the rule is written down.
+/// Notifications and the allowlist go to both arms — the document names
+/// 0x4B and 0x04 as left-arm commands, but that turned out to be wrong: the
+/// reference implementation this app was forked from sends both to both
+/// temples, and trusting the document over it broke delivery outright.
+/// These pin the header shape 0x4B actually uses, which the document did
+/// get right.
 void main() {
   NCSNotification sample({String message = 'hello'}) => NCSNotification(
         msgId: 1,

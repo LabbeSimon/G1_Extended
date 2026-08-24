@@ -953,9 +953,18 @@ class BluetoothManager {
     G1Notification notif = G1Notification(ncsNotification: notification);
     List<Uint8List> notificationChunks = await notif.constructNotification();
 
-    // Left arm only, as the protocol specifies for 0x4B.
+    // Both arms, as the reference implementation sends it — not left-arm
+    // only.
+    //
+    // The protocol document names 0x4B a left-arm command, with a question
+    // mark on the byte range that suggests the writer was not certain
+    // either. Routing it to the left arm alone, on the strength of that
+    // document, is what actually broke delivery: notifications stopped
+    // reaching the lens entirely. The upstream app this was forked from
+    // sends every notification to both temples and is the one known-working
+    // reference here; the document loses to it.
     for (Uint8List chunk in notificationChunks) {
-      await sendToLeft(chunk);
+      await sendCommandToGlasses(chunk);
       await Future.delayed(
         Duration(milliseconds: 50),
       ); // Small delay between chunks
@@ -1141,10 +1150,11 @@ class BluetoothManager {
   Future<void> sendSetup() async {
     if (!isConnected) return;
     try {
-      // 0x04 is a left-arm command too.
+      // Both arms — see sendNotification for why the document's left-arm
+      // claim is not trusted here.
       final setup = await (await G1Setup.generateSetup()).constructSetup();
       for (final command in setup) {
-        await sendToLeft(command);
+        await sendCommandToGlasses(command);
       }
     } catch (e) {
       debugPrint('BluetoothManager: could not send the allowlist: $e');
