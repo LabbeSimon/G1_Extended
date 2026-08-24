@@ -5,6 +5,7 @@ import 'package:g1_extended/models/g1/commands.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/dictation_service.dart';
 import 'package:g1_extended/services/notification_history.dart';
+import 'package:g1_extended/models/g1/voice_note.dart';
 import 'package:g1_extended/services/speech_recognition_service.dart';
 import 'package:g1_extended/utils/lc3.dart';
 import 'package:flutter/foundation.dart';
@@ -21,6 +22,12 @@ class BluetoothReciever {
   static final BluetoothReciever singleton = BluetoothReciever._internal();
 
   final voiceCollector = VoiceDataCollector();
+
+  /// Chunks of a voice note being fetched from the glasses' flash.
+  final voiceCollectorNote = VoiceDataCollector();
+
+  /// Rolls with each 0x1E exchange, echoed back by the firmware.
+  int _noteSyncId = 0;
 
   // Speech to text setup
   final SpeechToText _speechToText = SpeechToText();
@@ -467,18 +474,86 @@ class BluetoothReciever {
     // }
   }
 
+  /// A 0x21 from the firmware: its flash holds recorded voice notes.
+  ///
+  /// The firmware records a quicknote on its own when the right touchbar is
+  /// held; this used to be discarded entirely, so those recordings piled up
+  /// in the glasses unheard. Now the newest is fetched, as Fahrplan does —
+  /// the announcement is a list, not a touchpad event, so acting on it
+  /// cannot double-toggle the dictation flow.
   void handleQuickNoteCommand(GlassSide side, List<int> data) {
-    // Quick note events from the glasses firmware are ignored because
-    // the right touchpad press is already handled by handleEvenAICommand
-    // (0xF5 subcmd 23/24). Processing both would cause a double-toggle,
-    // immediately starting and stopping the conversation recording.
-    debugPrint('[$side] Quick note event received, ignoring (handled by EvenAI command)');
+    // Mid-capture the firmware is announcing the very speech the running
+    // dictation is already streaming; fetching it too would save it twice.
+    if (_isCapturing) {
+      debugPrint('[$side] Voice note announced during capture, deferred');
+      return;
+    }
+
+    try {
+      final notif = VoiceNoteNotification(Uint8List.fromList(data));
+      debugPrint('[$side] Voice notes on glasses: ${notif.entries.length}');
+      if (notif.entries.isEmpty) return;
+
+      voiceCollectorNote.reset();
+      final entry = notif.entries.first;
+      BluetoothManager()
+          .rightGlass
+          ?.sendData(entry.buildFetchCommand(_noteSyncId++));
+    } catch (e) {
+      debugPrint('[$side] Could not parse the voice note list: $e');
+    }
   }
 
+  /// One 0x1E audio chunk of the voice note being fetched.
+  ///
+  /// Byte layout pinned by Fahrplan against real firmware: length, sync id,
+  /// a constant 0x02, packet counts as uint16 pairs, the note's flash index
+  /// plus one, then the LC3 audio itself.
   void handleQuickNoteAudioData(GlassSide side, List<int> data) async {
-    // Quick note audio data is no longer fetched — the right-side touchpad
-    // now triggers conversation recording instead. Discard any stale packets.
-    debugPrint('[$side] Discarding quick note audio data (conversation mode active)');
+    if (data.length > 4 && data[4] != NoteSubCommands.REQUEST_AUDIO_DATA) {
+      return; // A text-note acknowledgement, not audio.
+    }
+    if (data.length < 11) {
+      debugPrint('[$side] Voice note packet too short: ${data.length} bytes');
+      return;
+    }
+
+    int seq = data[3];
+    int totalPackets = (data[5] << 8) | data[4];
+    int currentPacket = (data[7] << 8) | data[6];
+    int index = data[9] - 1;
+    voiceCollectorNote.addChunk(seq, data.sublist(10));
+
+    if (currentPacket + 2 != totalPackets) return;
+
+    debugPrint('[$side] Voice note complete: $totalPackets packets');
+    final encoded = voiceCollectorNote.getAllData();
+    voiceCollectorNote.reset();
+
+    final bt = BluetoothManager();
+    // Off the glasses first: their flash keeps only a handful, and a note
+    // that failed to transcribe is still a note that was heard.
+    await bt.rightGlass
+        ?.sendData(VoiceNote(index: index + 1).buildDeleteCommand(_noteSyncId++));
+
+    final pcm = await LC3.decodeLC3(Uint8List.fromList(encoded));
+    if (pcm.isEmpty) {
+      debugPrint('[$side] Voice note LC3 decoding produced no samples');
+      return;
+    }
+
+    try {
+      final transcript =
+          await SpeechRecognitionService.singleton.transcribeBytes(pcm);
+      debugPrint('[$side] Voice note transcribed: "$transcript"');
+      await DictationService.singleton.record(transcript, saveAsNote: true);
+    } on SpeechModelMissingException {
+      await bt.sendPriorityText(
+        'Speech model not installed.\nSettings > Voice to download it.',
+      );
+    } catch (e) {
+      debugPrint('[$side] Voice note transcription failed: $e');
+    }
   }
 
   /// Dispose of all resources to prevent memory leaks
