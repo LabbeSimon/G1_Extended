@@ -86,13 +86,13 @@ class GlassesSettingsService {
   // ---------------------------------------------------------------- writing
 
   Future<void> setBrightness(BrightnessSetting setting) async {
-    await _sendRight(setting.buildSetCommand());
+    await _sendBoth(setting.buildSetCommand());
     await _remember('glasses_brightness', setting.level);
     await _remember('glasses_brightness_auto', setting.auto);
   }
 
   Future<void> setHeadUpAngle(HeadUpAngle angle) async {
-    await _sendRight(angle.buildSetCommand());
+    await _sendBoth(angle.buildSetCommand());
     await _remember('glasses_headup_angle', angle.degrees);
   }
 
@@ -109,12 +109,12 @@ class GlassesSettingsService {
 
     await setDebugMode(true);
     try {
-      await _sendRight(
+      await _sendBoth(
         position.buildSetCommand(sequence: sequence, preview: true),
       );
       await Future.delayed(previewFor);
     } finally {
-      await _sendRight(
+      await _sendBoth(
         position.buildSetCommand(sequence: sequence, preview: false),
       );
       await setDebugMode(false);
@@ -170,14 +170,22 @@ class GlassesSettingsService {
     await _sendBoth(ZeroCalibration.buildPrelude());
     await Future.delayed(const Duration(milliseconds: 120));
 
-    await _sendRight(ZeroCalibration.buildDashboardLock());
+    await _sendBoth(ZeroCalibration.buildDashboardLock());
     await Future.delayed(const Duration(milliseconds: 120));
 
     // Registered before sending, or a quick wearer could confirm before
     // anyone is listening.
+    //
+    // The 0x10 family carries more than the wearer's confirmation: the
+    // glasses answer buildBegin itself with a "step accepted" 0x10 first,
+    // subcommand 0x0C, before the wearer has done anything. Matching on the
+    // command byte alone let that immediate accept complete the wait, which
+    // is why calibration used to report "not confirmed" the instant the
+    // prompt appeared — it never actually waited for the touchpad.
     final confirmation = _receiver.awaitReply(
       SettingsCommands.flow,
       timeout: waitForWearer,
+      accept: ZeroCalibration.isAcknowledgement,
     );
 
     await _sendBoth(ZeroCalibration.buildBegin());
@@ -240,7 +248,7 @@ class GlassesSettingsService {
     if (!_bluetooth.isConnected) return null;
 
     final reply = _receiver.awaitReply(replyCommand);
-    await _sendRight(command);
+    await _sendBoth(command);
 
     final data = await reply;
     if (data == null) return null;
@@ -253,17 +261,16 @@ class GlassesSettingsService {
     }
   }
 
-  /// Settings that live on one radio are read from and written to the right
-  /// arm, per the protocol notes.
-  Future<void> _sendRight(List<int> command) async {
-    final right = _bluetooth.rightGlass;
-    if (right == null) {
-      debugPrint('GlassesSettingsService: right arm not connected');
-      return;
-    }
-    await right.sendData(command);
-  }
-
+  /// Every settings command, every reply-carrying request included.
+  ///
+  /// These used to go to the right arm alone, on the strength of the
+  /// protocol notes — the same notes that turned out to route notifications
+  /// and the allowlist to the wrong arm too. even_glasses, a reference this
+  /// app was never forked from and so shares no bug with, sends every
+  /// settings command to both temples unconditionally; nothing here has
+  /// been confirmed as genuinely one-arm. A reply reaching both radios
+  /// completes the request on the first arrival and the second is logged
+  /// and dropped, harmlessly.
   Future<void> _sendBoth(List<int> command) async {
     await _bluetooth.sendCommandToGlasses(command);
   }

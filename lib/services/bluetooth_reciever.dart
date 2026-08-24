@@ -18,6 +18,14 @@ import 'package:speech_to_text/speech_to_text.dart';
 const int RESPONSE_SUCCESS = 0xC9;
 const int RESPONSE_FAILURE = 0xCA;
 
+/// A completer waiting on a command byte, and optionally on which
+/// sub-message of it — see [BluetoothReciever.awaitReply].
+class _PendingReply {
+  final Completer<List<int>> completer;
+  final bool Function(List<int> data)? accept;
+  _PendingReply(this.completer, this.accept);
+}
+
 class BluetoothReciever {
   static final BluetoothReciever singleton = BluetoothReciever._internal();
 
@@ -138,22 +146,31 @@ class BluetoothReciever {
   /// Requests waiting for a reply, keyed by the command byte they sent.
   ///
   /// The G1 echoes the command id back in the first byte of its response, so
-  /// that byte is enough to match a reply to the request that asked for it.
-  final Map<int, Completer<List<int>>> _pendingReplies = {};
+  /// that byte is usually enough to match a reply to the request that asked
+  /// for it. A few commands carry several distinct sub-messages under the
+  /// same first byte — the calibration flow's 0x10 announces both "the
+  /// begin step was accepted" and, separately, "the wearer confirmed" — and
+  /// for those [_PendingReply.accept] tells the two apart.
+  final Map<int, _PendingReply> _pendingReplies = {};
 
   /// Registers interest in the next response carrying [command].
+  ///
+  /// When [accept] is given, a reply that does not satisfy it is left for
+  /// ordinary dispatch and waiting continues — otherwise the first packet
+  /// with a matching command byte would end the wait, sub-message or not.
   ///
   /// Returns null if nothing arrives within [timeout], rather than hanging:
   /// the glasses silently ignore commands they do not understand.
   Future<List<int>?> awaitReply(
     int command, {
     Duration timeout = const Duration(seconds: 3),
+    bool Function(List<int> data)? accept,
   }) async {
     // A second request for the same command supersedes the first.
-    _pendingReplies.remove(command)?.complete(const []);
+    _pendingReplies.remove(command)?.completer.complete(const []);
 
     final completer = Completer<List<int>>();
-    _pendingReplies[command] = completer;
+    _pendingReplies[command] = _PendingReply(completer, accept);
 
     try {
       final reply = await completer.future.timeout(timeout);
@@ -166,12 +183,14 @@ class BluetoothReciever {
     }
   }
 
-  /// Hands [data] to a waiting request, if one asked for this command.
+  /// Hands [data] to a waiting request, if one asked for this command and
+  /// this packet is the sub-message it is waiting for.
   /// Returns true when the packet was consumed by a pending request.
   bool _deliverToPendingReply(List<int> data) {
-    final completer = _pendingReplies[data[0]];
-    if (completer == null || completer.isCompleted) return false;
-    completer.complete(List<int>.unmodifiable(data));
+    final pending = _pendingReplies[data[0]];
+    if (pending == null || pending.completer.isCompleted) return false;
+    if (pending.accept != null && !pending.accept!(data)) return false;
+    pending.completer.complete(List<int>.unmodifiable(data));
     return true;
   }
 
