@@ -101,8 +101,12 @@ class TimeSync {
 
     // Weather settings (using real weather data from Open-Meteo API)
     buffer.setUint8(17, weatherIconId); // Weather Icon ID
-    buffer.setUint8(
-        18, temperature); // Temperature in Celsius (protocol requirement)
+    // setUint8 refuses negatives outright, so the whole dashboard sync used
+    // to throw the moment the outside temperature dropped below 0 °C. The
+    // field is one signed byte on the wire; setInt8 produces the same
+    // two's-complement byte the firmware expects, and the clamp keeps a
+    // stray sensor reading from tripping the range check.
+    buffer.setInt8(18, temperature.clamp(-128, 127));
     buffer.setUint8(
         19, temperatureUnit); // C/F display flag: 0=Celsius, 1=Fahrenheit
 
