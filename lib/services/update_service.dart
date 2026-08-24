@@ -58,7 +58,11 @@ class UpdateService {
   static const String _skippedKey = 'update_check_skipped_version';
 
   /// Checking more often than this is pointless and rude to the API.
-  static const Duration minimumInterval = Duration(hours: 12);
+  ///
+  /// Two hours, down from twelve: the check also runs when the app returns
+  /// to the foreground, and a release published in the afternoon should be
+  /// offered the same afternoon.
+  static const Duration minimumInterval = Duration(hours: 2);
 
   /// Betas move in hours, not days.
   ///
