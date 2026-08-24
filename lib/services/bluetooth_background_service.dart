@@ -5,6 +5,7 @@ import 'package:g1_extended/services/connection_journal.dart';
 import 'package:g1_extended/services/glasses_audio.dart';
 import 'package:g1_extended/services/glasses_relay.dart';
 import 'package:g1_extended/services/isolate_report.dart';
+import 'package:g1_extended/services/update_service.dart';
 import 'package:g1_extended/services/speedometer_service.dart';
 import 'package:g1_extended/services/bluetooth_reciever.dart';
 import 'package:g1_extended/utils/battery_optimization_helper.dart';
@@ -309,6 +310,42 @@ class BluetoothBackgroundService {
 
     // Lets the interface ask this isolate what it actually holds.
     IsolateReport.serveFrom(service);
+
+    // Says so when an update exists, without waiting to be opened.
+    //
+    // The banner can only be seen by someone already in the app; this
+    // service runs regardless, so it checks a few times a day and posts one
+    // ordinary notification. Tapping it opens the app, where the banner
+    // does the rest — download, then Android's install sheet. The check
+    // respects the same interval gate as everything else, and the
+    // notification reuses its own id so a second check updates rather
+    // than stacks.
+    Timer.periodic(const Duration(hours: 6), (_) async {
+      try {
+        final update = await UpdateService.singleton.check();
+        if (update == null) return;
+
+        await FlutterLocalNotificationsPlugin().show(
+          43,
+          'G1 Extended ${update.version}',
+          'Une mise à jour est prête — ouvrez l\'application pour '
+              'l\'installer en un geste.',
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'updates',
+              'Updates',
+              channelDescription:
+                  'Says when a new version is ready to install.',
+              importance: Importance.defaultImportance,
+              priority: Priority.defaultPriority,
+              playSound: false,
+            ),
+          ),
+        );
+      } catch (e) {
+        debugPrint('BluetoothBackgroundService: update check failed: $e');
+      }
+    });
 
     // Forwards the glasses' microphone to whoever asked for it. The voice
     // packets land in this isolate because this is where the link is; the

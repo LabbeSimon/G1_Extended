@@ -19,7 +19,8 @@ class UpdateBanner extends StatefulWidget {
   State<UpdateBanner> createState() => _UpdateBannerState();
 }
 
-class _UpdateBannerState extends State<UpdateBanner> {
+class _UpdateBannerState extends State<UpdateBanner>
+    with WidgetsBindingObserver {
   AvailableUpdate? _update;
 
   /// Null when idle; 0..1 while the APK is coming down.
@@ -28,7 +29,26 @@ class _UpdateBannerState extends State<UpdateBanner> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _check();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Checks again whenever the app comes back to the foreground.
+  ///
+  /// The check used to run only when this widget was built — so a release
+  /// published while the app sat in the background was invisible until the
+  /// app was killed and reopened, which nobody does on purpose. Returning
+  /// to the app is the natural moment; the service's own interval gate
+  /// keeps this from hammering anything.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _check();
   }
 
   Future<void> _check() async {

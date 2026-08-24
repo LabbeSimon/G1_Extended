@@ -58,7 +58,12 @@ class UpdateService {
   static const String _skippedKey = 'update_check_skipped_version';
 
   /// Checking more often than this is pointless and rude to the API.
-  static const Duration minimumInterval = Duration(hours: 12);
+  ///
+  /// Two hours, down from twelve: the check now also runs when the app
+  /// returns to the foreground, and a stable release should be offered the
+  /// same afternoon it ships, not tomorrow. Sixty unauthenticated requests
+  /// an hour is GitHub's ceiling; a dozen a day is nowhere near it.
+  static const Duration minimumInterval = Duration(hours: 2);
 
   /// Betas move in hours, not days.
   ///
