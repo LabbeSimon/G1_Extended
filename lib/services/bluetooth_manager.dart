@@ -1024,12 +1024,21 @@ class BluetoothManager {
 
     if (!isConnected) return;
 
+    // A blank title, not just a falls back to the app's name.
+    //
+    // notification.title is often genuinely empty — a follow-up message in
+    // a conversation already open, a summary line — and an empty header is
+    // what every phone's own notification shade fills with the app's name
+    // rather than showing nothing. The glasses have no such fallback of
+    // their own; sending an empty title field is what an empty pane on the
+    // lens looked like.
+    final title = notification.title?.trim();
     NCSNotification ncsNotification = NCSNotification(
       msgId: (notification.id ?? 1) + DateTime.now().millisecondsSinceEpoch,
       action: 0,
       type: 0,
       appIdentifier: packageName,
-      title: notification.title ?? '',
+      title: (title == null || title.isEmpty) ? appName : title,
       subtitle: '',
       message: notification.content ?? '',
       displayName: appName,
