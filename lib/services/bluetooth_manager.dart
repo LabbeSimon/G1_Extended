@@ -1169,6 +1169,30 @@ class BluetoothManager {
   /// rather than at the next sync, up to a minute later.
   Future<void> writeNoteSlots() => _writeNoteSlots();
 
+  /// Whether the latest notification also takes a note slot.
+  ///
+  /// Born as the workaround while the 0x4B banner was broken; now that the
+  /// banner works it is a preference — some wearers like the last message
+  /// staying readable on the dashboard, others want their slots back.
+  static const String noteSlotNotificationKey = 'notification_note_slot';
+
+  Future<bool> isNotificationNoteSlotEnabled() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(noteSlotNotificationKey) ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<void> setNotificationNoteSlotEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(noteSlotNotificationKey, enabled);
+    // Immediately: turning it off should clear the slot, not leave the last
+    // notification stranded there until something else rewrites it.
+    unawaited(writeNoteSlots());
+  }
+
   /// The most recent notification, shaped for a note slot's name/text split.
   ///
   /// A note is one unchunked packet with single-byte length fields, unlike
@@ -1203,12 +1227,12 @@ class BluetoothManager {
     // dashboard's own items: pinned notes always outrank both.
     final clocks = await WorldClocksService.singleton.slotContent();
 
-    // Standing in for the 0x4B notification banner, which is unconfirmed on
-    // real hardware right now: whatever arrived last, in a slot, until that
-    // is trusted again. Below the dashboard's own items since those are
-    // curated by the wearer, above the clock since news is more urgent than
-    // the time.
-    final notification = _latestNotificationSlot();
+    // Whatever arrived last, in a slot — when the wearer wants it there.
+    // Below the dashboard's own items since those are curated by the
+    // wearer, above the clock since news is more urgent than the time.
+    final notification = await isNotificationNoteSlotEnabled()
+        ? _latestNotificationSlot()
+        : null;
 
     return NoteSlots.plan(
       userNotes: await library.pinnedSlots(),
