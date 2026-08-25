@@ -78,52 +78,55 @@ class Glass {
   }
 
   Future<void> _connectWithRetry() async {
-    try {
-      if (!device.isConnected) {
-        // Retry the connection up to maxConnectRetries times
-        bool connected = false;
-        int attempts = 0;
-        while (!connected && attempts < maxConnectRetries) {
-          try {
-            attempts++;
-            debugPrint(
-              '[$side Glass] Trying to connect (attempt $attempts/$maxConnectRetries)',
-            );
-            await device.connect(timeout: const Duration(seconds: 15));
-            connected = true;
-          } catch (e) {
-            debugPrint(
-              '[$side Glass] Connection attempt $attempts failed: $e',
-            );
-            if (attempts < maxConnectRetries) {
-              await Future.delayed(const Duration(seconds: 1));
-            } else {
-              throw Exception(
-                'Failed to connect after $maxConnectRetries attempts',
-              );
-            }
-          }
+    // The retry loop used to wrap only device.connect(): once that succeeded,
+    // discoverServices/requestMtu/requestConnectionPriority ran once, and any
+    // of them throwing (typically PlatformException(discoverServices, device
+    // is disconnected) when the temple drops in the millisecond between
+    // "connected" and the first read) escaped as an unhandled exception,
+    // crashing the app. A temple that decides to disconnect mid-setup is a
+    // normal BLE event, not a fatal one — treat the whole sequence as one
+    // attempt and retry it end-to-end.
+    Object? lastError;
+    for (int attempt = 1; attempt <= maxConnectRetries; attempt++) {
+      try {
+        debugPrint(
+          '[$side Glass] Trying to connect (attempt $attempt/$maxConnectRetries)',
+        );
+        if (!device.isConnected) {
+          await device.connect(timeout: const Duration(seconds: 15));
+        }
+        debugPrint('[$side Glass] Connected, discovering services...');
+        await discoverServices();
+        debugPrint('[$side Glass] Services discovered, setting up MTU...');
+        await device.requestMtu(251);
+        debugPrint('[$side Glass] Setting connection priority...');
+        await device.requestConnectionPriority(
+          connectionPriorityRequest: ConnectionPriority.high,
+        );
+        startHeartbeat();
+        debugPrint(
+          '[$side Glass] Setup complete - connection established successfully',
+        );
+        onConnectionStateChanged?.call();
+        return;
+      } catch (e) {
+        lastError = e;
+        debugPrint('[$side Glass] Attempt $attempt failed: $e');
+        // The OS may still hold a half-open handle after a mid-setup drop.
+        // Close it explicitly so the next attempt starts from a clean state.
+        try {
+          if (device.isConnected) await device.disconnect();
+        } catch (_) {}
+        uartTx = null;
+        uartRx = null;
+        if (attempt < maxConnectRetries) {
+          await Future.delayed(const Duration(seconds: 1));
         }
       }
-
-      // Once connected, proceed with service discovery and setup
-      debugPrint('[$side Glass] Connected, discovering services...');
-      await discoverServices();
-      debugPrint('[$side Glass] Services discovered, setting up MTU...');
-      await device.requestMtu(251);
-      debugPrint('[$side Glass] Setting connection priority...');
-      await device.requestConnectionPriority(
-        connectionPriorityRequest: ConnectionPriority.high,
-      );
-      startHeartbeat();
-      debugPrint(
-        '[$side Glass] Setup complete - connection established successfully',
-      );
-      onConnectionStateChanged?.call();
-    } catch (e) {
-      debugPrint('[$side Glass] Connection process failed: $e');
-      rethrow; // Let the caller handle this error
     }
+    throw Exception(
+      'Failed to connect after $maxConnectRetries attempts: $lastError',
+    );
   }
 
   Future<void> discoverServices() async {

@@ -83,7 +83,15 @@ Future<void> showCrashReport(BuildContext context, CrashReport report) async {
           onPressed: () async {
             await reporter.dismiss();
             if (dialogContext.mounted) Navigator.of(dialogContext).pop();
-            await BluetoothManager.singleton.attemptReconnectFromStorage();
+            // A reconnect that itself throws would bubble up through the
+            // reporter and show a second crash dialog on top of the one
+            // just dismissed — the user's own attempt to recover would
+            // look like a fresh failure.
+            try {
+              await BluetoothManager.singleton.attemptReconnectFromStorage();
+            } catch (e) {
+              debugPrint('Reconnect from crash dialog failed: $e');
+            }
           },
           child: const Text('Reconnect'),
         ),

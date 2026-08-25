@@ -405,6 +405,11 @@ class BluetoothManager {
     final leftUid = await _getLastG1UsedUid(GlassSide.left);
     final rightUid = await _getLastG1UsedUid(GlassSide.right);
 
+    // Each temple is reconnected in isolation: one temple failing used to
+    // throw out of the whole method, which meant the crash dialog's Reconnect
+    // button could bring back the left branch, hit a mid-setup drop on the
+    // right, and surface a PlatformException to the crash reporter — which
+    // showed a fresh crash dialog on top of the one just dismissed.
     if (leftUid != null) {
       leftGlass = Glass(
         name: await _getLastG1UsedName(GlassSide.left) ?? 'Left Glass',
@@ -412,9 +417,13 @@ class BluetoothManager {
         side: GlassSide.left,
       );
       leftGlass!.onConnectionStateChanged = _notifyConnectionStatusChanged;
-      await leftGlass!.connect();
-      _setReconnect(leftGlass!);
-      _setupImmediateBatteryMonitoring(leftGlass!);
+      try {
+        await leftGlass!.connect();
+        _setReconnect(leftGlass!);
+        _setupImmediateBatteryMonitoring(leftGlass!);
+      } catch (e) {
+        debugPrint('BluetoothManager: left temple reconnect failed: $e');
+      }
     }
 
     if (rightUid != null) {
@@ -424,9 +433,13 @@ class BluetoothManager {
         side: GlassSide.right,
       );
       rightGlass!.onConnectionStateChanged = _notifyConnectionStatusChanged;
-      await rightGlass!.connect();
-      _setReconnect(rightGlass!);
-      _setupImmediateBatteryMonitoring(rightGlass!);
+      try {
+        await rightGlass!.connect();
+        _setReconnect(rightGlass!);
+        _setupImmediateBatteryMonitoring(rightGlass!);
+      } catch (e) {
+        debugPrint('BluetoothManager: right temple reconnect failed: $e');
+      }
     }
 
     // Sync settings if both glasses are connected
