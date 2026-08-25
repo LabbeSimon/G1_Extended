@@ -244,9 +244,11 @@ class BluetoothReciever {
         );
         break;
       case Commands.QUICK_NOTE:
+        debugPrint('[$side] 0x21 QUICK_NOTE, ${data.length} bytes');
         handleQuickNoteCommand(side, data);
         break;
       case Commands.QUICK_NOTE_ADD:
+        debugPrint('[$side] 0x1E QUICK_NOTE_ADD, ${data.length} bytes');
         handleQuickNoteAudioData(side, data);
         break;
 
@@ -515,9 +517,15 @@ class BluetoothReciever {
 
       voiceCollectorNote.reset();
       final entry = notif.entries.first;
-      BluetoothManager()
-          .rightGlass
-          ?.sendData(entry.buildFetchCommand(_noteSyncId++));
+      final right = BluetoothManager().rightGlass;
+      if (right == null) {
+        debugPrint(
+            '[$side] Right temple missing, cannot fetch voice note #${entry.index}');
+        return;
+      }
+      debugPrint(
+          '[$side] Fetching voice note #${entry.index} from glasses flash');
+      right.sendData(entry.buildFetchCommand(_noteSyncId++));
     } catch (e) {
       debugPrint('[$side] Could not parse the voice note list: $e');
     }
@@ -530,6 +538,8 @@ class BluetoothReciever {
   /// plus one, then the LC3 audio itself.
   void handleQuickNoteAudioData(GlassSide side, List<int> data) async {
     if (data.length > 4 && data[4] != NoteSubCommands.REQUEST_AUDIO_DATA) {
+      debugPrint(
+          '[$side] 0x1E subcmd 0x${data[4].toRadixString(16)}, not audio, ignored');
       return; // A text-note acknowledgement, not audio.
     }
     if (data.length < 11) {
@@ -542,6 +552,8 @@ class BluetoothReciever {
     int currentPacket = (data[7] << 8) | data[6];
     int index = data[9] - 1;
     voiceCollectorNote.addChunk(seq, data.sublist(10));
+    debugPrint(
+        '[$side] Voice note chunk $currentPacket/$totalPackets, seq=$seq, ${data.length - 10} audio bytes');
 
     if (currentPacket + 2 != totalPackets) return;
 
