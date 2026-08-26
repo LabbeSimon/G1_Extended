@@ -5,6 +5,7 @@ import 'package:hive/hive.dart';
 
 import 'package:g1_extended/services/assistant_service.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/home_assistant_service.dart';
 import 'package:g1_extended/services/notes_library.dart';
 import 'package:g1_extended/services/voice_command_runner.dart';
 import 'package:g1_extended/services/voice_commands.dart';
@@ -102,7 +103,7 @@ class DictationService {
     // model: it is faster, works without a network, and replying to a message
     // is not something a model could do at all.
     final command = VoiceCommands.parse(trimmed);
-    if (command != null) {
+    if (command != null && await _isActionable(command)) {
       await _runCommand(command);
       return;
     }
@@ -162,6 +163,17 @@ class DictationService {
       source: source,
       recordingId: recordingId,
     ));
+  }
+
+  /// Whether a recognised command can actually be carried out.
+  ///
+  /// "Turn off the hall light" looks like a house command whether or not a
+  /// house is connected. When one is not, the phrase is better treated as
+  /// an ordinary question — the assistant may well know what to say about
+  /// it — than answered with a setup instruction nobody asked for.
+  Future<bool> _isActionable(VoiceCommandMatch command) async {
+    if (command.kind != VoiceCommandKind.house) return true;
+    return HomeAssistantService.singleton.isConfigured();
   }
 
   Future<void> _runCommand(VoiceCommandMatch command) async {

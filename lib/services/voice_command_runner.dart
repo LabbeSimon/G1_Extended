@@ -6,13 +6,15 @@ import 'package:notification_listener_service/notification_event.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/home_assistant_service.dart';
 import 'package:g1_extended/services/open_meteo_weather_service.dart';
 import 'package:g1_extended/services/notes_library.dart';
 import 'package:g1_extended/services/voice_commands.dart';
 
 /// Carries out a recognised command and says what happened.
 ///
-/// Everything here is something the phone can do itself. Sending it to a
+/// Almost everything here is something the phone can do itself. Sending it
+/// to a
 /// language model instead would be slower, would fail without a network, and
 /// in the case of replying to a message is not something a model can do at
 /// all — the reply action belongs to the notification, and only the app
@@ -54,6 +56,22 @@ class VoiceCommandRunner {
       VoiceCommandKind.note => await _note(match.argument),
       VoiceCommandKind.clear => await _clear(),
       VoiceCommandKind.call => await _call(match.argument),
+      VoiceCommandKind.house => await _house(match.argument),
+    };
+  }
+
+  /// Hands a whole sentence to Home Assistant's own conversation agent.
+  ///
+  /// The one command here that leaves the phone, and it does so because
+  /// there is no other way: only the house knows what lights it has. What
+  /// it does *not* do is interpret the sentence — Home Assistant already
+  /// has intent matching, in the wearer's own language, over their own
+  /// entities, and a second guess made here could only be worse.
+  Future<String> _house(String sentence) async {
+    final result = await HomeAssistantService.singleton.converse(sentence);
+    return switch (result) {
+      HaOk(:final text) => text,
+      HaFailure(:final reason) => reason,
     };
   }
 

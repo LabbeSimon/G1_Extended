@@ -65,10 +65,16 @@ is described honestly in the sections below.*
 - Optionally, questions answered by a model you host or chose — never a
   bundled one, and only ever the transcribed text, never the audio
 - Dictation: hold a temple touchpad, speak, see the text on the lens
+- Optionally, your house: speak to Home Assistant and read a few of its
+  values on the lens
 
 **Voice**
 - Speech recognition runs on the device, through Vosk or the platform recogniser
 - Optional wake word
+- **The audio is kept.** A recording reaches your phone's storage before it is
+  transcribed, so a missing speech model or a word the recogniser did not know
+  costs you a transcript, never the recording. Play, export or delete any of
+  them on the Recordings screen
 - No audio is ever uploaded
 
 ## Running in the background
@@ -90,7 +96,8 @@ What that costs, and what it does not:
 - **No location polling.** Location is read once when weather is refreshed,
   and continuously only while the speedometer card is on screen.
 - **No background network activity.** Nothing is synced, uploaded or
-  reported. See [PRIVACY.md](PRIVACY.md).
+  reported — including your recordings, which never leave the phone unless
+  you export one yourself. See [PRIVACY.md](PRIVACY.md).
 
 ### Doze, App Standby and OEM battery managers
 
@@ -126,17 +133,22 @@ that was not about the glasses taken out:
 | Android digital assistant | Existed only to launch the AI |
 | Discord build webhook | Sent commit messages and usernames to a third-party chat |
 
-Android permissions went from 33 to 18. The app makes three network requests, all
+Android permissions went from 33 to 18. Every network request the app makes is
 optional:
 
 - `api.open-meteo.com` for the weather widget, if you enable it
 - `alphacephei.com` once, to download the offline speech model
 - `api.github.com` to check for a newer release, if you leave that on
+- `raw.githubusercontent.com` for the extension catalogue, when you ask for it
+- an assistant endpoint you chose, if you configured one
+- your own Home Assistant, if you connected one
 
 ## Privacy
 
-No account, no telemetry, three optional network requests. The full statement is
-in [PRIVACY.md](PRIVACY.md).
+No account, no telemetry, and every network request optional — including the
+two that go to servers you chose yourself. Recordings stay in the app's own
+private storage and are uploaded nowhere. The full statement is in
+[PRIVACY.md](PRIVACY.md).
 
 ## By the numbers
 
@@ -144,13 +156,13 @@ Counted from the working tree, not estimated.
 
 | | |
 |---|---|
-| Dart | 18 800 lines across 100 files |
+| Dart | 27 900 lines across 135 files |
 | Native C and C++ | 26 300 lines — the LC3 decoder and noise suppression, inherited |
-| Tests | 215, in 26 files |
+| Tests | 474, in 54 files |
 | Static analysis | 0 issues; CI fails on a single info-level hint |
 | Android permissions | 18, down from 33 |
 | Dependencies | 29, down from 43 |
-| Network requests | 3, every one optional and switchable off |
+| Network requests | 6, every one optional and switchable off |
 | APK | 56 MB, arm64 and armeabi-v7a |
 
 Roughly 12 000 of the surviving Dart lines are inherited from
@@ -160,7 +172,7 @@ features listed above.
 
 The badges above are rendered by GitHub when you read this page. They are not
 part of the app and the app never contacts those hosts — see
-[PRIVACY.md](PRIVACY.md) for the three it does contact.
+[PRIVACY.md](PRIVACY.md) for the ones it does contact.
 
 ## Roadmap
 

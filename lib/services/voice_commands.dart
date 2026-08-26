@@ -30,6 +30,9 @@ enum VoiceCommandKind {
   note,
   clear,
   call,
+
+  /// Something addressed to the house rather than to the phone.
+  house,
 }
 
 /// Recognises the handful of things worth doing without a round trip to a
@@ -69,6 +72,18 @@ abstract final class VoiceCommands {
       'appelle moi', 'appelle', 'appeler', 'appel',
       'call up', 'call', 'phone',
     ],
+    // Every one of these is a prefix that still needs a target after it, so
+    // a bare verb is not a command. That matters where a shorter trigger
+    // already means something else: 'ferme' dismisses the screen, while
+    // 'ferme les volets' matches 'ferme les' and wins on trigger length.
+    VoiceCommandKind.house: [
+      'allume', 'allumer', 'eteins', 'eteindre', 'baisse', 'monte',
+      'ferme les', 'ferme la', 'ouvre les', 'ouvre la',
+      'a la maison', 'maison',
+      'turn on', 'turn off', 'switch on', 'switch off',
+      'open the', 'close the', 'lock the', 'unlock the',
+      'set the', 'dim the', 'is the', 'are the',
+    ],
   };
 
   /// Commands that mean nothing without something after them.
@@ -76,6 +91,16 @@ abstract final class VoiceCommands {
     VoiceCommandKind.reply,
     VoiceCommandKind.note,
     VoiceCommandKind.call,
+    VoiceCommandKind.house,
+  };
+
+  /// Commands whose argument is the whole phrase, trigger included.
+  ///
+  /// Home Assistant does its own intent matching and wants the sentence as
+  /// it was said: "turn off the hall light", not "the hall light". Stripping
+  /// the verb would remove the only word that says what to do.
+  static const Set<VoiceCommandKind> keepsWholeSentence = {
+    VoiceCommandKind.house,
   };
 
   /// Returns the command a phrase starts with, or null when it is just
@@ -98,7 +123,12 @@ abstract final class VoiceCommands {
         }
 
         bestTriggerLength = trigger.length;
-        best = VoiceCommandMatch(entry.key, _restoreFrom(transcript, argument));
+        best = VoiceCommandMatch(
+          entry.key,
+          keepsWholeSentence.contains(entry.key)
+              ? transcript.trim()
+              : _restoreFrom(transcript, argument),
+        );
       }
     }
 

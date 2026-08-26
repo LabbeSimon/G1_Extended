@@ -50,6 +50,16 @@ instead. Switch off, and the request is never made.
 you press "Fetch the catalogue" on the Extensions screen. Never polled in
 the background.
 
+**The Home Assistant address you type** — only if you switch on Home
+Assistant in Settings and enter your own instance's address and access
+token. Off by default and blank by default; nothing is contacted until you
+fill both in. It is your server, on your network, chosen by you. Two things
+reach it: a sentence you spoke, when it begins with something addressed to
+the house, and a read of the handful of entities you picked for the lens,
+performed when the dashboard is built rather than on a timer. Plain `http`
+works on a local network; `https` additionally keeps your access token off
+the wire, which is worth doing.
+
 **Addresses inside cards you install or write** — a custom card, yours or an
 extension's, may read a value from an https URL. The exact URLs are visible
 on each card in "My cards" before and after installing, and each card can be
@@ -67,10 +77,35 @@ locked — otherwise the readout would freeze the moment you pocket the phone.
 
 ## Audio
 
-Speech is recognised on your device. Recordings are transcribed and then
-discarded; the audio itself is never written to permanent storage and never
-uploaded. Transcripts are kept locally in the dictation history, capped at the
-200 most recent entries, and you can clear them at any time from that screen.
+Speech is recognised on your device, and **the audio is now kept on your
+phone** — this changed, and it changed deliberately.
+
+It used to be discarded the moment a transcript existed. That sounded
+protective and was in fact destructive: every failure downstream — no speech
+model installed, a word the recogniser did not know, an exception — silently
+destroyed something you had said out loud and could not say again. Worse, a
+note recorded by the glasses was deleted from their flash *before* any of
+that ran, so nothing was left to retry from.
+
+So the order is now the other way round. The audio is written to your phone
+first, and only then is it transcribed. Concretely:
+
+- Recordings live in the app's own private storage, in
+  `voice_recordings/`, readable by no other app.
+- **Nothing is uploaded, ever.** No recording leaves the phone unless you
+  send it yourself with the export button, which hands the file to Android's
+  share sheet and lets you choose where it goes. We operate no server and
+  there is nowhere for it to go on its own.
+- They are listed on the Recordings screen, where you can play, export or
+  delete any of them, individually.
+- The folder is capped at 512 MB; past that, the oldest are dropped, and the
+  log says which.
+
+Transcripts are kept separately in the dictation history, capped at the 200
+most recent entries, and you can clear them at any time from that screen.
+Deleting a transcript does not delete its recording, and deleting a
+recording does not delete its transcript — they are two records of the same
+moment and you may want to keep either one.
 
 ## Diagnostics
 
