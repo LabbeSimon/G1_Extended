@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:g1_extended/services/dictation_service.dart';
+import 'package:g1_extended/screens/recordings_screen.dart';
 
 /// Everything the glasses have heard and transcribed, newest first.
 class DictationHistoryScreen extends StatefulWidget {
@@ -78,6 +79,19 @@ class _DictationHistoryScreenState extends State<DictationHistoryScreen> {
                 subtitle: Text(
                   DateFormat('d MMM, HH:mm').format(entry.capturedAt),
                 ),
+                // Transcription is a guess; the recording is not. When one
+                // is kept, say so and offer the way to settle it by ear.
+                trailing: entry.hasAudio
+                    ? IconButton(
+                        icon: const Icon(Icons.graphic_eq),
+                        tooltip: 'Listen to the recording',
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const RecordingsScreen(),
+                          ),
+                        ),
+                      )
+                    : null,
               );
             },
           );

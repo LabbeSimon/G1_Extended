@@ -8,6 +8,7 @@ import 'package:g1_extended/models/g1/case_battery.dart';
 import 'package:g1_extended/models/g1/glasses_settings.dart';
 import 'package:g1_extended/screens/checklist_screen.dart';
 import 'package:g1_extended/screens/dictation_history_screen.dart';
+import 'package:g1_extended/screens/recordings_screen.dart';
 import 'package:g1_extended/screens/notification_history_screen.dart';
 import 'package:g1_extended/screens/quick_note_screen.dart';
 import 'package:g1_extended/screens/settings/display_settings_screen.dart';
@@ -659,6 +660,11 @@ class _HomeScreenState extends State<HomeScreen>
         pixels: PixelArtwork.mic,
         label: 'Dictation',
         builder: (_) => const DictationHistoryScreen(),
+      ),
+      _Action(
+        pixels: PixelArtwork.waveform,
+        label: 'Recordings',
+        builder: (_) => const RecordingsScreen(),
       ),
       _Action(
         pixels: PixelArtwork.check,

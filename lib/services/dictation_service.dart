@@ -15,16 +15,27 @@ class Dictation {
   final DateTime capturedAt;
   final DictationSource source;
 
+  /// The stored audio this text came from, when there is one.
+  ///
+  /// Text is a lossy summary of what was said — a name misheard, a word
+  /// the model did not know. Keeping the link means the recording can
+  /// always be played back and settled by ear.
+  final String? recordingId;
+
   const Dictation({
     required this.text,
     required this.capturedAt,
     required this.source,
+    this.recordingId,
   });
+
+  bool get hasAudio => recordingId != null;
 
   Map<String, dynamic> toMap() => {
         'text': text,
         'capturedAt': capturedAt.toIso8601String(),
         'source': source.name,
+        if (recordingId != null) 'recordingId': recordingId,
       };
 
   static Dictation fromMap(Map map) => Dictation(
@@ -36,6 +47,7 @@ class Dictation {
           (s) => s.name == map['source'],
           orElse: () => DictationSource.glasses,
         ),
+        recordingId: map['recordingId'] as String?,
       );
 }
 
@@ -69,6 +81,7 @@ class DictationService {
     DictationSource source = DictationSource.glasses,
     bool showOnGlasses = true,
     bool saveAsNote = false,
+    String? recordingId,
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) {
@@ -81,7 +94,7 @@ class DictationService {
     // "call the plumber tomorrow" into their shopping list wants those
     // words kept, not a phone call placed.
     if (saveAsNote) {
-      await _saveAsNote(trimmed, source);
+      await _saveAsNote(trimmed, source, recordingId);
       return;
     }
 
@@ -103,6 +116,7 @@ class DictationService {
       text: trimmed,
       capturedAt: DateTime.now(),
       source: source,
+      recordingId: recordingId,
     );
 
     if (showOnGlasses) {
@@ -117,7 +131,11 @@ class DictationService {
     if (!_controller.isClosed) _controller.add(entry);
   }
 
-  Future<void> _saveAsNote(String text, DictationSource source) async {
+  Future<void> _saveAsNote(
+    String text,
+    DictationSource source, [
+    String? recordingId,
+  ]) async {
     final note = await NotesLibrary.singleton.create(
       title: 'Note',
       body: text,
@@ -142,6 +160,7 @@ class DictationService {
       text: text,
       capturedAt: DateTime.now(),
       source: source,
+      recordingId: recordingId,
     ));
   }
 

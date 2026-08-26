@@ -7,6 +7,7 @@ import 'package:g1_extended/services/dictation_service.dart';
 import 'package:g1_extended/services/notification_history.dart';
 import 'package:g1_extended/models/g1/voice_note.dart';
 import 'package:g1_extended/services/speech_recognition_service.dart';
+import 'package:g1_extended/services/voice_recordings.dart';
 import 'package:g1_extended/utils/lc3.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mutex/mutex.dart';
@@ -356,32 +357,29 @@ class BluetoothReciever {
       return;
     }
 
-    final pcm = await LC3.decodeLC3(Uint8List.fromList(encoded));
-    if (pcm.isEmpty) {
-      debugPrint('[$side] LC3 decoding produced no samples');
+    // Saved before it is recognised, for the same reason as a fetched note:
+    // the recogniser is the part that fails, and what someone said should
+    // not depend on whether a model happened to be installed.
+    final kept = await _keepAudio(
+      side: side,
+      encoded: Uint8List.fromList(encoded),
+      source: RecordingSource.glassesLive,
+    );
+
+    if (kept == null) {
+      debugPrint('[$side] Live capture could not be saved');
+      try {
+        await bt.sendPriorityText('Could not save that recording.');
+      } catch (_) {}
       return;
     }
 
-    final startedAt = DateTime.now();
-    try {
-      final transcript =
-          await SpeechRecognitionService.singleton.transcribeBytes(pcm);
-      final elapsed = DateTime.now().difference(startedAt);
-      debugPrint(
-        '[$side] Transcribed ${pcm.length} bytes in ${elapsed.inMilliseconds}ms: "$transcript"',
-      );
-      await DictationService.singleton.record(
-        transcript,
-        saveAsNote: side == GlassSide.right,
-      );
-    } on SpeechModelMissingException {
-      debugPrint('[$side] Offline speech model missing');
-      await bt.sendPriorityText(
-        'Speech model not installed.\nSettings > Voice to download it.',
-      );
-    } catch (e) {
-      debugPrint('[$side] Transcription failed: $e');
-    }
+    await _transcribeKept(
+      side: side,
+      recording: kept.recording,
+      pcm: kept.pcm,
+      saveAsNote: side == GlassSide.right,
+    );
   }
 
   void handleEvenAICommand(GlassSide side, int subcmd) async {
@@ -561,29 +559,140 @@ class BluetoothReciever {
     final encoded = voiceCollectorNote.getAllData();
     voiceCollectorNote.reset();
 
+    if (encoded.isEmpty) {
+      debugPrint('[$side] Voice note carried no audio; glasses copy kept');
+      return;
+    }
+
+    // The audio goes to disk before anything else happens to it. What
+    // follows — freeing the flash slot, transcribing — are both things
+    // that used to be able to destroy a recording, and neither runs until
+    // the phone holds its own copy.
+    final kept = await _keepAudio(
+      side: side,
+      encoded: Uint8List.fromList(encoded),
+      source: RecordingSource.glassesNote,
+    );
+
     final bt = BluetoothManager();
-    // Off the glasses first: their flash keeps only a handful, and a note
-    // that failed to transcribe is still a note that was heard.
+
+    if (kept == null) {
+      // Nothing reached disk, so the glasses hold the only copy and it
+      // stays there. Deleting it now is precisely how a recording is lost
+      // for good; a full flash is the lesser problem and it is recoverable.
+      debugPrint(
+          '[$side] Voice note could not be saved; leaving it on the glasses');
+      try {
+        await bt.sendPriorityText(
+          'Could not save that recording.\nIt is still on the glasses.',
+        );
+      } catch (_) {}
+      return;
+    }
+
+    // Only now. The phone has it, so the slot can be freed.
     await bt.rightGlass
         ?.sendData(VoiceNote(index: index + 1).buildDeleteCommand(_noteSyncId++));
 
-    final pcm = await LC3.decodeLC3(Uint8List.fromList(encoded));
+    await _transcribeKept(
+      side: side,
+      recording: kept.recording,
+      pcm: kept.pcm,
+      saveAsNote: true,
+    );
+  }
+
+  /// Decodes and stores captured audio, returning null only if nothing at
+  /// all could be written.
+  ///
+  /// A failed LC3 decode is not a reason to lose the recording: the codec
+  /// bytes are stored as they arrived so a working decoder can be pointed
+  /// at them later. The one unrecoverable case — the write itself failing —
+  /// is reported honestly to the caller, because the caller is about to
+  /// decide whether to delete the other copy.
+  Future<({Recording recording, Uint8List pcm})?> _keepAudio({
+    required GlassSide side,
+    required Uint8List encoded,
+    required RecordingSource source,
+  }) async {
+    Uint8List pcm = Uint8List(0);
+    try {
+      pcm = await LC3.decodeLC3(encoded);
+    } catch (e) {
+      debugPrint('[$side] LC3 decoding failed: $e');
+    }
+
+    try {
+      if (pcm.isNotEmpty) {
+        final recording =
+            await VoiceRecordings.singleton.savePcm(pcm, source: source);
+        return (recording: recording, pcm: pcm);
+      }
+
+      debugPrint('[$side] LC3 gave no samples; keeping the raw codec bytes');
+      final recording = await VoiceRecordings.singleton
+          .saveUndecodedLc3(encoded, source: source);
+      return (recording: recording, pcm: Uint8List(0));
+    } catch (e) {
+      debugPrint('[$side] Could not write the recording to disk: $e');
+      return null;
+    }
+  }
+
+  /// Runs speech recognition over audio that is already saved.
+  ///
+  /// Every failure here is annotated onto the stored recording rather than
+  /// thrown away, because by this point the recording exists and none of
+  /// these outcomes are a reason to pretend it does not.
+  Future<void> _transcribeKept({
+    required GlassSide side,
+    required Recording recording,
+    required Uint8List pcm,
+    required bool saveAsNote,
+  }) async {
+    final store = VoiceRecordings.singleton;
+
     if (pcm.isEmpty) {
-      debugPrint('[$side] Voice note LC3 decoding produced no samples');
+      // Raw LC3 was kept; there is nothing a recogniser could read.
       return;
     }
 
     try {
       final transcript =
           await SpeechRecognitionService.singleton.transcribeBytes(pcm);
-      debugPrint('[$side] Voice note transcribed: "$transcript"');
-      await DictationService.singleton.record(transcript, saveAsNote: true);
-    } on SpeechModelMissingException {
-      await bt.sendPriorityText(
-        'Speech model not installed.\nSettings > Voice to download it.',
+      debugPrint('[$side] Transcribed: "$transcript"');
+
+      if (transcript.trim().isEmpty) {
+        await store.attachTranscriptError(
+          recording.id,
+          'Nothing intelligible was recognised. The audio is kept.',
+        );
+        return;
+      }
+
+      await store.attachTranscript(recording.id, transcript);
+      await DictationService.singleton.record(
+        transcript,
+        saveAsNote: saveAsNote,
+        recordingId: recording.id,
       );
+    } on SpeechModelMissingException {
+      await store.attachTranscriptError(
+        recording.id,
+        'No speech model installed. The audio is kept; install a model in '
+        'Settings > Voice and it can be transcribed later.',
+      );
+      try {
+        await BluetoothManager().sendPriorityText(
+          'Recording saved.\nNo speech model — Settings > Voice.',
+        );
+      } catch (_) {}
     } catch (e) {
-      debugPrint('[$side] Voice note transcription failed: $e');
+      debugPrint('[$side] Transcription failed: $e');
+      await store.attachTranscriptError(
+        recording.id,
+        'Transcription failed. The audio is kept.',
+      );
     }
   }
 

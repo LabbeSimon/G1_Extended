@@ -254,6 +254,22 @@ abstract final class PixelArtwork {
     '............',
   ];
 
+  /// Saved audio: a waveform about its centre line.
+  static const List<String> waveform = [
+    '............',
+    '.....#......',
+    '.....##.....',
+    '...#.##.#...',
+    '...#.##.#...',
+    '.#.#.##.#.#.',
+    '.#.#.##.#.#.',
+    '...#.##.#...',
+    '...#.##.#...',
+    '.....##.....',
+    '.....#......',
+    '............',
+  ];
+
   /// Live captions.
   static const List<String> captions = [
     '............',
