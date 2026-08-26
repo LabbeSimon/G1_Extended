@@ -77,7 +77,26 @@ class Glass {
     }
   }
 
-  Future<void> _connectWithRetry() async {
+  Future<void>? _setupInFlight;
+
+  /// One setup sequence at a time; a concurrent caller joins the attempt
+  /// already in flight instead of starting its own.
+  ///
+  /// The connection-state stream emits the current state the moment it is
+  /// subscribed — "disconnected", since connect() subscribes before
+  /// connecting — which schedules the auto-reconnect loop in parallel with
+  /// the initial connection. When setup takes longer than the loop's first
+  /// two-second delay (device.connect alone may block for fifteen), two
+  /// copies of this sequence used to run against the same device, and the
+  /// losing copy's cleanup — device.disconnect(), uartTx = null — was the
+  /// winning copy's "device is disconnected" mid-discoverServices, and the
+  /// "UART TX not available" spam right after its "Setup complete".
+  Future<void> _connectWithRetry() {
+    return _setupInFlight ??=
+        _runConnectionSetup().whenComplete(() => _setupInFlight = null);
+  }
+
+  Future<void> _runConnectionSetup() async {
     // The retry loop used to wrap only device.connect(): once that succeeded,
     // discoverServices/requestMtu/requestConnectionPriority ran once, and any
     // of them throwing (typically PlatformException(discoverServices, device
