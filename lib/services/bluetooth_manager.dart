@@ -34,6 +34,7 @@ import 'package:hive/hive.dart';
 import 'package:notification_listener_service/notification_event.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/constants.dart';
+import '../utils/flow_gate.dart';
 import '../models/g1/glass.dart';
 import 'time_sync.dart';
 import 'permission_manager.dart';
@@ -368,8 +369,10 @@ class BluetoothManager {
     // Stop scanning
     stopScanning();
 
-    // Disconnect and clean up glasses
-    await disconnectFromGlasses();
+    // Disconnect and clean up glasses. Directly, not through the gate: the
+    // manager is going away and must not wait behind queued flows whose
+    // callbacks would land on the controllers just closed above.
+    await _disconnectFromGlassesNow();
 
     // Note: NotificationListener doesn't have a dispose method
     // The stream is handled automatically
@@ -399,7 +402,24 @@ class BluetoothManager {
     }
   }
 
-  Future<void> attemptReconnectFromStorage() async {
+  /// The manager's connection flows, one at a time.
+  ///
+  /// Reconnect-from-storage alone has five triggers — app startup, the crash
+  /// dialog, the background service's init, its connection monitor, the home
+  /// widget — plus the interface's Connect and Disconnect buttons, all of
+  /// which reach the same two Glass fields. Unserialized, one flow's opening
+  /// disconnectFromGlasses() is another flow's temple dying mid-setup:
+  /// "PlatformException(setNotifyValue, device is disconnected)".
+  final FlowGate _connectionFlows = FlowGate();
+
+  Future<void> attemptReconnectFromStorage() {
+    // Coalesced: several triggers firing together mean "please be
+    // connected", not "reconnect that many times" — and a queued duplicate
+    // would begin by tearing down the connection the first one just made.
+    return _connectionFlows.coalesced(_reconnectFromStorage);
+  }
+
+  Future<void> _reconnectFromStorage() async {
     await initialize();
 
     final leftUid = await _getLastG1UsedUid(GlassSide.left);
@@ -410,7 +430,13 @@ class BluetoothManager {
     // button could bring back the left branch, hit a mid-setup drop on the
     // right, and surface a PlatformException to the crash reporter — which
     // showed a fresh crash dialog on top of the one just dismissed.
-    if (leftUid != null) {
+    //
+    // A side that is already connected is left alone, and a stale instance
+    // is disconnected before being replaced: an abandoned Glass keeps its
+    // notification subscription and reconnect loop alive, so every packet
+    // was handled once per abandoned instance.
+    if (leftUid != null && leftGlass?.isConnected != true) {
+      await leftGlass?.disconnect();
       leftGlass = Glass(
         name: await _getLastG1UsedName(GlassSide.left) ?? 'Left Glass',
         device: BluetoothDevice(remoteId: DeviceIdentifier(leftUid)),
@@ -426,7 +452,8 @@ class BluetoothManager {
       }
     }
 
-    if (rightUid != null) {
+    if (rightUid != null && rightGlass?.isConnected != true) {
+      await rightGlass?.disconnect();
       rightGlass = Glass(
         name: await _getLastG1UsedName(GlassSide.right) ?? 'Right Glass',
         device: BluetoothDevice(remoteId: DeviceIdentifier(rightUid)),
@@ -457,6 +484,13 @@ class BluetoothManager {
       return;
     }
 
+    // Exclusive rather than coalesced: the user asked for a fresh scan and
+    // gets one — but only after any in-flight reconnect has settled, instead
+    // of tearing its half-built connections down from under it.
+    return _connectionFlows.exclusive(() => _scanAndConnectFlow(onUpdate));
+  }
+
+  Future<void> _scanAndConnectFlow(OnUpdate onUpdate) async {
     try {
       // Request permissions but don't fail if denied
       await _requestPermissions();
@@ -483,8 +517,9 @@ class BluetoothManager {
     // Stop any existing scan
     await FlutterBluePlus.stopScan();
 
-    // Make sure old connections are properly cleaned up
-    await disconnectFromGlasses();
+    // Make sure old connections are properly cleaned up. The internal
+    // variant: this flow already holds the gate the public one waits on.
+    await _disconnectFromGlassesNow();
 
     // Reset state
     _isScanning = true;
@@ -1335,7 +1370,15 @@ class BluetoothManager {
     await rightGlass!.sendData([Commands.OPEN_MIC, subCommand]);
   }
 
-  Future<void> disconnectFromGlasses() async {
+  Future<void> disconnectFromGlasses() {
+    // Behind the gate: disconnecting in the middle of another flow's setup
+    // is exactly the "device is disconnected" mid-discoverServices crash.
+    // The user's intent still wins — it runs as soon as the flow settles,
+    // and the end state is disconnected.
+    return _connectionFlows.exclusive(_disconnectFromGlassesNow);
+  }
+
+  Future<void> _disconnectFromGlassesNow() async {
     debugPrint('Disconnecting from glasses');
 
     try {
