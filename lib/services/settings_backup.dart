@@ -34,6 +34,16 @@ class SettingsBackup {
     'action_journal_enabled',
     'action_journal_enabled_at',
     'diagnostics_redact',
+    // Which glasses this phone is paired to is an identity, not a setting.
+    // Carried into another install it names a pair of temples the Android
+    // stack has no bond with, and attemptReconnectFromStorage spends the
+    // session failing to reach them — a restore that leaves the app looking
+    // broken. Scanning finds the real pair in seconds; there is nothing
+    // here worth carrying.
+    'left',
+    'right',
+    'leftName',
+    'rightName',
   ];
 
   /// Hive boxes worth carrying: user content and user filters.
@@ -52,13 +62,19 @@ class SettingsBackup {
     'notification-apps.json',
   ];
 
+  /// Whether a preference key travels in a backup.
+  ///
+  /// One predicate, consulted by both the export and the restore, so the
+  /// two can never disagree about what is carried.
+  static bool carries(String key) => !_keptBack.contains(key);
+
   static Future<Map<String, Object?>> _gather() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
 
     final preferences = <String, Object?>{};
     for (final key in prefs.getKeys()) {
-      if (_keptBack.contains(key)) continue;
+      if (!carries(key)) continue;
       preferences[key] = prefs.get(key);
     }
 
@@ -139,7 +155,9 @@ class SettingsBackup {
       final prefs = await SharedPreferences.getInstance();
       for (final entry in preferences.entries) {
         final key = entry.key as String;
-        if (_keptBack.contains(key)) continue;
+        // Also filtered on the way in: a backup written by an older build
+        // still carries the pairing, and restoring it would undo the fix.
+        if (!carries(key)) continue;
         final value = entry.value;
         if (value is bool) await prefs.setBool(key, value);
         if (value is int) await prefs.setInt(key, value);
