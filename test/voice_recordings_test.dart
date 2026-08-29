@@ -5,7 +5,6 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:g1_extended/services/voice_recordings.dart';
-import 'package:g1_extended/utils/wav.dart';
 
 /// The audio reaching disk is the one thing in this area that must never
 /// depend on anything else working. These guard that: a recording survives
