@@ -109,7 +109,19 @@ class DictationService {
     }
 
     if (await AssistantService.singleton.isConfigured()) {
-      await _askAssistant(trimmed);
+      await _askAssistant(trimmed, source);
+      return;
+    }
+
+    // Home Assistant's conversation agent is a general assistant, not a
+    // switch panel: with an LLM behind it, it answers a question as readily
+    // as it turns off a lamp. Reaching it only through the imperative
+    // triggers above — "allume", "turn off", "is the" — threw that away.
+    // Every actual question fell straight past it to be shown as plain
+    // text, which is exactly what "the assistant does nothing" looks like
+    // from the outside when a house is the only thing configured.
+    if (await HomeAssistantService.singleton.isConfigured()) {
+      await _askHouse(trimmed, source);
       return;
     }
 
@@ -198,7 +210,36 @@ class DictationService {
   /// The question goes up on the lens first: a local model can take several
   /// seconds, and a display that stays blank looks like the touchpad did not
   /// register the press.
-  Future<void> _askAssistant(String question) async {
+  Future<void> _askAssistant(String question, DictationSource source) =>
+      _askAndShow(question, source, () async {
+        final result = await AssistantService.singleton.ask(question);
+        return switch (result) {
+          AssistantAnswer(:final text) => text,
+          AssistantFailure(:final reason) => reason,
+        };
+      });
+
+  Future<void> _askHouse(String question, DictationSource source) =>
+      _askAndShow(question, source, () async {
+        final result = await HomeAssistantService.singleton.converse(question);
+        return switch (result) {
+          HaOk(:final text) => text,
+          HaFailure(:final reason) => reason,
+        };
+      });
+
+  /// Shows the question on the lens, waits for [answer], shows the reply.
+  ///
+  /// Shared by both assistants: which one is asked changes where the
+  /// sentence goes, not what the wearer sees happen. The failure text is
+  /// displayed like an answer on purpose — "The token was refused" on the
+  /// lens is how someone finds out their setup is wrong, where a silent
+  /// return leaves them tapping the temple again.
+  Future<void> _askAndShow(
+    String question,
+    DictationSource source,
+    Future<String> Function() answer,
+  ) async {
     final bluetooth = BluetoothManager.singleton;
 
     try {
@@ -207,11 +248,7 @@ class DictationService {
       debugPrint('DictationService: could not echo the question: $e');
     }
 
-    final result = await AssistantService.singleton.ask(question);
-    final text = switch (result) {
-      AssistantAnswer(:final text) => text,
-      AssistantFailure(:final reason) => reason,
-    };
+    final text = await answer();
 
     try {
       await bluetooth.sendPriorityText(text);
@@ -222,7 +259,7 @@ class DictationService {
     await _persist(Dictation(
       text: '$question\n$text',
       capturedAt: DateTime.now(),
-      source: DictationSource.glasses,
+      source: source,
     ));
   }
 
