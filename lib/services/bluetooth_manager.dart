@@ -21,6 +21,7 @@ import 'package:g1_extended/services/world_clocks.dart';
 import 'package:g1_extended/models/g1/notification.dart';
 import 'package:g1_extended/models/g1/text.dart';
 import 'package:g1_extended/services/navigation_service.dart';
+import 'package:g1_extended/services/now_playing_service.dart';
 import 'package:g1_extended/services/notification_history.dart';
 import 'package:g1_extended/services/voice_command_runner.dart';
 import 'package:g1_extended/services/notifications_listener.dart';
@@ -1037,6 +1038,14 @@ class BluetoothManager {
     // Turn-by-turn directions take a different path: they are rewritten
     // several times a second and must not be treated as ordinary alerts.
     if (isConnected && await NavigationService.singleton.handle(notification)) {
+      return;
+    }
+
+    // A player's notification is rewritten as the position advances, so it
+    // is not an alert either: left on the ordinary path, one song flashes
+    // the lens over and over. NowPlayingService announces a track change
+    // and swallows the rest.
+    if (isConnected && await NowPlayingService.singleton.handle(notification)) {
       return;
     }
 
