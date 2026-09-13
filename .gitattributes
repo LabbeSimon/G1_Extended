@@ -1,0 +1,18 @@
+# GitHub works out a repository's language with Linguist, which counts source
+# files without caring who wrote them. Two vendored C libraries — liblc3 for
+# the glasses' audio and rnnoise for the denoiser — outnumber everything else
+# on disk, so the repository was being advertised as a C project. It is Dart,
+# and people looking for a Dart or Flutter client filter it out before they
+# ever open it.
+#
+# Marking the vendored trees as such fixes the badge without hiding the code:
+# the files stay in the repository, stay in THIRD_PARTY.md, and stay readable.
+android/app/src/main/cpp/liblc3/** linguist-vendored
+android/app/src/main/cpp/rnnoise/** linguist-vendored
+android/app/src/main/cpp/include/** linguist-vendored
+
+# CMake's compiler probes, written by the build rather than by anyone.
+android/app/.cxx/** linguist-generated
+
+# The reverse-engineering notes are documentation, not a source file.
+*Protocol.txt linguist-documentation
