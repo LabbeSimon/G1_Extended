@@ -158,6 +158,28 @@ void main() {
     });
   });
 
+  group('The test chart', () {
+    test('weighs exactly what the pane holds', () {
+      for (final mode in [DashboardMode.dual, DashboardMode.full]) {
+        expect(
+          DashboardMap.testPattern(mode).length,
+          DashboardMap.imageBytesFor(mode),
+        );
+      }
+    });
+
+    test('lights the corners and marks the bit order', () {
+      final packed = DashboardMap.testPattern(DashboardMode.dual);
+
+      // The whole first row is the border, so every bit of its bytes is set.
+      expect(packed[0], 0xFF);
+      // The fourth row starts with three pixels and nothing else until the
+      // far edge: 0b00000111 if the low bit leads.
+      const rowBytes = 376 ~/ 8;
+      expect(packed[3 * rowBytes], 0x07);
+    });
+  });
+
   group('Packing', () {
     test('the first pixel of a row is the low bit of its byte', () {
       // Not how a BMP stores it, and the reason a bitmap that displays fine

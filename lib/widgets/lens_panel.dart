@@ -276,6 +276,18 @@ class _LensPanelState extends State<LensPanel> {
         chips.add(_chip('hors colonne 488', warn: true));
       }
     }
+    final pane = state.paneTransfer;
+    if (pane != null) {
+      if (pane.kind == 'news') {
+        final label = pane.source == null
+            ? 'news ${pane.slot ?? '?'}'
+            : 'news ${pane.slot ?? '?'} · ${pane.source}';
+        chips.add(_chip(label));
+      } else {
+        chips.add(_chip('carte ${pane.index}/${pane.total}'));
+      }
+      if (!pane.complete) chips.add(_chip('transfert en cours', warn: true));
+    }
     if (state.unhandled.isNotEmpty) {
       final last = state.unhandled.last.toRadixString(16).padLeft(2, '0');
       chips.add(_chip('${state.unhandled.length} inconnus, dern. 0x$last'));

@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:g1_extended/models/g1/dashboard.dart';
+import 'package:g1_extended/models/g1/dashboard_panel.dart';
+import 'package:g1_extended/models/g1/glasses_settings.dart';
 import 'package:g1_extended/models/g1/lens_framebuffer.dart';
 import 'package:g1_extended/models/g1/notification.dart';
 import 'package:g1_extended/models/g1/text.dart';
@@ -186,6 +188,48 @@ void main() {
       expect(emulator.state.surface, LensSurface.blank);
       expect(emulator.state.text, isEmpty);
       expect(emulator.state.brightness, 0x20);
+    });
+  });
+
+  group('Dashboard pane', () {
+    test('a news card is read back out of the packet that carried it', () {
+      final emulator = LensEmulator();
+      for (final packet in DashboardNews.write(
+        mode: DashboardMode.dual,
+        slot: 3,
+        card: NewsCard(source: 'Le Monde', text: 'il pleut sur Nantes'),
+      )) {
+        emulator.consume(packet);
+      }
+
+      final pane = emulator.state.paneTransfer;
+      expect(pane?.kind, 'news');
+      expect(pane?.slot, 3);
+      expect(pane?.source, 'Le Monde');
+      expect(pane?.text, 'il pleut sur Nantes');
+      expect(pane?.complete, isTrue);
+      expect(emulator.state.unhandled, isEmpty);
+    });
+
+    test('a map transfer is counted, and known to be unfinished', () {
+      final packets = DashboardMap.image(
+        mode: DashboardMode.dual,
+        packed: Uint8List(DashboardMap.imageBytesFor(DashboardMode.dual)),
+      );
+
+      final emulator = LensEmulator();
+      for (final packet in packets.take(12)) {
+        emulator.consume(packet);
+      }
+      expect(emulator.state.paneTransfer?.kind, 'map');
+      expect(emulator.state.paneTransfer?.index, 12);
+      expect(emulator.state.paneTransfer?.total, 36);
+      expect(emulator.state.paneTransfer?.complete, isFalse);
+
+      for (final packet in packets.skip(12)) {
+        emulator.consume(packet);
+      }
+      expect(emulator.state.paneTransfer?.complete, isTrue);
     });
   });
 

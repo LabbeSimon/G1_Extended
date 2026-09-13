@@ -298,6 +298,68 @@ abstract final class DashboardMap {
     );
   }
 
+  /// A "you are here" sprite: a ring with a dot in it.
+  ///
+  /// A ring rather than a disc on purpose. The lens is see-through, so every
+  /// lit pixel is a piece of the world the wearer stops seeing; an outline
+  /// says the same thing as a filled shape and costs a tenth of the view.
+  static Uint8List cursorSprite() {
+    final pixels = Uint8List(cursorWidth * cursorHeight);
+    const centre = cursorWidth / 2 - 0.5;
+    const outer = 12.0;
+    const inner = 9.5;
+
+    for (var y = 0; y < cursorHeight; y++) {
+      for (var x = 0; x < cursorWidth; x++) {
+        final dx = x - centre;
+        final dy = y - centre;
+        final distance = dx * dx + dy * dy;
+        final onRing = distance <= outer * outer && distance >= inner * inner;
+        final onDot = distance <= 3 * 3;
+        if (onRing || onDot) pixels[y * cursorWidth + x] = 1;
+      }
+    }
+    return pack(pixels, width: cursorWidth, height: cursorHeight);
+  }
+
+  /// A chart that makes a geometry or packing mistake obvious at a glance.
+  ///
+  /// A one-pixel border says whether the pane is the size we believe it is:
+  /// a missing edge means the width is wrong. A diagonal from corner to
+  /// corner says whether the rows are in the order we think. And the three
+  /// pixels at the start of the fourth row say which end of a byte comes
+  /// first — they sit at the left of the pane if the low bit leads, and
+  /// jump to the right of an eight-pixel group if it does not.
+  static Uint8List testPattern(DashboardMode mode) {
+    final width = widthFor(mode);
+    final pixels = Uint8List(width * height);
+
+    void set(int x, int y) {
+      if (x < 0 || x >= width || y < 0 || y >= height) return;
+      pixels[y * width + x] = 1;
+    }
+
+    for (var x = 0; x < width; x++) {
+      set(x, 0);
+      set(x, height - 1);
+    }
+    for (var y = 0; y < height; y++) {
+      set(0, y);
+      set(width - 1, y);
+    }
+    for (var x = 0; x < width; x++) {
+      set(x, x * (height - 1) ~/ (width - 1));
+    }
+    for (var x = 0; x < width; x += 8) {
+      set(x, 2);
+    }
+    set(0, 3);
+    set(1, 3);
+    set(2, 3);
+
+    return pack(pixels, width: width, height: height);
+  }
+
   /// Packs one byte per pixel into one bit per pixel.
   ///
   /// Least significant bit first inside each byte, rows laid end to end with

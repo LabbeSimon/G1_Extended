@@ -18,6 +18,34 @@ enum LensSurface {
   notification,
 }
 
+/// What was last written to the dashboard's secondary pane.
+@immutable
+class PaneTransfer {
+  const PaneTransfer({
+    required this.kind,
+    required this.index,
+    required this.total,
+    this.slot,
+    this.source,
+    this.text,
+  });
+
+  /// 'news' or 'map'.
+  final String kind;
+
+  /// Which packet of how many. A transfer stuck below [total] is a transfer
+  /// the glasses never finished receiving.
+  final int index;
+  final int total;
+
+  /// News only.
+  final int? slot;
+  final String? source;
+  final String? text;
+
+  bool get complete => index >= total;
+}
+
 /// A snapshot of the lens, rebuilt from the bytes the app actually wrote.
 @immutable
 class LensState {
@@ -35,6 +63,7 @@ class LensState {
     this.silent = false,
     this.dashboardMode,
     this.dashboardPanel,
+    this.paneTransfer,
     this.unhandled = const <int>[],
   });
 
@@ -69,6 +98,14 @@ class LensState {
   final int? dashboardMode;
   final int? dashboardPanel;
 
+  /// The last thing written to the dashboard's secondary pane.
+  ///
+  /// Not drawn: the pane lives beside the lens surface this panel renders,
+  /// and painting it here would be an invention. Reported instead, because
+  /// a transfer that stalls at packet 12 of 36 is worth seeing.
+
+  final PaneTransfer? paneTransfer;
+
   /// Opcodes seen and not understood, most recent last.
   ///
   /// Kept rather than dropped, for the same reason the SDK's monitor prints
@@ -90,6 +127,7 @@ class LensState {
     bool? silent,
     int? dashboardMode,
     int? dashboardPanel,
+    PaneTransfer? paneTransfer,
     List<int>? unhandled,
   }) {
     return LensState(
@@ -106,6 +144,7 @@ class LensState {
       silent: silent ?? this.silent,
       dashboardMode: dashboardMode ?? this.dashboardMode,
       dashboardPanel: dashboardPanel ?? this.dashboardPanel,
+      paneTransfer: paneTransfer ?? this.paneTransfer,
       unhandled: unhandled ?? this.unhandled,
     );
   }
@@ -289,17 +328,92 @@ class LensEmulator {
     ));
   }
 
-  /// `06 len_lo len_hi seq sub ...` — the framed shape, four header bytes.
+  /// `06 len_lo len_hi syncId sub ...` — the framed shape, four header bytes.
   void _consumeDashboard(List<int> packet) {
     const int layoutSub = 0x06;
-    if (packet.length < 7 || packet[4] != layoutSub) {
+    const int newsSub = 0x05;
+    const int mapSub = 0x07;
+    if (packet.length < 5) {
       _emit(_state.copyWith(unhandled: _remember(packet[0])));
       return;
     }
+
+    switch (packet[4]) {
+      case layoutSub when packet.length >= 7:
+        _emit(_state.copyWith(
+          dashboardMode: packet[5],
+          dashboardPanel: packet[6],
+        ));
+      case newsSub:
+        _consumePane(packet, 'news');
+      case mapSub:
+        _consumePane(packet, 'map');
+      default:
+        _emit(_state.copyWith(unhandled: _remember(packet[0])));
+    }
+  }
+
+  /// `<sub> <total u16le> <index u16le> <chunk>` inside the 0x06 frame.
+  ///
+  /// Only the first chunk carries the pane's own header, so only the first
+  /// chunk can say what the transfer is about; the rest are counted.
+  void _consumePane(List<int> packet, String kind) {
+    if (packet.length < 9) {
+      _emit(_state.copyWith(unhandled: _remember(packet[0])));
+      return;
+    }
+
+    final total = packet[5] | (packet[6] << 8);
+    final index = packet[7] | (packet[8] << 8);
+    final body = packet.sublist(9);
+
+    int? slot;
+    String? source;
+    String? text;
+    if (kind == 'news' && index == 1 && body.length >= 5) {
+      slot = body[3];
+      final card = body.sublist(5);
+      final fields = _readNewsFields(card);
+      source = fields.$1;
+      text = fields.$2;
+    }
+
     _emit(_state.copyWith(
-      dashboardMode: packet[5],
-      dashboardPanel: packet[6],
+      paneTransfer: PaneTransfer(
+        kind: kind,
+        index: index,
+        total: total,
+        slot: slot ?? _state.paneTransfer?.slot,
+        source: source ?? (index == 1 ? null : _state.paneTransfer?.source),
+        text: text ?? (index == 1 ? null : _state.paneTransfer?.text),
+      ),
     ));
+  }
+
+  /// `01 <len u8> <source> 02 <len u16le> <text>`.
+  (String?, String?) _readNewsFields(List<int> card) {
+    String? source;
+    String? text;
+    var at = 0;
+    while (at < card.length) {
+      final tag = card[at];
+      if (tag == 0x01 && at + 1 < card.length) {
+        final length = card[at + 1];
+        final end = at + 2 + length;
+        if (end > card.length) break;
+        source = utf8.decode(card.sublist(at + 2, end), allowMalformed: true);
+        at = end;
+      } else if (tag == 0x02 && at + 2 < card.length) {
+        final length = card[at + 1] | (card[at + 2] << 8);
+        final end = at + 3 + length;
+        if (end > card.length) break;
+        text = utf8.decode(card.sublist(at + 3, end), allowMalformed: true);
+        at = end;
+      } else {
+        break;
+      }
+    }
+    return (source, text);
   }
 
   List<int> _remember(int opcode) {

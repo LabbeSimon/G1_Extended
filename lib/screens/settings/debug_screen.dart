@@ -1,5 +1,7 @@
 import 'package:g1_extended/models/g1/calendar.dart';
 import 'package:g1_extended/models/g1/dashboard.dart';
+import 'package:g1_extended/models/g1/dashboard_panel.dart';
+import 'package:g1_extended/models/g1/glasses_settings.dart';
 import 'package:g1_extended/models/g1/note.dart';
 import 'package:g1_extended/models/g1/notification.dart';
 import 'package:g1_extended/models/g1/text.dart';
@@ -79,6 +81,62 @@ class _DebugPageSate extends State<DebugPage> {
     _showInfoSnackBar(
       'Sent with status 0x${screenStatus.toRadixString(16).toUpperCase()}',
     );
+  }
+
+  /// Writes one news card into the dashboard's second pane.
+  ///
+  /// Never seen on real glasses: this is the first thing to try when a pair
+  /// is available, and the mirror above says what left the phone either way.
+  void _sendDashboardNews() async {
+    if (!bluetoothManager.isConnected) {
+      _showInfoSnackBar('Glasses are not connected');
+      return;
+    }
+
+    final text = _textController.text.isEmpty
+        ? 'Le volet accepte enfin notre contenu.'
+        : _textController.text;
+    final packets = DashboardNews.write(
+      mode: DashboardMode.dual,
+      slot: 1,
+      card: NewsCard(source: 'G1 Extended', text: text),
+    );
+
+    for (final packet in packets) {
+      await bluetoothManager.sendCommandToGlasses(packet);
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
+    _showInfoSnackBar('News slot 1, ${packets.length} paquet(s)');
+  }
+
+  /// Sends the calibration chart to the map pane, then the cursor.
+  void _sendDashboardMap() async {
+    if (!bluetoothManager.isConnected) {
+      _showInfoSnackBar('Glasses are not connected');
+      return;
+    }
+
+    const mode = DashboardMode.dual;
+    final packets = DashboardMap.image(
+      mode: mode,
+      packed: DashboardMap.testPattern(mode),
+    );
+
+    for (final packet in packets) {
+      await bluetoothManager.sendCommandToGlasses(packet);
+      await Future.delayed(const Duration(milliseconds: 30));
+    }
+
+    await bluetoothManager.sendCommandToGlasses(
+      DashboardMap.cursor(
+        mode: mode,
+        x: DashboardMap.widthFor(mode) ~/ 2,
+        y: DashboardMap.height ~/ 2,
+        packed: DashboardMap.cursorSprite(),
+        syncId: DashboardPanel.firstSyncId + packets.length,
+      ),
+    );
+    _showInfoSnackBar('Carte envoyée, ${packets.length} paquets');
   }
 
   void _sendText() async {
@@ -311,6 +369,28 @@ class _DebugPageSate extends State<DebugPage> {
                 onPressed: () =>
                     _sendTextWithStatus(TextMessage.statusTextShow),
                 child: const Text('0x71'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          // The dashboard's second pane, which nothing in this app has ever
+          // written to. Dual mode: the pane is 376 wide there rather than
+          // 296, so put the dashboard in dual before trying it.
+          const Text(
+            'Volet du dashboard (mode dual), jamais testé sur lunettes',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              OutlinedButton(
+                onPressed: _sendDashboardNews,
+                child: const Text('News'),
+              ),
+              OutlinedButton(
+                onPressed: _sendDashboardMap,
+                child: const Text('Carte test'),
               ),
             ],
           ),
