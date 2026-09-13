@@ -17,7 +17,14 @@ class ScreenAction {
 class TextMessage {
   final String text;
 
-  TextMessage(this.text);
+  /// How wide a line is allowed to be, in characters.
+  ///
+  /// Defaults to [charsPerLine]. Overridable because the number is disputed
+  /// and the only arbiter is a pair of glasses: see the note on
+  /// [charsPerLine], and the three buttons in Settings → Debug.
+  final int charactersPerLine;
+
+  TextMessage(this.text, {this.charactersPerLine = charsPerLine});
 
   /// The status byte this app has always sent: 0x30.
   static const int statusToday =
@@ -64,6 +71,15 @@ class TextMessage {
 
   /// How many characters the lens fits on one line.
   ///
+  /// Disputed, and worth reading before trusting: the teleprompter's own
+  /// paginator says "measured on the hardware: about 25 characters across,
+  /// 7 lines visible" (`lib/services/teleprompter_tracker.dart`), and its
+  /// pages go out through this very command. Forty comes from two other
+  /// implementations measuring the 488 pixel column at font size 21. Both
+  /// cannot be right for the same command, so Settings → Debug sends the
+  /// same paragraph at twenty, twenty-five and forty, and whichever fills
+  /// the lens without spilling wins.
+  ///
   /// Twenty, inherited from the fork this app comes from, is half the panel:
   /// the firmware composes its text in a 488 pixel column at font size 21,
   /// which is about forty characters. Two independent implementations
@@ -90,7 +106,7 @@ class TextMessage {
   }
 
   List<String> _formatTextLines(String textMessage) {
-    const int maxLineLength = charsPerLine;
+    final int maxLineLength = charactersPerLine;
     List<String> words = textMessage.split(' ');
     List<String> lines = [];
     String currentLine = '';

@@ -140,6 +140,36 @@ class _DebugPageSate extends State<DebugPage> {
     _showInfoSnackBar('Carte envoyée, ${packets.length} paquets');
   }
 
+  /// Sends the same paragraph wrapped at a given width.
+  ///
+  /// Twenty is what the app inherited, twenty-five is what the
+  /// teleprompter's paginator says was measured on these glasses, forty is
+  /// what two other implementations compute from the pixel column. Only a
+  /// lens can say which one fills the panel without spilling off it.
+  void _sendTextAtWidth(int width) async {
+    if (!bluetoothManager.isConnected) {
+      _showInfoSnackBar('Glasses are not connected');
+      return;
+    }
+
+    const sample =
+        'La liaison tient sur les deux branches, la batterie affiche '
+        'quatre-vingt-quatre pour cent, et le prochain rendez-vous est a '
+        'quinze heures trente.';
+    final text = _textController.text.isEmpty ? sample : _textController.text;
+
+    final packets = TextMessage(
+      GlassesText.prepare(text),
+      charactersPerLine: width,
+    ).constructSendText();
+
+    for (final packet in packets) {
+      await bluetoothManager.sendCommandToGlasses(packet);
+      await Future.delayed(const Duration(milliseconds: 60));
+    }
+    _showInfoSnackBar('$width caractères par ligne, ${packets.length} paquets');
+  }
+
   void _sendText() async {
     final String text = _textController.text;
     if (text.isEmpty) {
@@ -342,6 +372,33 @@ class _DebugPageSate extends State<DebugPage> {
               ElevatedButton(
                 onPressed: _sendNotification,
                 child: const Text('Send Notification'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // How wide a line really is, settled by looking rather than by
+          // reading: the app inherited twenty, the teleprompter's paginator
+          // says twenty-five was measured here, two other implementations
+          // compute forty from the 488 pixel column.
+          const Text(
+            'Largeur de ligne, à départager sur les lunettes',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              OutlinedButton(
+                onPressed: () => _sendTextAtWidth(20),
+                child: const Text('20'),
+              ),
+              OutlinedButton(
+                onPressed: () => _sendTextAtWidth(25),
+                child: const Text('25'),
+              ),
+              OutlinedButton(
+                onPressed: () => _sendTextAtWidth(40),
+                child: const Text('40 actuel'),
               ),
             ],
           ),

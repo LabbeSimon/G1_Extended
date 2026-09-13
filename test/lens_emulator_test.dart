@@ -76,6 +76,23 @@ void main() {
       }
     });
 
+    test('the width can be overridden, for the sake of the argument', () {
+      // The teleprompter's paginator says twenty-five was measured on these
+      // glasses; two other implementations compute forty. Until a lens says
+      // which, both have to be sendable.
+      final emulator = LensEmulator()
+        ..consume(
+          TextMessage(
+            'alpha bravo charlie delta echo foxtrot',
+            charactersPerLine: 25,
+          ).constructSendText().first,
+        );
+
+      for (final line in emulator.state.text.split('\n')) {
+        expect(line.length, lessThanOrEqualTo(25));
+      }
+    });
+
     test('the screen status byte is kept raw', () {
       final packets = TextMessage('salut').constructSendText();
       final emulator = LensEmulator()..consume(packets.first);
