@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:g1_extended/models/g1/glass.dart';
 import 'package:g1_extended/models/g1/case_battery.dart';
 import 'package:g1_extended/models/g1/commands.dart';
+import 'package:g1_extended/models/g1/state_event.dart';
+import 'package:g1_extended/services/glasses_event_log.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/dictation_service.dart';
 import 'package:g1_extended/services/notification_history.dart';
@@ -383,6 +385,11 @@ class BluetoothReciever {
   }
 
   void handleEvenAICommand(GlassSide side, int subcmd) async {
+    // Recorded before anything is done with it, handled or not: the four
+    // sub-codes this app acts on are a fraction of what the glasses report,
+    // and the rest used to vanish into a console.
+    GlassesEventLog.instance.record(side.name, subcmd);
+
     final bt = BluetoothManager();
     switch (subcmd) {
       case 0:
@@ -443,7 +450,9 @@ class BluetoothReciever {
         break;
 
       default:
-        debugPrint('[$side] Unknown Even AI subcommand: $subcmd');
+        // Named where the community has a name for it, reported as unnamed
+        // where nobody does — rather than "unknown" for both.
+        debugPrint('[$side] ${StateEvent.describe(subcmd)}, not acted on');
     }
   }
 

@@ -8,6 +8,7 @@ import 'package:g1_extended/models/g1/text.dart';
 import 'package:g1_extended/utils/glasses_text.dart';
 import 'package:g1_extended/models/g1/translate.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/glasses_event_log.dart';
 import 'package:g1_extended/services/lens_emulator.dart';
 import 'package:g1_extended/widgets/lens_panel.dart';
 import 'package:g1_extended/utils/bitmap.dart';
@@ -371,6 +372,54 @@ class _DebugPageSate extends State<DebugPage> {
                 child: const Text('0x71'),
               ),
             ],
+          ),
+          const SizedBox(height: 20),
+          // What the glasses reported on their own. Four sub-codes are acted
+          // on; the others are named here and nowhere else.
+          Row(
+            children: [
+              const Text(
+                'Événements des lunettes',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: () => setState(GlassesEventLog.instance.clear),
+                child: const Text('Vider'),
+              ),
+            ],
+          ),
+          StreamBuilder<List<GlassesEvent>>(
+            stream: GlassesEventLog.instance.changes,
+            initialData: GlassesEventLog.instance.events,
+            builder: (context, snapshot) {
+              final events = snapshot.data ?? const <GlassesEvent>[];
+              if (events.isEmpty) {
+                return const Text(
+                  'Rien reçu depuis le lancement.',
+                  style: TextStyle(fontSize: 12),
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final event in events.take(12))
+                    Text(
+                      '${event.at.hour.toString().padLeft(2, '0')}:'
+                      '${event.at.minute.toString().padLeft(2, '0')}:'
+                      '${event.at.second.toString().padLeft(2, '0')}  '
+                      '${event.side}  ${event.label}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                        fontWeight: event.isUnnamed
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 20),
           // The dashboard's second pane, which nothing in this app has ever
