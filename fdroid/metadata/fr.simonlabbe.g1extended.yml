@@ -18,4 +18,14 @@ RepoType: git
 Repo: https://github.com/LabbeSimon/G1_Extended.git
 
 AutoUpdateMode: Version
-UpdateCheckMode: Tags
+# Stable tags only. Plain "Tags" takes the highest tag it finds, which on this
+# repository is a pre-release nine times out of ten: the beta branch is tagged
+# v1.2.4-beta.11 and friends, and shipping one of those as the release build
+# is exactly what the beta channel exists to avoid.
+UpdateCheckMode: Tags ^v\d+\.\d+\.\d+$
+
+# Missing on purpose, for now: a Builds: section. F-Droid compiles from source
+# and Flutter applications need the SDK pinned and fetched in a prebuild step;
+# writing that recipe without running it against fdroidserver would only look
+# finished. IzzyOnDroid, which publishes the release APK built here, needs no
+# such recipe and is the shorter route.
