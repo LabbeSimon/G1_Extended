@@ -43,8 +43,9 @@ stable unless you opt in by hand.
      expected names. Until they do, the sections below say more than any
      placeholder would. -->
 
-*Screenshots are coming with the 1.1.2 release; the layout they will show
-is described honestly in the sections below.*
+*No screenshots yet. They need a real phone and a real pair of glasses, and
+a placeholder would say less than the sections below, which describe the
+layout honestly.*
 
 ## What it does
 
@@ -253,8 +254,26 @@ specifications:
 | Microphones | Two |
 
 The bitmap helper works on a 576 × 136 canvas, which is not the display
-resolution above. Whether that is an inherited mistake or the image command
-addressing a sub-region is untested.
+resolution above. It is not an inherited mistake: two independent
+implementations treat 576 × 136 as the surface the BLE commands actually
+drive, with text composed inside a 488 pixel column at font size 21, five
+lines to a screen. The 640 × 200 figure is the optics; 576 × 136 is what
+arrives over the air. The lens mirror in Settings > Debug draws that canvas
+from the bytes the app writes, so a layout can be checked without wearing
+anything.
+
+### Other implementations
+
+Nobody has the manufacturer's documentation, so the protocol is what several
+projects have independently worked out. Where they disagree, glasses decide.
+
+| | |
+|---|---|
+| [even_glasses](https://github.com/emingenc/even_glasses) | Python, the oldest reference that still runs |
+| [fahrplan](https://github.com/meyskens/fahrplan) | Flutter, the ancestor of this codebase's Bluetooth layer |
+| [openg1-sdk](https://github.com/gabrielevierti/openg1-sdk) | Python, a protocol specification with confidence levels and 83 conformance vectors, plus a simulator |
+| [g1bridge](https://github.com/Artem1bar/g1bridge) | Python, verified on hardware in September 2026 |
+| [even-utils](https://github.com/radioegor146/even-utils) | Java, the only project to have worked out the dashboard's second pane |
 
 ## Third-party code
 

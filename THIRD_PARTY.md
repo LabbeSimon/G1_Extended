@@ -34,6 +34,20 @@ integration are inherited from [AGiXT/mobile](https://github.com/AGiXT/mobile),
 whose copyright notice names even-realities. See the provenance section of the
 [README](README.md).
 
+## Protocol knowledge, not code
+
+Nothing here ships in the APK. These projects worked out parts of the BLE
+protocol this app speaks, and the findings were reimplemented from what they
+describe rather than copied — which is also why they are named here rather
+than in the licence screen.
+
+| Project | What it settled |
+|---|---|
+| [even-utils](https://github.com/radioegor146/even-utils) — Egor Koleda | The dashboard's second pane: news cards and the walking map, under sub-commands 0x05 and 0x07 |
+| [openg1-sdk](https://github.com/gabrielevierti/openg1-sdk) — Gabriele Vierti | The 576 × 136 canvas, the 488 pixel text column, and the table of 0xF5 event sub-codes |
+| [g1bridge](https://github.com/Artem1bar/g1bridge) — MIT | Forty characters a line, five lines a screen, confirmed on hardware |
+| [even_glasses](https://github.com/emingenc/even_glasses) | The notification and text commands this app's own senders are built on |
+
 ## Not included
 
 The app is a third-party client. It carries no Even Realities artwork,
