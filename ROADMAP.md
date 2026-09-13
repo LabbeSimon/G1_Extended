@@ -22,6 +22,26 @@ hardware can confirm them:
 
 - [ ] The in-app update button, whole loop, at the next release
 
+- [ ] **Which screen-status byte the text command wants** — this app sends
+      0x30, openg1-sdk and g1bridge both compose 0x31 (mode in the high
+      nibble, action in the low), and plain text would be 0x71. Nothing is
+      changed in code: Settings → Debug sends the same sentence with all
+      three, and the lens decides
+
+- [ ] **Lines cut at forty characters instead of twenty** — the fork this
+      app came from wrapped at half the panel. Two independent
+      implementations measure forty for the 488 pixel text column at font
+      size 21; the lens mirror shows the difference, a face confirms it
+
+- [ ] **The dashboard's second pane** — news cards (source, body, four
+      slots) and the walking map (a 376x136 image in dual mode, 296x136 in
+      full, with a movable 32x32 cursor), under sub-commands 0x05 and 0x07
+      of the layout command. Protocol established by Egor Koleda
+      (radioegor146) in `even-utils` and reimplemented here; the framing
+      reproduces our own layout packet byte for byte, everything past that
+      is untested. Settings → Debug sends a news card and a calibration
+      chart
+
 ## In beta, not yet in a stable release
 
 Built and passing their tests, held back from stable until they have run
@@ -74,7 +94,9 @@ Self-contained, and none needs the glasses' protocol knowledge to start:
 
 ## Done, for the record
 
-Crash reports with reconnect · notes library with pinning and markup ·
+Lens mirror in pixels, 576x136 at one bit, decoded from the bytes actually
+written and reporting overflow, spill and ink · crash reports with reconnect ·
+notes library with pinning and markup ·
 notification history with temple-walk · home screen widget with options ·
 world clocks (IANA, DST-proof) · speedometer resilience, decimal comma,
 clock · lens mirror banner with mode chips · brightness drag tile ·
