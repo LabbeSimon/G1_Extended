@@ -1,8 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:g1_extended/models/g1/lens_framebuffer.dart';
 import 'package:g1_extended/models/g1/text.dart';
 import 'package:g1_extended/services/lens_emulator.dart';
+import 'package:g1_extended/services/lens_renderer.dart';
 import 'package:g1_extended/widgets/lens_panel.dart';
 
 void main() {
@@ -43,6 +46,22 @@ void main() {
 
     expect(find.text('blank'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the lens can be exported as a PNG', (tester) async {
+    final emulator = LensEmulator()
+      ..consume(TextMessage('export').constructSendText().first);
+
+    Uint8List? png;
+    await tester.runAsync(() async {
+      final frame = await LensRenderer.rasterise(emulator.state);
+      png = await LensRenderer.toPng(frame);
+    });
+
+    expect(png, isNotNull);
+    // Eight bytes of PNG signature, which is what makes it openable rather
+    // than a buffer we called an image.
+    expect(png!.sublist(0, 8), [137, 80, 78, 71, 13, 10, 26, 10]);
   });
 
   test('five lines of the panel type fit the lens, six do not', () {

@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import 'package:g1_extended/models/g1/lens_framebuffer.dart';
 import 'package:g1_extended/services/lens_emulator.dart';
+import 'package:g1_extended/services/lens_renderer.dart';
 
 /// The lens drawn as pixels, from the packets the app actually sent.
 ///
@@ -75,49 +75,13 @@ class _LensPanelState extends State<LensPanel> {
     super.dispose();
   }
 
-  /// Draws the state, rasterises it, and thresholds it to one bit.
-  ///
-  /// Two passes rather than one: the first uses the real text engine, the
-  /// second throws away everything the lens cannot show. Anti-aliasing that
-  /// survives into the preview is a lie about a monochrome panel.
+  /// Redraws the panel from the state, off the widget tree.
   Future<void> _render() async {
     final token = ++_renderToken;
-    final state = widget.state;
+    final frame = await LensRenderer.rasterise(widget.state);
+    if (token != _renderToken || !mounted) return;
 
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    final width = LensFramebuffer.width.toDouble();
-    final height = LensFramebuffer.height.toDouble();
-
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, width, height),
-      Paint()..color = const Color(0xFF000000),
-    );
-
-    switch (state.surface) {
-      case LensSurface.blank:
-        break;
-      case LensSurface.text:
-        _paintText(canvas, state.text);
-      case LensSurface.notification:
-        _paintNotification(canvas, state);
-      case LensSurface.image:
-        await _paintImage(canvas, state);
-    }
-
-    final picture = recorder.endRecording();
-    final raster = await picture.toImage(
-      LensFramebuffer.width,
-      LensFramebuffer.height,
-    );
-    picture.dispose();
-
-    final rgba = await raster.toByteData(format: ui.ImageByteFormat.rawRgba);
-    raster.dispose();
-    if (rgba == null || token != _renderToken || !mounted) return;
-
-    final frame = LensFramebuffer.fromRgba(rgba.buffer.asUint8List());
-    final image = await _toImage(frame);
+    final image = await LensRenderer.toImage(frame);
     if (token != _renderToken || !mounted) {
       image.dispose();
       return;
@@ -129,91 +93,6 @@ class _LensPanelState extends State<LensPanel> {
       _frame = frame;
     });
   }
-
-  Future<ui.Image> _toImage(LensFramebuffer frame) {
-    final completer = Completer<ui.Image>();
-    ui.decodeImageFromPixels(
-      frame.toRgba(),
-      LensFramebuffer.width,
-      LensFramebuffer.height,
-      ui.PixelFormat.rgba8888,
-      completer.complete,
-    );
-    return completer.future;
-  }
-
-  void _paintText(Canvas canvas, String text) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: _style()),
-      textDirection: TextDirection.ltr,
-      textAlign: TextAlign.left,
-    )..layout(maxWidth: LensFramebuffer.textWidth.toDouble());
-    painter.paint(canvas, Offset(LensFramebuffer.textLeft.toDouble(), 4));
-  }
-
-  void _paintNotification(Canvas canvas, LensState state) {
-    final body = state.notification?['ncs_notification'];
-    final document = body is Map ? body : const <String, dynamic>{};
-    final title = (document['title'] ?? document['display_name'] ?? '')
-        .toString();
-    final message = (document['message'] ?? '').toString();
-
-    final painter = TextPainter(
-      text: TextSpan(
-        style: _style(),
-        children: [
-          if (title.isNotEmpty)
-            TextSpan(
-              text: '$title\n',
-              style: _style().copyWith(fontWeight: FontWeight.bold),
-            ),
-          TextSpan(text: message),
-        ],
-      ),
-      textDirection: TextDirection.ltr,
-      maxLines: 5,
-      ellipsis: '…',
-    )..layout(maxWidth: LensFramebuffer.textWidth.toDouble());
-    painter.paint(canvas, Offset(LensFramebuffer.textLeft.toDouble(), 4));
-  }
-
-  Future<void> _paintImage(Canvas canvas, LensState state) async {
-    final bytes = state.image;
-    if (bytes == null || bytes.isEmpty) return;
-    try {
-      final codec = await ui.instantiateImageCodec(Uint8List.fromList(bytes));
-      final frame = await codec.getNextFrame();
-      canvas.drawImageRect(
-        frame.image,
-        Rect.fromLTWH(
-          0,
-          0,
-          frame.image.width.toDouble(),
-          frame.image.height.toDouble(),
-        ),
-        Rect.fromLTWH(
-          0,
-          0,
-          LensFramebuffer.width.toDouble(),
-          LensFramebuffer.height.toDouble(),
-        ),
-        Paint()..filterQuality = FilterQuality.none,
-      );
-      frame.image.dispose();
-      codec.dispose();
-    } catch (_) {
-      // A transfer still in flight is not a decodable bitmap, and half a BMP
-      // drawn as noise would read as a rendering bug rather than as what it
-      // is. Leave the panel dark and let the chips say "image, incomplete".
-    }
-  }
-
-  TextStyle _style() => const TextStyle(
-        color: Color(0xFFFFFFFF),
-        fontSize: LensPanel.fontSize,
-        height: LensPanel.lineHeight,
-        fontFamily: 'monospace',
-      );
 
   @override
   Widget build(BuildContext context) {

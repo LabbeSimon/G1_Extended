@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:g1_extended/models/g1/calendar.dart';
 import 'package:g1_extended/models/g1/commands.dart';
 import 'package:g1_extended/models/g1/dashboard.dart';
@@ -11,11 +13,14 @@ import 'package:g1_extended/models/g1/translate.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/glasses_event_log.dart';
 import 'package:g1_extended/services/lens_emulator.dart';
+import 'package:g1_extended/services/lens_renderer.dart';
 import 'package:g1_extended/widgets/lens_panel.dart';
 import 'package:g1_extended/utils/bitmap.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'package:g1_extended/services/notification_apps.dart';
 
@@ -183,6 +188,30 @@ class _DebugPageSate extends State<DebugPage> {
     // Both temples, for the same reason 0x4B goes to both.
     await bluetoothManager.sendCommandToGlasses([Commands.CLEAR_NOTIFICATION]);
     _showInfoSnackBar('0x4C envoyé aux deux branches');
+  }
+
+  /// Hands what the lens is showing to the share sheet, as a PNG.
+  ///
+  /// The point is to be able to attach it: to an issue, to a message, to
+  /// whoever is being asked whether a packet did what it was meant to do.
+  /// Nothing here leaves the phone on its own.
+  void _shareLens() async {
+    final frame = await LensRenderer.rasterise(LensEmulator.mirror.state);
+    final png = await LensRenderer.toPng(frame, scale: 2);
+    if (png == null) {
+      _showInfoSnackBar('Rien à exporter');
+      return;
+    }
+
+    final directory = await getTemporaryDirectory();
+    final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+    final file = File('${directory.path}/lentille-$stamp.png');
+    await file.writeAsBytes(png);
+
+    await Share.shareXFiles(
+      [XFile(file.path)],
+      subject: 'G1 Extended — la lentille',
+    );
   }
 
   void _sendText() async {
@@ -449,7 +478,15 @@ class _DebugPageSate extends State<DebugPage> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: _shareLens,
+              child: const Text('Partager la lentille (PNG)'),
+            ),
+          ),
+          const SizedBox(height: 12),
           // What the glasses reported on their own. Four sub-codes are acted
           // on; the others are named here and nowhere else.
           Row(
