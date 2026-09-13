@@ -123,6 +123,14 @@ class LensState {
 /// guessed at: a mirror that invents a screen is worse than one that admits
 /// it did not understand a packet.
 class LensEmulator {
+  /// The app's own mirror, fed by every write [BluetoothManager] makes.
+  ///
+  /// One instance rather than one per screen: what the lens shows is a
+  /// property of the glasses, not of whoever happens to be looking at it,
+  /// and a second emulator started halfway through a bitmap transfer would
+  /// show half a bitmap for ever.
+  static final LensEmulator mirror = LensEmulator();
+
   static const int _opText = 0x4E;
   static const int _opNotification = 0x4B;
   static const int _opBmpData = 0x15;

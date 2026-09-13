@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:g1_extended/services/lens_emulator.dart';
 import 'package:g1_extended/services/bluetooth_background_service.dart';
 import 'package:android_package_manager/android_package_manager.dart';
 import 'package:g1_extended/models/dashboard/dashboard.dart';
@@ -796,7 +797,10 @@ class BluetoothManager {
   /// their allowlist (0x04) are documented left-arm commands, and
   /// broadcasting them to the pair is how a notification could be built
   /// correctly, chunked correctly, sent — and never appear.
-  Future<bool> sendToLeft(List<int> command) => _writeTo(leftGlass, command);
+  Future<bool> sendToLeft(List<int> command) {
+    LensEmulator.mirror.consume(command);
+    return _writeTo(leftGlass, command);
+  }
 
   /// True when a write reached one temple and not the other.
   ///
@@ -817,6 +821,11 @@ class BluetoothManager {
   ///
   /// Returns true only when both sides took it.
   Future<bool> sendCommandToGlasses(List<int> command) async {
+    // The mirror is fed here rather than inside _writeTo: this is the one
+    // place a command passes exactly once, and a mirror that saw the same
+    // bytes twice would reassemble every chunked transfer wrong.
+    LensEmulator.mirror.consume(command);
+
     final left = await _writeTo(leftGlass, command);
     final right = await _writeTo(rightGlass, command);
 

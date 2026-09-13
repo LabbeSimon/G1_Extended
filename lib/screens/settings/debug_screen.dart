@@ -4,6 +4,8 @@ import 'package:g1_extended/models/g1/note.dart';
 import 'package:g1_extended/models/g1/notification.dart';
 import 'package:g1_extended/models/g1/translate.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/lens_emulator.dart';
+import 'package:g1_extended/widgets/lens_panel.dart';
 import 'package:g1_extended/utils/bitmap.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -222,6 +224,24 @@ class _DebugPageSate extends State<DebugPage> {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
+          // What the lens is showing, rebuilt from the bytes that were
+          // actually written to it. Everything below this line sends
+          // something; this is where you see what it did.
+          const Text(
+            'Lentille (576x136, 1 bit)',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          StreamBuilder<LensState>(
+            stream: LensEmulator.mirror.changes,
+            initialData: LensEmulator.mirror.state,
+            builder: (context, snapshot) {
+              return LensPanel(
+                state: snapshot.data ?? const LensState(),
+              );
+            },
+          ),
+          const SizedBox(height: 20),
           TextField(
             controller: _textController,
             decoration: const InputDecoration(labelText: 'Enter text to send'),
