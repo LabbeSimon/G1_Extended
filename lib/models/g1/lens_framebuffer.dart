@@ -71,10 +71,20 @@ class LensFramebuffer {
     return total;
   }
 
+  /// The share of the panel that is lit, from 0 to 1.
+  ///
+  /// On a see-through display this is not an aesthetic measure: every lit
+  /// pixel is a piece of the world the wearer stops seeing. Designs built
+  /// for the G2 by people who measure this land between three and four per
+  /// cent per screen, and outline shapes rather than filled ones are how
+  /// they get there. Worth watching whenever a banner or a bitmap looks
+  /// heavy on the face without looking heavy in the preview.
+  double get inkRatio => lit / (width * height);
+
   /// The last row holding anything, or -1 on an empty panel.
   ///
-  /// Together with [textBottom] this is what tells a test that content ran
-  /// past the bottom of the lens instead of fitting on it.
+  /// A last lit row sitting on [height] minus one is the sign that content
+  /// ran past the bottom of the lens instead of fitting on it.
   int get lastLitRow {
     for (var y = height - 1; y >= 0; y--) {
       final start = y * width;

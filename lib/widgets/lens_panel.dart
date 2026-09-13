@@ -35,6 +35,12 @@ class LensPanel extends StatefulWidget {
   /// Type size and leading that put five lines in 136 pixels, which is what
   /// the firmware fits, and about forty characters in the 488 pixel text
   /// column, which is what the community spec measures at 21 px.
+  /// Above this, the lens is more screen than window.
+  ///
+  /// Not a hard rule: a photograph legitimately fills the panel. It is a
+  /// number to notice, the way a designer notices a wall of text.
+  static const double inkWarningPercent = 20;
+
   static const double fontSize = 21;
 
   /// 21 x 1.28 is 26.88, and five of those sit inside 136 pixels with a
@@ -268,6 +274,13 @@ class _LensPanelState extends State<LensPanel> {
       }
       // The bottom row lit means the content had nowhere left to go: what
       // sits below it was cut, and the wearer never sees it.
+      final ink = frame.inkRatio * 100;
+      if (frame.lit > 0) {
+        chips.add(_chip(
+          'encre ${ink.toStringAsFixed(1)} %',
+          warn: ink > LensPanel.inkWarningPercent,
+        ));
+      }
       if (frame.lastLitRow >= LensFramebuffer.height - 1) {
         chips.add(_chip('déborde en bas', warn: true));
       }

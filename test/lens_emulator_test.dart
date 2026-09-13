@@ -263,6 +263,15 @@ void main() {
       expect(frame.spillsOutsideTextColumn, isFalse);
     });
 
+    test('ink is the share of the world the lens takes away', () {
+      final frame = LensFramebuffer();
+      expect(frame.inkRatio, 0);
+
+      // A tenth of the rows, lit edge to edge.
+      frame.fillRect(0, 0, LensFramebuffer.width, 13);
+      expect(frame.inkRatio, closeTo(13 / LensFramebuffer.height, 0.001));
+    });
+
     test('a rasterised buffer comes back as one bit per pixel', () {
       final rgba = Uint8List(
         LensFramebuffer.width * LensFramebuffer.height * 4,
