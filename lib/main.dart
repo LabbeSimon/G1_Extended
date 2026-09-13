@@ -13,6 +13,7 @@ import 'package:g1_extended/models/dashboard/checklist.dart';
 import 'package:g1_extended/models/dashboard/daily.dart';
 import 'package:g1_extended/models/dashboard/stop.dart';
 import 'package:g1_extended/screens/home_screen.dart';
+import 'package:g1_extended/services/lens_text_width.dart';
 import 'package:g1_extended/services/bluetooth_background_service.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/crash_reporter.dart';
@@ -42,6 +43,9 @@ void main() async {
     await CrashReporter.singleton.begin();
 
     registerThirdPartyLicences();
+
+    // Cheap, and read from paths that cannot await later.
+    await LensTextWidth.load();
 
     await _step('notifications', () async {
       await flutterLocalNotificationsPlugin.initialize(

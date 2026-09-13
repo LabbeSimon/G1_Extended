@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:g1_extended/services/lens_emulator.dart';
+import 'package:g1_extended/services/lens_text_width.dart';
 import 'package:g1_extended/services/bluetooth_background_service.dart';
 import 'package:android_package_manager/android_package_manager.dart';
 import 'package:g1_extended/models/dashboard/dashboard.dart';
@@ -891,7 +892,10 @@ class BluetoothManager {
     // The display has no glyphs for Cyrillic, Arabic and several other
     // scripts. Sending them anyway draws blank boxes, which reads as a broken
     // app rather than a hardware limit.
-    final textMsg = TextMessage(GlassesText.prepare(text));
+    final textMsg = TextMessage(
+      GlassesText.prepare(text),
+      charactersPerLine: LensTextWidth.current,
+    );
     List<List<int>> packets = textMsg.constructSendText();
 
     for (int i = 0; i < packets.length; i++) {
@@ -920,7 +924,10 @@ class BluetoothManager {
 
     if (streaming) {
       // Streaming mode: send only the last page for instant feedback
-      final textMsg = TextMessage(text);
+      final textMsg = TextMessage(
+        text,
+        charactersPerLine: LensTextWidth.current,
+      );
       final packet = textMsg.constructStreamingText();
       await sendCommandToGlasses(packet);
     } else {

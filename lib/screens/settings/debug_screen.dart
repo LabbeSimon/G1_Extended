@@ -14,6 +14,7 @@ import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/glasses_event_log.dart';
 import 'package:g1_extended/services/lens_emulator.dart';
 import 'package:g1_extended/services/lens_renderer.dart';
+import 'package:g1_extended/services/lens_text_width.dart';
 import 'package:g1_extended/widgets/lens_panel.dart';
 import 'package:g1_extended/utils/bitmap.dart';
 import 'package:flutter/material.dart';
@@ -436,18 +437,32 @@ class _DebugPageSate extends State<DebugPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              OutlinedButton(
-                onPressed: () => _sendTextAtWidth(20),
-                child: const Text('20'),
+              for (final width in LensTextWidth.candidates)
+                OutlinedButton(
+                  onPressed: () => _sendTextAtWidth(width),
+                  child: Text('$width'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Once a width has won on the lens, it should not need a release
+          // to become the one the whole app uses.
+          Row(
+            children: [
+              Text(
+                'Retenue : ${LensTextWidth.current} caractères',
+                style: const TextStyle(fontSize: 12),
               ),
-              OutlinedButton(
-                onPressed: () => _sendTextAtWidth(25),
-                child: const Text('25'),
-              ),
-              OutlinedButton(
-                onPressed: () => _sendTextAtWidth(40),
-                child: const Text('40 actuel'),
-              ),
+              const Spacer(),
+              for (final width in LensTextWidth.candidates)
+                TextButton(
+                  onPressed: () async {
+                    await LensTextWidth.set(width);
+                    if (mounted) setState(() {});
+                    _showInfoSnackBar('Largeur retenue : $width');
+                  },
+                  child: Text('$width'),
+                ),
             ],
           ),
           const SizedBox(height: 12),
