@@ -19,6 +19,24 @@ class TextMessage {
 
   TextMessage(this.text);
 
+  /// The status byte this app has always sent: 0x30.
+  static const int statusToday =
+      AIStatus.DISPLAYING | ScreenAction.NEW_CONTENT;
+
+  /// The same mode, with the action where the community spec puts it.
+  ///
+  /// openg1-sdk and g1bridge both read the high nibble as the mode and the
+  /// low one as the action, which makes "Even AI, new content" 0x31 rather
+  /// than 0x30. Neither of them has been run against these glasses by
+  /// anyone here, and the current byte does display, so this is a candidate
+  /// to try on hardware rather than a fix to apply blind.
+  static const int statusAiNewContent = 0x31;
+
+  /// Plain text rather than an Even AI answer: 0x70 with the action bit.
+  ///
+  /// The one the SDK's own conformance vector uses for `send_text`.
+  static const int statusTextShow = 0x71;
+
   List<int> _sendTextPacket({
     required String textMessage,
     int pageNumber = 1,
@@ -54,6 +72,22 @@ class TextMessage {
   /// Debug shows the difference without wearing anything: at twenty, lines
   /// break mid-sentence and a message needs twice the pages it should.
   static const int charsPerLine = 40;
+
+  /// One page, with the screen-status byte named rather than assumed.
+  ///
+  /// The Debug screen sends the same sentence three times with the three
+  /// candidate bytes. Whichever behaves best on a face settles a question
+  /// no amount of reading settles.
+  List<int> constructPageWithStatus({required int screenStatus}) {
+    final lines = _formatTextLines(text);
+    final page = lines.take(5).join('\n');
+    return _sendTextPacket(
+      textMessage: page,
+      pageNumber: 1,
+      maxPages: 1,
+      screenStatus: screenStatus,
+    );
+  }
 
   List<String> _formatTextLines(String textMessage) {
     const int maxLineLength = charsPerLine;

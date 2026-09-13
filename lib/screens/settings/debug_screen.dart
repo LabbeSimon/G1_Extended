@@ -2,6 +2,8 @@ import 'package:g1_extended/models/g1/calendar.dart';
 import 'package:g1_extended/models/g1/dashboard.dart';
 import 'package:g1_extended/models/g1/note.dart';
 import 'package:g1_extended/models/g1/notification.dart';
+import 'package:g1_extended/models/g1/text.dart';
+import 'package:g1_extended/utils/glasses_text.dart';
 import 'package:g1_extended/models/g1/translate.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/lens_emulator.dart';
@@ -53,6 +55,30 @@ class _DebugPageSate extends State<DebugPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Sends one page with an explicit status byte.
+  ///
+  /// The three candidates differ only in that byte, so sending the same
+  /// sentence three times and watching the lens is the whole experiment.
+  void _sendTextWithStatus(int screenStatus) async {
+    final String text = _textController.text;
+    if (text.isEmpty) {
+      _showInfoSnackBar('Please enter some text to send');
+      return;
+    }
+    if (!bluetoothManager.isConnected) {
+      _showInfoSnackBar('Glasses are not connected');
+      return;
+    }
+
+    final packet = TextMessage(
+      GlassesText.prepare(text),
+    ).constructPageWithStatus(screenStatus: screenStatus);
+    await bluetoothManager.sendCommandToGlasses(packet);
+    _showInfoSnackBar(
+      'Sent with status 0x${screenStatus.toRadixString(16).toUpperCase()}',
+    );
   }
 
   void _sendText() async {
@@ -257,6 +283,34 @@ class _DebugPageSate extends State<DebugPage> {
               ElevatedButton(
                 onPressed: _sendNotification,
                 child: const Text('Send Notification'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // The status byte is the open question on the text command: this
+          // app sends 0x30, two other implementations compose 0x31, and the
+          // plain-text mode is 0x71. Same sentence, three bytes, one lens.
+          const Text(
+            'Octet de statut, à comparer sur les lunettes',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              OutlinedButton(
+                onPressed: () => _sendTextWithStatus(TextMessage.statusToday),
+                child: const Text('0x30 actuel'),
+              ),
+              OutlinedButton(
+                onPressed: () =>
+                    _sendTextWithStatus(TextMessage.statusAiNewContent),
+                child: const Text('0x31'),
+              ),
+              OutlinedButton(
+                onPressed: () =>
+                    _sendTextWithStatus(TextMessage.statusTextShow),
+                child: const Text('0x71'),
               ),
             ],
           ),

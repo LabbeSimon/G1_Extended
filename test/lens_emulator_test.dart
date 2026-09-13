@@ -58,6 +58,22 @@ void main() {
       );
     });
 
+    test('a page can be sent with any of the candidate status bytes', () {
+      for (final status in [
+        TextMessage.statusToday,
+        TextMessage.statusAiNewContent,
+        TextMessage.statusTextShow,
+      ]) {
+        final emulator = LensEmulator()
+          ..consume(
+            TextMessage('essai').constructPageWithStatus(screenStatus: status),
+          );
+
+        expect(emulator.state.screenStatus, status);
+        expect(emulator.state.text.trim(), 'essai');
+      }
+    });
+
     test('the screen status byte is kept raw', () {
       final packets = TextMessage('salut').constructSendText();
       final emulator = LensEmulator()..consume(packets.first);
