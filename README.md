@@ -240,7 +240,12 @@ For CI, add two repository secrets: `KEYSTORE_BASE64`, the keystore as
 
 ## Protocol
 
-`Even Realities G1 BLE Protocol.txt` documents the BLE commands this app uses.
+`Even Realities G1 BLE Protocol.txt` documents the BLE commands this app uses,
+and [docs/PROTOCOL_NOTES.md](docs/PROTOCOL_NOTES.md) sorts what the app
+actually does by how well it is established: confirmed on real glasses,
+inherited and working but unexamined, or reimplemented from another project
+and never seen working. A byte that displays on a lens and a byte that looks
+right in a capture are not the same kind of fact.
 
 Hardware figures that shape the code, from the manufacturer's own
 specifications:
