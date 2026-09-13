@@ -72,8 +72,10 @@ jobs:
           echo "ANDROID_NDK_VERSION=$(basename "$NDK_HOME")" >> "$GITHUB_ENV"
           echo "Building against NDK $(basename "$NDK_HOME")"
 
+      # v4 runs on Node 20, which the runners now force onto Node 24 and
+      # warn about on every build. Inputs are unchanged between the two.
       - name: Setup Gradle cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.gradle/caches
