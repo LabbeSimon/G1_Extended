@@ -1,4 +1,5 @@
 import 'package:g1_extended/models/g1/calendar.dart';
+import 'package:g1_extended/models/g1/commands.dart';
 import 'package:g1_extended/models/g1/dashboard.dart';
 import 'package:g1_extended/models/g1/dashboard_panel.dart';
 import 'package:g1_extended/models/g1/glasses_settings.dart';
@@ -168,6 +169,20 @@ class _DebugPageSate extends State<DebugPage> {
       await Future.delayed(const Duration(milliseconds: 60));
     }
     _showInfoSnackBar('$width caractères par ligne, ${packets.length} paquets');
+  }
+
+  /// Tries the command that should take the banner off the lens.
+  ///
+  /// Never seen working: if the lens clears, the app gains a way to stop
+  /// showing a notification instead of waiting for it to time out.
+  void _clearNotification() async {
+    if (!bluetoothManager.isConnected) {
+      _showInfoSnackBar('Glasses are not connected');
+      return;
+    }
+    // Both temples, for the same reason 0x4B goes to both.
+    await bluetoothManager.sendCommandToGlasses([Commands.CLEAR_NOTIFICATION]);
+    _showInfoSnackBar('0x4C envoyé aux deux branches');
   }
 
   void _sendText() async {
@@ -372,6 +387,10 @@ class _DebugPageSate extends State<DebugPage> {
               ElevatedButton(
                 onPressed: _sendNotification,
                 child: const Text('Send Notification'),
+              ),
+              OutlinedButton(
+                onPressed: _clearNotification,
+                child: const Text('0x4C'),
               ),
             ],
           ),
