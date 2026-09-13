@@ -269,7 +269,9 @@ class _LensPanelState extends State<LensPanel> {
     if (state.silent) chips.add(_chip('silent'));
 
     if (frame != null) {
-      if (frame.lit == 0) {
+      // A blank lens after a clear is not a fault; a screen that was asked
+      // to show something and lit nothing is.
+      if (frame.lit == 0 && state.surface != LensSurface.blank) {
         chips.add(_chip('rien d\'allumé', warn: true));
       }
       // The bottom row lit means the content had nowhere left to go: what

@@ -213,6 +213,13 @@ class BluetoothReciever {
         // changes. handleEvenAICommand only receives the subcommand, so
         // anything with a payload has to be read before dispatching or the
         // payload is simply dropped.
+        // Recorded before anything is done with it, handled or not — and
+        // before the case battery is peeled off below, which returns early
+        // and would otherwise keep its own events out of the log.
+        if (data.length >= 2) {
+          GlassesEventLog.instance.record(side.name, data[1]);
+        }
+
         final caseBattery = CaseBatteryParser.fromStateChange(data);
         if (caseBattery != null) {
           BluetoothManager.singleton.updateCaseBattery(caseBattery);
@@ -385,11 +392,6 @@ class BluetoothReciever {
   }
 
   void handleEvenAICommand(GlassSide side, int subcmd) async {
-    // Recorded before anything is done with it, handled or not: the four
-    // sub-codes this app acts on are a fraction of what the glasses report,
-    // and the rest used to vanish into a console.
-    GlassesEventLog.instance.record(side.name, subcmd);
-
     final bt = BluetoothManager();
     switch (subcmd) {
       case 0:
