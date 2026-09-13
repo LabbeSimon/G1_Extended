@@ -3,6 +3,9 @@ the bytes actually written to the glasses, so a layout can be checked without
 wearing anything. It reports what runs off the panel, what leaves the text
 column, and how much of the world the display costs.
 
+The lens can be exported as a PNG, and the line width the glasses turn out to
+want can be kept without waiting for a release.
+
 Text lines are cut at the width the lens really has rather than half of it.
 The dashboard's second pane accepts news cards and a map image for the first
 time. Events the glasses send are named and listed instead of discarded.
