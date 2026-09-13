@@ -39,6 +39,25 @@ void main() {
       expect(emulator.state.page, emulator.state.maxPages);
     });
 
+    test('lines are cut at the width the lens actually has', () {
+      // Forty characters, not twenty: half a panel is what the fork this
+      // app came from was using, and it doubled the page count for nothing.
+      final long = List.filled(20, 'alpha bravo charlie').join(' ');
+      final emulator = LensEmulator();
+      for (final packet in TextMessage(long).constructSendText()) {
+        emulator.consume(packet);
+      }
+
+      for (final line in emulator.state.text.split('\n')) {
+        expect(line.length, lessThanOrEqualTo(TextMessage.charsPerLine));
+      }
+      expect(
+        emulator.state.text.split('\n').any((line) => line.length > 20),
+        isTrue,
+        reason: 'a line should now use the width past twenty characters',
+      );
+    });
+
     test('the screen status byte is kept raw', () {
       final packets = TextMessage('salut').constructSendText();
       final emulator = LensEmulator()..consume(packets.first);

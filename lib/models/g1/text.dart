@@ -44,9 +44,19 @@ class TextMessage {
     return result.build();
   }
 
+  /// How many characters the lens fits on one line.
+  ///
+  /// Twenty, inherited from the fork this app comes from, is half the panel:
+  /// the firmware composes its text in a 488 pixel column at font size 21,
+  /// which is about forty characters. Two independent implementations
+  /// measure the same forty (openg1-sdk's panel calibration and g1bridge,
+  /// the latter tested on hardware), and the lens mirror in Settings →
+  /// Debug shows the difference without wearing anything: at twenty, lines
+  /// break mid-sentence and a message needs twice the pages it should.
+  static const int charsPerLine = 40;
+
   List<String> _formatTextLines(String textMessage) {
-    // Assuming a maximum line length of 20 characters
-    const int maxLineLength = 20;
+    const int maxLineLength = charsPerLine;
     List<String> words = textMessage.split(' ');
     List<String> lines = [];
     String currentLine = '';
