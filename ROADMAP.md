@@ -87,14 +87,14 @@ Self-contained, and none needs the glasses' protocol knowledge to start:
 
 ## Decisions pending
 
-- [ ] Split APKs per ABI — the translation engine pushed the universal APK
-      from 59 to 83 MB; per-ABI halves the download
 - [ ] What the left-temple hold should do when an assistant is configured
       (today: dictation; candidate: trigger the assistant)
 
 ## Done, for the record
 
-Lens mirror in pixels, 576x136 at one bit, decoded from the bytes actually
+Split APKs per ABI — the universal build had reached 83 MB after the
+translation engine landed; releases now carry 47 MB for arm64 and 40 MB for
+armeabi-v7a · lens mirror in pixels, 576x136 at one bit, decoded from the bytes actually
 written and reporting overflow, spill and ink · crash reports with reconnect ·
 notes library with pinning and markup ·
 notification history with temple-walk · home screen widget with options ·

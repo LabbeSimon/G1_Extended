@@ -164,7 +164,7 @@ Counted from the working tree, not estimated.
 | Android permissions | 18, down from 33 |
 | Dependencies | 29, down from 43 |
 | Network requests | 6, every one optional and switchable off |
-| APK | 56 MB, arm64 and armeabi-v7a |
+| APK | 47 MB for arm64, 40 MB for armeabi-v7a — one file per architecture, not a universal build |
 
 Roughly 12 000 of the surviving Dart lines are inherited from
 [AGiXT/mobile](https://github.com/AGiXT/mobile), mostly the Bluetooth layer.
