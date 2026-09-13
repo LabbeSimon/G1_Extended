@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'package:g1_extended/models/g1/lens_framebuffer.dart';
 import 'package:g1_extended/services/lens_emulator.dart';
+import 'package:g1_extended/services/lens_text_width.dart';
 
 /// Draws a decoded lens state as the pixels the wearer would see.
 ///
@@ -35,19 +36,67 @@ abstract final class LensRenderer {
         fontFamily: 'monospace',
       );
 
+  /// The type size at which [charsPerLine] characters fill the text column.
+  ///
+  /// Measured rather than assumed: the advance of the phone's monospace
+  /// font is not a number this code gets to decide. Sizing this way is what
+  /// makes the mirror agree with the wrap in force — twenty-five characters
+  /// across means big text and four lines, forty means smaller text and
+  /// five, and seeing both is the point of the argument.
+  static double fontSizeFor(int charsPerLine) {
+    const reference = 100.0;
+    final probe = TextPainter(
+      text: TextSpan(
+        text: '0' * 20,
+        style: const TextStyle(fontSize: reference, fontFamily: 'monospace'),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final advancePerUnit = probe.width / 20 / reference;
+    if (advancePerUnit <= 0) return fontSize;
+
+    final size = LensFramebuffer.textWidth / (charsPerLine * advancePerUnit);
+    return size.clamp(8.0, 40.0);
+  }
+
+  /// How many lines of that size the panel holds. Never more than the five
+  /// the firmware composes, and fewer when the type is large.
+  static int linesFor(double size) {
+    final box = size * lineHeight;
+    final fits = (LensFramebuffer.height / box).floor();
+    return fits < 1 ? 1 : (fits > 5 ? 5 : fits);
+  }
+
+  static TextStyle styleFor(int charsPerLine) {
+    final size = fontSizeFor(charsPerLine);
+    return TextStyle(
+      color: const Color(0xFFFFFFFF),
+      fontSize: size,
+      height: lineHeight,
+      fontFamily: 'monospace',
+    );
+  }
+
   /// Draws the state, rasterises it, and thresholds it to one bit.
   ///
   /// Two passes rather than one: the first uses the real text engine, the
   /// second throws away everything the lens cannot show. Anti-aliasing that
   /// survives into the preview is a lie about a monochrome panel.
-  static Future<LensFramebuffer> rasterise(LensState state) async {
+  static Future<LensFramebuffer> rasterise(
+    LensState state, {
+    int charsPerLine = 0,
+  }) async {
+    final columns = charsPerLine > 0 ? charsPerLine : LensTextWidth.current;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    final width = LensFramebuffer.width.toDouble();
-    final height = LensFramebuffer.height.toDouble();
 
     canvas.drawRect(
-      Rect.fromLTWH(0, 0, width, height),
+      Rect.fromLTWH(
+        0,
+        0,
+        LensFramebuffer.width.toDouble(),
+        LensFramebuffer.height.toDouble(),
+      ),
       Paint()..color = const Color(0xFF000000),
     );
 
@@ -55,9 +104,9 @@ abstract final class LensRenderer {
       case LensSurface.blank:
         break;
       case LensSurface.text:
-        _paintText(canvas, state.text);
+        _paintText(canvas, state.text, columns);
       case LensSurface.notification:
-        _paintNotification(canvas, state);
+        _paintNotification(canvas, state, columns);
       case LensSurface.image:
         await _paintImage(canvas, state);
     }
@@ -122,15 +171,23 @@ abstract final class LensRenderer {
     return png?.buffer.asUint8List();
   }
 
-  static void _paintText(Canvas canvas, String text) {
+  static void _paintText(Canvas canvas, String text, int charsPerLine) {
+    final textStyle = styleFor(charsPerLine);
     final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
+      text: TextSpan(text: text, style: textStyle),
       textDirection: TextDirection.ltr,
+      maxLines: linesFor(textStyle.fontSize!),
+      ellipsis: '…',
     )..layout(maxWidth: LensFramebuffer.textWidth.toDouble());
     painter.paint(canvas, Offset(LensFramebuffer.textLeft.toDouble(), 4));
   }
 
-  static void _paintNotification(Canvas canvas, LensState state) {
+  static void _paintNotification(
+    Canvas canvas,
+    LensState state,
+    int charsPerLine,
+  ) {
+    final textStyle = styleFor(charsPerLine);
     final body = state.notification?['ncs_notification'];
     final document = body is Map ? body : const <String, dynamic>{};
     final title =
@@ -139,18 +196,18 @@ abstract final class LensRenderer {
 
     final painter = TextPainter(
       text: TextSpan(
-        style: style,
+        style: textStyle,
         children: [
           if (title.isNotEmpty)
             TextSpan(
               text: '$title\n',
-              style: style.copyWith(fontWeight: FontWeight.bold),
+              style: textStyle.copyWith(fontWeight: FontWeight.bold),
             ),
           TextSpan(text: message),
         ],
       ),
       textDirection: TextDirection.ltr,
-      maxLines: 5,
+      maxLines: linesFor(textStyle.fontSize!),
       ellipsis: '…',
     )..layout(maxWidth: LensFramebuffer.textWidth.toDouble());
     painter.paint(canvas, Offset(LensFramebuffer.textLeft.toDouble(), 4));

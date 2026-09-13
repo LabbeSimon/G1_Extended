@@ -64,6 +64,20 @@ void main() {
     expect(png!.sublist(0, 8), [137, 80, 78, 71, 13, 10, 26, 10]);
   });
 
+  testWidgets('the type is sized to the wrap in force', (tester) async {
+    // Twenty-five characters filling a 488 pixel column means large type and
+    // few lines; forty means smaller type and five. The mirror has to show
+    // that, or comparing the two on it proves nothing.
+    await tester.runAsync(() async {
+      final wide = LensRenderer.fontSizeFor(25);
+      final narrow = LensRenderer.fontSizeFor(40);
+
+      expect(wide, greaterThan(narrow));
+      expect(LensRenderer.linesFor(narrow), 5);
+      expect(LensRenderer.linesFor(wide), lessThan(5));
+    });
+  });
+
   test('five lines of the panel type fit the lens, six do not', () {
     // The firmware composes five lines per screen. The type here is sized to
     // agree with that, and this is what says so out loud: change the size or
