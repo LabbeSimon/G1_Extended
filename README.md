@@ -39,12 +39,14 @@ stable unless you opt in by hand.
 
 ## The app in pictures
 
-<!-- Screenshots land in docs/screenshots/ — see the README there for the
-     expected names. Until they do, the sections below say more than any
-     placeholder would. -->
+<p align="center">
+  <img src="docs/screenshots/home.jpg" alt="Home screen: lens mirror, glasses, brightness and silent mode" width="280">
+  &nbsp;
+  <img src="docs/screenshots/actions.jpg" alt="Home screen, shortcuts: notes, captions, teleprompter, dictation, checklists, dashboard, notifications" width="280">
+</p>
 
-*Screenshots are coming with the 1.1.2 release; the layout they will show
-is described honestly in the sections below.*
+The home screen: a mirror of what the lens shows right now, the glasses'
+battery, brightness and silent mode, then one tile per tool.
 
 ## What it does
 

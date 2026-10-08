@@ -1,7 +1,11 @@
 Screenshots referenced by the main README live here, at phone resolution,
-PNG, named as the README expects:
+named as the README expects:
 
-- `home.png` — the home screen with the lens mirror
+- `home.jpg` — the home screen with the lens mirror
+- `actions.jpg` — the home screen, scrolled to the shortcut tiles
+
+Still wanted, from a real device:
+
 - `lens-mirror.png` — the banner up close, dual mode
 - `notes.png` — the notes library with pinned entries
 - `widget.png` — the home screen widget on a launcher
