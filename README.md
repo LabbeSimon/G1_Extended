@@ -48,6 +48,9 @@ stable unless you opt in by hand.
 The home screen: a mirror of what the lens shows right now, the glasses'
 battery, brightness and silent mode, then one tile per tool.
 
+The design is inspired by the original Even Realities app. G1 Extended is
+still an independent project, not made or endorsed by Even Realities.
+
 ## What it does
 
 **Glasses**
