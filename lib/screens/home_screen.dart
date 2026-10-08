@@ -14,6 +14,8 @@ import 'package:g1_extended/screens/settings/display_settings_screen.dart';
 import 'package:g1_extended/screens/teleprompter_screen.dart';
 import 'package:g1_extended/screens/live_captions_screen.dart';
 import 'package:g1_extended/screens/settings/dashboard_screen.dart';
+import 'package:g1_extended/screens/settings/extensions_screen.dart';
+import 'package:g1_extended/services/extensions_service.dart';
 import 'package:g1_extended/screens/settings/permissions_screen.dart';
 import 'package:g1_extended/screens/settings_screen.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
@@ -112,10 +114,13 @@ class _HomeScreenState extends State<HomeScreen>
   final GlobalKey<PermissionBannerState> _permissionBanner =
       GlobalKey<PermissionBannerState>();
 
+  int _installedExtensions = 0;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadInstalledExtensions();
 
     _clock = Timer.periodic(const Duration(seconds: 20), (_) {
       if (mounted) setState(() => _now = DateTime.now());
@@ -459,6 +464,8 @@ class _HomeScreenState extends State<HomeScreen>
               const SizedBox(height: AppMetrics.gutter),
               _buildDeviceRow(),
               const SizedBox(height: AppMetrics.gutter),
+              _buildExtensionsTile(),
+              const SizedBox(height: AppMetrics.gutter),
               _buildActionGrid(),
               const SizedBox(height: 24),
             ],
@@ -636,6 +643,54 @@ class _HomeScreenState extends State<HomeScreen>
         ],
       ),
     );
+  }
+
+  Widget _buildExtensionsTile() {
+    final count = _installedExtensions;
+    final subtitle = count == 0
+        ? 'Cards made by others, free'
+        : '$count installed, more in the catalogue';
+
+    return SizedBox(
+      height: 84,
+      child: BentoTile(
+        onTap: () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const ExtensionsScreen()))
+            .then((_) => _loadInstalledExtensions()),
+        child: Row(
+          children: [
+            const PixelArt(
+              rows: PixelArtwork.download,
+              size: 24,
+              color: AppColors.ink,
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Extensions',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _loadInstalledExtensions() async {
+    final installed = await ExtensionsService.singleton.installed();
+    if (mounted) setState(() => _installedExtensions = installed.length);
   }
 
   Widget _buildActionGrid() {
