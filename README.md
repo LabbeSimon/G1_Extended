@@ -39,13 +39,14 @@ stable unless you opt in by hand.
 
 ## The app in pictures
 
-<!-- Screenshots land in docs/screenshots/ — see the README there for the
-     expected names. Until they do, the sections below say more than any
-     placeholder would. -->
+<p align="center">
+  <img src="docs/screenshots/home.jpg" alt="Home screen: lens mirror, glasses, brightness and silent mode" width="280">
+  &nbsp;
+  <img src="docs/screenshots/actions.jpg" alt="Home screen, shortcuts: notes, captions, teleprompter, dictation, checklists, dashboard, notifications" width="280">
+</p>
 
-*No screenshots yet. They need a real phone and a real pair of glasses, and
-a placeholder would say less than the sections below, which describe the
-layout honestly.*
+The home screen: a mirror of what the lens shows right now, the glasses'
+battery, brightness and silent mode, then one tile per tool.
 
 ## What it does
 
