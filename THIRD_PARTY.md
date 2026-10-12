@@ -12,11 +12,17 @@ with the binary and not only with the source.
 | [liblc3](https://github.com/google/liblc3) | Apache 2.0 | Google LLC |
 | rnnoise | BSD 3-Clause | Octasic Inc., Jean-Marc Valin |
 | [Vosk](https://alphacephei.com/vosk/) | Apache 2.0 | Alpha Cephei Inc. |
+| [Google ML Kit](https://developers.google.com/ml-kit) (on-device translation, beta only) | Google's ML Kit terms, not open source | Google LLC |
 
 `liblc3` decodes the audio the glasses microphone sends. `rnnoise` cleans it
 up. Both are vendored as C sources under `android/app/src/main/cpp` and are
 invisible to Flutter's licence collection, which only sees Dart packages —
 hence `lib/utils/third_party_licences.dart`, which registers them by hand.
+
+ML Kit arrives through the `google_mlkit_translation` plugin. The plugin is
+open source; the translation library and the language models it downloads
+from Google are not, and are under Google's terms rather than any licence
+listed here.
 
 Vosk arrives as a native library through its Flutter plugin. The acoustic
 model it downloads on first use is separately licensed by Alpha Cephei under

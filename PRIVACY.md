@@ -38,6 +38,14 @@ model, only if you turn on glasses-microphone dictation or the wake word. A
 plain file download; no audio and nothing about you is sent, then or ever.
 After it, speech recognition runs entirely on your phone.
 
+**Google's servers** — the language models for live translation, only if you
+turn on translation in Live captions and press the download button
+(roughly 30 MB per language, fetched by Google's ML Kit library). Translation
+itself then runs on the phone and the text never leaves it. Google sees the
+connecting IP, as with any download; what its library sends along is governed
+by Google's ML Kit terms, which this project does not control. This applies to
+the beta channel only.
+
 **`api.github.com`** — the update check, at most once every 12 hours, only
 while "Check for updates" is on in Settings > About. An unauthenticated GET
 for the latest release number; GitHub sees the connecting IP, as with any web

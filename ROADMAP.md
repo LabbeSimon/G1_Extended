@@ -85,6 +85,14 @@ Self-contained, and none needs the glasses' protocol knowledge to start:
 - [ ] **Translations of the app itself** — the interface is English-only;
       an l10n pass is welcome groundwork
 
+## Planned
+
+- [ ] **The phone's own AI on the glasses** — hand a spoken request to the AI
+      that already lives on the phone and write its answer on the lens.
+      Planned, not started. Whatever is chosen keeps the rule in
+      [AI-POLICY.md](AI-POLICY.md): on the device, or on a server the user
+      named themselves
+
 ## Decisions pending
 
 - [ ] What the left-temple hold should do when an assistant is configured
