@@ -52,7 +52,7 @@ makes on its own behalf.
 Every change is reviewed by a person before it lands, and the person merging
 is responsible for it. An agent's confidence is not evidence. Claims about
 hardware behaviour in particular are worth little until someone has put the
-glasses on.
+glasses on. The Human who push the code is the one who check and test the code.
 
 ## Disclosure
 
