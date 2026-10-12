@@ -9,7 +9,7 @@
 [![Build](https://github.com/LabbeSimon/G1_Extended/actions/workflows/build_apk.yml/badge.svg)](https://github.com/LabbeSimon/G1_Extended/actions/workflows/build_apk.yml)
 [![Release](https://img.shields.io/github/v/release/LabbeSimon/G1_Extended?label=release)](https://github.com/LabbeSimon/G1_Extended/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/LabbeSimon/G1_Extended/total?label=downloads)](https://github.com/LabbeSimon/G1_Extended/releases)
-[![Licence](https://img.shields.io/badge/licence-BSD--2--Clause-blue)](LICENSE)
+[![Licence](https://img.shields.io/badge/licence-EUPL--1.2-blue)](LICENSE)
 [![Android](https://img.shields.io/badge/android-7.0%2B-brightgreen)](#build)
 [![Telemetry](https://img.shields.io/badge/telemetry-none-brightgreen)](PRIVACY.md)
 
@@ -292,8 +292,19 @@ Settings > About > Licence.
 
 ## Licence and provenance
 
-BSD 2-Clause. See [LICENSE](LICENSE), whose copyright notice must travel with
-any copy of this code or of a binary built from it.
+Copyright (c) 2026 Simon Labbé. Licensed under the
+[EUPL v. 1.2](LICENSE) — the European Union Public Licence, a copyleft
+licence: you may use, modify and redistribute the code, including
+commercially, and what you distribute you must distribute under the EUPL or a
+compatible licence (its appendix lists the GPL, AGPL, LGPL, MPL 2, EPL, OSL and
+CeCILL families).
+
+The code this project inherited was published under the BSD 2-Clause licence
+and stays under it: the original notice is kept in
+[LICENSES/BSD-2-Clause-even-realities.txt](LICENSES/BSD-2-Clause-even-realities.txt)
+and shown in the app under Settings > About > Licence, and it must travel with
+any copy of that code or of a binary built from it. New contributions are
+accepted under the EUPL.
 
 The lineage, since this repository is no longer marked as a fork and nothing
 else records it:

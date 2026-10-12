@@ -63,6 +63,14 @@ void registerThirdPartyLicences() {
 
     yield const LicenseEntryWithLineBreaks(
       ['G1 Extended'],
+      'Copyright (c) 2026 Simon Labbé\n\n'
+      'Licensed under the EUPL v. 1.2, the European Union Public Licence. The '
+      'full text is in the LICENSE file of the source repository and at:\n\n'
+      '    https://eupl.eu/1.2/en',
+    );
+
+    yield const LicenseEntryWithLineBreaks(
+      ['G1 Extended (inherited code)'],
       'BSD 2-Clause License\n\n'
       'Copyright (c) 2024, even-realities\n\n'
       'Redistribution and use in source and binary forms, with or without '

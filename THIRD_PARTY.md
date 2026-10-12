@@ -29,10 +29,12 @@ with its full text. `flutter pub deps` prints the tree.
 
 ## This application
 
-BSD 2-Clause, see [LICENSE](LICENSE). The Bluetooth layer and the LC3
-integration are inherited from [AGiXT/mobile](https://github.com/AGiXT/mobile),
-whose copyright notice names even-realities. See the provenance section of the
-[README](README.md).
+EUPL v. 1.2, see [LICENSE](LICENSE). The Bluetooth layer and the LC3
+integration are inherited from [AGiXT/mobile](https://github.com/AGiXT/mobile)
+and remain under the BSD 2-Clause licence, whose copyright notice names
+even-realities:
+[LICENSES/BSD-2-Clause-even-realities.txt](LICENSES/BSD-2-Clause-even-realities.txt).
+See the provenance section of the [README](README.md).
 
 ## Protocol knowledge, not code
 
