@@ -4,6 +4,7 @@ import 'package:g1_extended/models/g1/case_battery.dart';
 import 'package:g1_extended/models/g1/commands.dart';
 import 'package:g1_extended/models/g1/state_event.dart';
 import 'package:g1_extended/services/glasses_event_log.dart';
+import 'package:g1_extended/services/glasses_teleprompter.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/dictation_service.dart';
 import 'package:g1_extended/services/notification_history.dart';
@@ -26,7 +27,8 @@ const int RESPONSE_FAILURE = 0xCA;
 class _PendingReply {
   final Completer<List<int>> completer;
   final bool Function(List<int> data)? accept;
-  _PendingReply(this.completer, this.accept);
+  final GlassSide? side;
+  _PendingReply(this.completer, this.accept, this.side);
 }
 
 class BluetoothReciever {
@@ -164,16 +166,20 @@ class BluetoothReciever {
   ///
   /// Returns null if nothing arrives within [timeout], rather than hanging:
   /// the glasses silently ignore commands they do not understand.
+  /// When [side] is given, the same command answered by the other temple is
+  /// not taken for the reply.
   Future<List<int>?> awaitReply(
     int command, {
     Duration timeout = const Duration(seconds: 3),
     bool Function(List<int> data)? accept,
+    GlassSide? side,
   }) async {
     // A second request for the same command supersedes the first.
     _pendingReplies.remove(command)?.completer.complete(const []);
 
     final completer = Completer<List<int>>();
-    _pendingReplies[command] = _PendingReply(completer, accept);
+    final pending = _PendingReply(completer, accept, side);
+    _pendingReplies[command] = pending;
 
     try {
       final reply = await completer.future.timeout(timeout);
@@ -182,16 +188,21 @@ class BluetoothReciever {
       debugPrint('No reply to command 0x${command.toRadixString(16)}');
       return null;
     } finally {
-      _pendingReplies.remove(command);
+      // Only this wait's own entry: a newer one for the same command may
+      // already have taken the slot.
+      if (identical(_pendingReplies[command], pending)) {
+        _pendingReplies.remove(command);
+      }
     }
   }
 
   /// Hands [data] to a waiting request, if one asked for this command and
   /// this packet is the sub-message it is waiting for.
   /// Returns true when the packet was consumed by a pending request.
-  bool _deliverToPendingReply(List<int> data) {
+  bool _deliverToPendingReply(GlassSide side, List<int> data) {
     final pending = _pendingReplies[data[0]];
     if (pending == null || pending.completer.isCompleted) return false;
+    if (pending.side != null && pending.side != side) return false;
     if (pending.accept != null && !pending.accept!(data)) return false;
     pending.completer.complete(List<int>.unmodifiable(data));
     return true;
@@ -201,7 +212,7 @@ class BluetoothReciever {
     if (data.isEmpty) return;
 
     // Settings replies are consumed by whoever asked for them.
-    if (_deliverToPendingReply(data)) return;
+    if (_deliverToPendingReply(side, data)) return;
 
     int command = data[0];
 
@@ -392,6 +403,10 @@ class BluetoothReciever {
   }
 
   void handleEvenAICommand(GlassSide side, int subcmd) async {
+    // A running teleprompter takes the taps itself; switching the microphone
+    // off here would also stop it following the reader's voice.
+    if (GlassesTeleprompter.isActive && (subcmd == 0 || subcmd == 1)) return;
+
     final bt = BluetoothManager();
     switch (subcmd) {
       case 0:
