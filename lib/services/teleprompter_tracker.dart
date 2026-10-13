@@ -137,6 +137,85 @@ class ScriptPage {
       wordIndex >= firstWord && wordIndex < endWord;
 }
 
+/// One wrapped line of a script, with the words it covers counted the way
+/// [TeleprompterTracker] counts them, so a position it reports can be found.
+@immutable
+class ScriptLine {
+  final String text;
+
+  /// Index of the first word on this line in the whole script.
+  final int firstWord;
+
+  /// Index just past the last word on this line.
+  final int endWord;
+
+  const ScriptLine({
+    required this.text,
+    required this.firstWord,
+    required this.endWord,
+  });
+
+  bool contains(int wordIndex) =>
+      wordIndex >= firstWord && wordIndex < endWord;
+}
+
+/// Wraps a script into the lines the glasses' own teleprompter scrolls.
+abstract final class ScriptLines {
+  static List<ScriptLine> wrap(String script, {required int width}) {
+    final lines = <ScriptLine>[];
+    var word = 0;
+
+    for (final paragraph in script.split(RegExp(r'\r?\n'))) {
+      final buffer = StringBuffer();
+      var first = word;
+
+      void flush() {
+        if (buffer.isEmpty) return;
+        lines.add(ScriptLine(
+          text: buffer.toString(),
+          firstWord: first,
+          endWord: word,
+        ));
+        buffer.clear();
+        first = word;
+      }
+
+      for (var raw in paragraph.split(RegExp(r'\s+'))) {
+        if (raw.isEmpty) continue;
+
+        // Cut what can never fit, or it would push every line after it.
+        while (raw.length > width) {
+          flush();
+          lines.add(ScriptLine(
+            text: raw.substring(0, width),
+            firstWord: word,
+            endWord: word,
+          ));
+          raw = raw.substring(width);
+        }
+
+        if (buffer.isNotEmpty && buffer.length + 1 + raw.length > width) {
+          flush();
+        }
+        if (buffer.isNotEmpty) buffer.write(' ');
+        buffer.write(raw);
+        word += TeleprompterTracker._tokenise(raw).length;
+      }
+      flush();
+    }
+
+    return lines;
+  }
+
+  /// The line holding [wordIndex], or the last line once the script is done.
+  static int lineOf(List<ScriptLine> lines, int wordIndex) {
+    for (var i = 0; i < lines.length; i++) {
+      if (wordIndex < lines[i].endWord) return i;
+    }
+    return lines.isEmpty ? 0 : lines.length - 1;
+  }
+}
+
 /// Paginates a script for the glasses display.
 abstract final class ScriptPaginator {
   /// Measured on the hardware: about 25 characters across, 7 lines visible.
