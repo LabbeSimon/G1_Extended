@@ -36,8 +36,8 @@ class BluetoothReciever {
 
   final voiceCollector = VoiceDataCollector();
 
-  /// Chunks of a voice note being fetched from the glasses' flash.
-  final voiceCollectorNote = VoiceDataCollector();
+  /// The voice note being fetched from the glasses' flash, if any.
+  VoiceNoteDownload? _noteDownload;
 
   /// Rolls with each 0x1E exchange, echoed back by the firmware.
   int _noteSyncId = 0;
@@ -441,7 +441,8 @@ class BluetoothReciever {
         // Only the left temple is hold-to-record; the right one toggles on
         // press, so its release carries no meaning.
         if (side != GlassSide.left) {
-          debugPrint('[$side] Right touchpad released, toggle handled on press');
+          debugPrint(
+              '[$side] Right touchpad released, toggle handled on press');
           break;
         }
 
@@ -539,7 +540,6 @@ class BluetoothReciever {
       debugPrint('[$side] Voice notes on glasses: ${notif.entries.length}');
       if (notif.entries.isEmpty) return;
 
-      voiceCollectorNote.reset();
       final entry = notif.entries.first;
       final right = BluetoothManager().rightGlass;
       if (right == null) {
@@ -547,6 +547,7 @@ class BluetoothReciever {
             '[$side] Right temple missing, cannot fetch voice note #${entry.index}');
         return;
       }
+      _noteDownload = VoiceNoteDownload(entry.index);
       debugPrint(
           '[$side] Fetching voice note #${entry.index} from glasses flash');
       right.sendData(entry.buildFetchCommand(_noteSyncId++));
@@ -557,33 +558,36 @@ class BluetoothReciever {
 
   /// One 0x1E audio chunk of the voice note being fetched.
   ///
-  /// Byte layout pinned by Fahrplan against real firmware: length, sync id,
-  /// a constant 0x02, packet counts as uint16 pairs, the note's flash index
-  /// plus one, then the LC3 audio itself.
+  /// Layout read in the official Even app 1.6.5 (see docs/PROTOCOL_NOTES.md):
+  /// `1E len len ? 02 total(LE16) index(LE16) id payload`. The transfer is
+  /// done once as many packets as `total` have been counted, not when a
+  /// particular index shows up — the firmware does not flag the last one.
   void handleQuickNoteAudioData(GlassSide side, List<int> data) async {
     if (data.length > 4 && data[4] != NoteSubCommands.REQUEST_AUDIO_DATA) {
       debugPrint(
           '[$side] 0x1E subcmd 0x${data[4].toRadixString(16)}, not audio, ignored');
       return; // A text-note acknowledgement, not audio.
     }
-    if (data.length < 11) {
-      debugPrint('[$side] Voice note packet too short: ${data.length} bytes');
+
+    final download = _noteDownload;
+    if (download == null) {
+      debugPrint('[$side] Voice note audio with nothing being fetched');
       return;
     }
-
-    int seq = data[3];
-    int totalPackets = (data[5] << 8) | data[4];
-    int currentPacket = (data[7] << 8) | data[6];
-    int index = data[9] - 1;
-    voiceCollectorNote.addChunk(seq, data.sublist(10));
+    if (!download.add(data)) {
+      debugPrint('[$side] Voice note packet not for this download, ignored');
+      return;
+    }
     debugPrint(
-        '[$side] Voice note chunk $currentPacket/$totalPackets, seq=$seq, ${data.length - 10} audio bytes');
+        '[$side] Voice note chunk ${download.received}/${download.total}, '
+        '${data.length - 10} audio bytes');
 
-    if (currentPacket + 2 != totalPackets) return;
+    if (!download.isComplete) return;
 
-    debugPrint('[$side] Voice note complete: $totalPackets packets');
-    final encoded = voiceCollectorNote.getAllData();
-    voiceCollectorNote.reset();
+    debugPrint('[$side] Voice note complete: ${download.total} packets');
+    final index = download.id;
+    final encoded = download.audio;
+    _noteDownload = null;
 
     if (encoded.isEmpty) {
       debugPrint('[$side] Voice note carried no audio; glasses copy kept');
@@ -596,7 +600,7 @@ class BluetoothReciever {
     // the phone holds its own copy.
     final kept = await _keepAudio(
       side: side,
-      encoded: Uint8List.fromList(encoded),
+      encoded: encoded,
       source: RecordingSource.glassesNote,
     );
 
@@ -616,9 +620,10 @@ class BluetoothReciever {
       return;
     }
 
-    // Only now. The phone has it, so the slot can be freed.
+    // Only now. The phone has it, so the slot can be freed. The id to delete
+    // is the one the list gave, which is what the download echoed back.
     await bt.rightGlass
-        ?.sendData(VoiceNote(index: index + 1).buildDeleteCommand(_noteSyncId++));
+        ?.sendData(VoiceNote(index: index).buildDeleteCommand(_noteSyncId++));
 
     await _transcribeKept(
       side: side,
