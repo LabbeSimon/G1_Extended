@@ -2,8 +2,7 @@
 
 Scope: scan, connection, framing, request/response matching, inbound events, audio, heartbeat, DFU, images, hosts.
 Per-command payloads are in the other files of this folder.
-Tags: **[certain]** = read directly in the decompiled code; **[probable]** = inferred.
-Dart small ints inside lists are Smi-tagged in the dump (real value = shown/2); every value below was de-tagged.
+Tags: **[certain]** = seen directly in the official app; **[probable]** = inferred.
 
 ## 1. Architecture of the bridge
 
@@ -25,7 +24,7 @@ Dart small ints inside lists are Smi-tagged in the dump (real value = shown/2); 
 - **[certain]** Dart emits `{uuid=address, name, raw manufacturer bytes, rssi}` per device. The name filtering is done in Dart: the device name must contain `_L_` or `_R_` to be assigned to a side (BleDevice.lR; a trailing " L" form is also tested). Pairing of the two temples into one pair object (BleBothDevice.addDevice) is by name.
 - **[certain]** Manufacturer-data parsing (native): the scan record must start with a flags AD (len 2), followed by an AD of length 0x15 (21) of type 0xFF (manufacturer-specific). The 20 payload bytes after the type are kept only if their first byte is 1 or 2; otherwise ignored. Dart then decodes these 20 bytes (BleDevice.decodeGlassRaw) into the serial number / model information.
 - **[probable]** The first byte (1 or 2) selects a layout version of the serial-number block; the "S100 round / S110 square" frame decoding seen in the community document is applied to this serial.
-- **[certain]** scan_filter.dart is NOT an advertisement filter: it only manages history in SharedPreferences (keys `bleMyGlasses`, `bleLastGlass`).
+- **[certain]** The app's scan filter is NOT an advertisement filter: it only manages history in SharedPreferences (keys `bleMyGlasses`, `bleLastGlass`).
 
 ## 4. Connection sequence
 
@@ -55,8 +54,7 @@ Master concept **[probable]**: `BleManager.isMaster()` is used when decoding the
 - **[certain]** Each native write is an independent coroutine with up to 6 attempts, 10 ms apart. Failure is logged "lost data"; return code 1 or 4 closes the GATT. No inter-packet delay is enforced natively.
 - **[certain]** Method `send {data, lr}`: `lr` = "L" or "R" writes that side if connected (returns the write-ack boolean, false if not connected). With `lr` absent, native writes R first then L (the two writes are not acknowledged against each other) and returns null.
 - **[certain]** `onCharacteristicWrite` calls a callback registered per FIRST BYTE of the written packet (latest registration wins), giving a per-command write-ack boolean. This is a link-layer ack, not a protocol response.
-- **[certain]** Dart `BleManager.sendData(data, {lr, other})` (corrected): with `lr` given, one native `send {data, lr}` and the write-ack boolean is returned. **With no `lr`, it writes BOTH temples** through two native `send` calls, each with an explicit side (so the native "no lr" branch above is not used by this path): first R then L when a boolean flag of the L device object is set, otherwise first L then R (**[probable]**: that flag is not the "connected" flag; its meaning was not resolved). If the first write reports failure, the app pauses **100 ms** (Duration built in code, exact) before the second write; the failed write itself is not repeated.
-- **Timing values in sections 4 and 5 are native Java constants and are exact** (checked in the dex: 500 ms bond delay and 2000 ms pre-MTU delay in the GATT callback, 1500 ms after the MTU request, 600 ms discovery watchdog, MTU 251, 3000 ms write-failure window, 10 ms write retry spacing, 2000 ms quick-reconnect window). Only values that Dart code passes as arguments are Smi-tagged in the dump (see section 6).
+- **[certain]** Dart `BleManager.sendData(data, {lr, other})` (corrected): with `lr` given, one native `send {data, lr}` and the write-ack boolean is returned. **With no `lr`, it writes BOTH temples** through two native `send` calls, each with an explicit side (so the native "no lr" branch above is not used by this path): first R then L when a boolean flag of the L device object is set, otherwise first L then R (**[probable]**: that flag is not the "connected" flag; its meaning was not resolved). If the first write reports failure, the app pauses **100 ms** before the second write; the failed write itself is not repeated.
 
 ## 6. Request / response framing (Dart BleManager)
 
@@ -66,9 +64,8 @@ All **[certain]** unless marked.
 - **Matching key**: the pending-request table is keyed by `side + command byte` (for example "R" + "2c"). Only one request per (side, command) can be pending. If a second one is issued with the same key, the old one is completed as failed and its timer is cancelled (log "already exist key").
 - **Default side** for `request` without an explicit side: "R" when both temples are connected (or when only R is), else "L".
 - **Signature**: `BleManager.request(data, {lr, other, timeoutMs = 500, useNext = false})`.
-- **Timeouts** (corrected): if `timeoutMs > 0` a reply timer of `timeoutMs` is armed; on expiry the pending entry is removed, the caller gets a pseudo-reply flagged `isTimeout`, the link monitor counts a send failure and "send Timeout <ms> of <key>" is logged. If `timeoutMs <= 0` no reply timer exists (the request waits until a reply arrives or a newer request with the same key evicts it). **There is no 2 s cap on the reply.** The 2 s limit (Duration constant 2 000 000 us) is a timeout on the *write call* (`sendData`, i.e. the native `send` round trip): if the native write has not returned within 2 s, the pending request is completed as timed out. Long reply timeouts chosen by features are therefore effective.
+- **Timeouts** (corrected): if `timeoutMs > 0` a reply timer of `timeoutMs` is armed; on expiry the pending entry is removed, the caller gets a pseudo-reply flagged `isTimeout`, the link monitor counts a send failure and "send Timeout <ms> of <key>" is logged. If `timeoutMs <= 0` no reply timer exists (the request waits until a reply arrives or a newer request with the same key evicts it). **There is no 2 s cap on the reply.** The 2 s limit is a timeout on the *write call* (`sendData`, i.e. the native `send` round trip): if the native write has not returned within 2 s, the pending request is completed as timed out. Long reply timeouts chosen by features are therefore effective.
 - **Retry helper**: `requestRetry(data, {lr, retry = 3, timeoutMs = 200})` calls `request` up to `retry + 1` times (useNext false) and returns the first reply that is not a timeout, whatever its status byte. After a timeout it stops early if EITHER temple is not connected (so with a single temple connected there is no retry). Final failure: timeout-flagged reply, log "requestRetry ... timeout of <retry>".
-- **Reading caller values**: defaults shown in function prologues are real values, but integers that callers push as named arguments are Smi-tagged in the dump (shown value = 2 x real value). Example: `sendBoth` pushes 500, which is 250 ms.
 - **Ack bytes**: a reply is generally `[cmd, status, ...]` with status byte `0xC9` = success/ack. `0xCB` is also accepted as "continue" in multi-packet lists. `0xCA` (and anything else) is treated as failure. Confirmed in `requestList`, `sendBoth`, mic-on, font finish. (Matches the community doc.)
 - **requestList(side, packets, timeoutMs)**: sends packets strictly one at a time through `request` with the caller's timeout (no default of its own), waiting for each reply; continues only if reply byte 1 is `0xC9` or `0xCB`; any other value or a timeout aborts and returns false (log "requestList err lr:"). This is the transport for multi-packet commands where each fragment is acknowledged.
 - **sendBoth(data, {retry})** (corrected): `requestRetry` on **L** with `retry ?? 0` and timeoutMs **250 ms**; if L times out, returns false (log "sendBoth L timeout"). If L's reply byte 1 is NOT `0xC9`, it returns **true** without sending to R (quirk of the app: only a timeout counts as failure). Otherwise the same request goes to **R** (same retry and 250 ms); returns false only if R times out; R's status byte is not checked. So "both temples" is sequential L then R (differs from native `send` with no side, which fires R then L blindly).
@@ -82,7 +79,7 @@ All **[certain]** unless marked.
 - **Single-writer queue** (`SynchronousRequestBuffer`): used by the teleprompter sender; a FIFO of async actions with state idle/busy, run one at a time, flushed when the teleprompter is not running. Not a protocol-level construct.
 - **StreamBleBuffer**: OUTBOUND paced text streaming for live AI/transcription display (splits text into word chunks and paces them by a words-per-minute table per language group en/CN/JP/KO). It is not an inbound reassembler.
 
-### 6b. BleService: the second request layer (package even/common/services/ble/ble_service.dart)
+### 6b. BleService: the second request layer
 
 A static helper distinct from BleManager's keyed table, used by the newer features in Proto: exit feature (0x18), feature start, display mode, brightness get/set, press-and-hold mode, dashboard configuration and calendar/stock pages, navigation (start, images, route info, arrive, exit, heartbeat), quick-note streaming, transcribe status, device reset, app settings. All **[certain]** unless marked.
 
@@ -91,15 +88,14 @@ A static helper distinct from BleManager's keyed table, used by the newer featur
   - command only: `byte0 == cmd && length > 1` (example: exit feature 0x18);
   - sequenced: `byte0 == cmd && length >= 6 && byte3 == the request's sync/sequence id && byte4 == sub-command` (most newer commands);
   - a few check a byte further on (index 5, 9 or 10) for a page/index number (dashboard calendar/stock pages).
-  None of the matchers seen tests the side (`lr`) of the frame, so a reply from the other temple can satisfy a pending request **[certain on code; practical impact probable]**.
+  None of the matchers seen tests the side (`lr`) of the frame, so a reply from the other temple can satisfy a pending request **[certain in the app; practical impact probable]**.
 - **sendOneSide(data, matcher, lr, {timeout = 200 ms}) -> reply or null**: if `lr` is not connected, logs "device not connected" and returns null without writing. Otherwise subscribe, write with `BleManager.sendData(data, lr)`, wait. On timeout: log "onTimeout", cancel the subscription, return null. Errors also give null.
-- **sendLeftSide / sendRightSide(data, matcher, {timeout = 200 ms})**: put a `sendOneSide(..., "L"/"R", timeout)` job on a per-side FIFO (`queue` package, parallel = 1, **10 ms delay** after each job; code immediate 20 = Smi 10). One BleService request in flight per temple. This FIFO is independent of `BleManager.request`, which is not queued, so the two layers can interleave on the same temple.
+- **sendLeftSide / sendRightSide(data, matcher, {timeout = 200 ms})**: put a `sendOneSide(..., "L"/"R", timeout)` job on a per-side FIFO (`queue` package, parallel = 1, **10 ms delay** after each job). One BleService request in flight per temple. This FIFO is independent of `BleManager.request`, which is not queued, so the two layers can interleave on the same temple.
 - **sendBothSide(data, matcher, validator, {isInOrder = true, retryCount = 0, timeout = 300 ms}) -> bool**: `validator(reply)` decides success (typically `byte1 == 0xC9`, or a status byte further on); `matcher` only selects which frame is the reply.
   - `isInOrder = true` (default): L through the left FIFO; if no reply or validator false, return false (R is not sent); then R through the right FIFO; result = validator(R reply). Only the per-side timeouts apply.
   - `isInOrder = false`: L and R are queued at the same time; the result is false as soon as one side fails, true when both validators pass; a global timeout of `timeout` on the whole operation (log "sendBothSide onTimeout", result false).
-  - Retry: if the result is false and `retryCount > 0`, the whole operation is repeated (both temples again, including the one that had succeeded) with `retryCount - 1`. In-order mode pauses **20 ms** before the retry; parallel mode retries immediately. (Code immediate 40 passed to the `get` package `.milliseconds` extension, which receives a Smi-tagged num and multiplies it by 1000 shown as 2000: real value 20 ms, not 40.)
+  - Retry: if the result is false and `retryCount > 0`, the whole operation is repeated (both temples again, including the one that had succeeded) with `retryCount - 1`. In-order mode pauses **20 ms** before the retry; parallel mode retries immediately.
   - Example: exit feature = single byte `0x18`, matcher `byte0 == 0x18`, validator `byte1 == 0xC9`, in order, retryCount 3.
-- **Durations** in the object pool are stored in microseconds: 200 ms = 200000, 300 ms = 300000, 2 s = 2000000.
 
 ## 7. Inbound reassembly
 
@@ -160,7 +156,7 @@ Notes:
 
 ## 10. Device info request / reply (0x2C)
 
-- **[certain]** Request: 2 bytes `2C xx`, built once by `Proto._deviceInfoData`. In this Android build `xx = 0x01` (the selector is a platform-like predicate folded to a constant `true` here; the other branch gives `0x02`, **[probable]** the iOS value).
+- **[certain]** Request: 2 bytes `2C xx`, built once by `Proto._deviceInfoData`. In this Android build `xx = 0x01`; the other value, `0x02`, is **[probable]** the iOS one.
 - **[certain]** Sent per temple with `requestRetry(lr, retry 5, timeoutMs = caller value or 500 ms)`; matched by the BleManager key `side + "2c"`; on timeout the function returns null.
 - **[certain]** Reply parser `DeviceInfo.fromByte(data, isMaster)`, with `isMaster = (lr == "R")`. Byte meanings come from the labels of the debug page that prints them:
 
@@ -190,7 +186,7 @@ The app has no single transport heartbeat. `BleBeatHeartPool` is a small schedul
 | `background_alive_task` | 5 s | app in background only | glass mode `2B` (1 byte) via `requestRetry` (default retry 3, timeout 1000 ms). Reply: bytes 2 and 3 are returned as a pair (meaning: [settings.md](settings.md)). If a temple is disconnected, it starts the reconnect instead (log "start reconnect when bluetooth had disconnected"). |
 
 - Each task carries the command(s) it expects back (`2B` / `2C`), runs once immediately when started, then on a periodic timer.
-- **Start**: about 10 s of idle link after both temples are connected (`checkFreeTime`, periodic timer of 10 s, code immediate 20 = Smi 10, cancelled after the first tick). Requires a known glass name and both temples connected; otherwise all tasks are force-stopped ("Glass is null" / "Glass is disconnect").
+- **Start**: about 10 s of idle link after both temples are connected (`checkFreeTime`, periodic timer of 10 s, cancelled after the first tick). Requires a known glass name and both temples connected; otherwise all tasks are force-stopped ("Glass is null" / "Glass is disconnect").
 - **Suspended by activity**: the pool listens to every inbound frame. A frame from a "real" feature stops the tasks and re-arms the 10 s idle timer. Frames that do NOT count as activity: `F1` (audio), `F5` (events), `F4` (logs), `F6`, `22`, `25`, `4B`, `4C`, `0B`, `08`, `26`, `1E`, `01`, `0A` with byte 1 = 6, and any reply whose byte 0 is in a task's own command list (`2B`, `2C`). So the keep-alive only runs when nothing else talks to the glasses.
 - **Suspended during upgrades**: both tasks do nothing while any of four static flags set by the firmware-DFU and font-upgrade routines is on (section 12/13).
 - **Lifecycle**: on app hide, tasks not allowed in background are stopped; on resume the foreground set is used again.
@@ -207,18 +203,18 @@ All **[certain]** unless marked.
 - **Opcodes 0x15, 0x16 and 0x20 are built nowhere else in the app.** There is no full-screen BMP upload (the `15 ... 00 1C 00 00 ...` BMP scheme of the community document / Even demo app is absent from app 1.6.5).
 - Sequence for one temple:
   1. **Upgrade mode** (only when starting L): single byte `17`, sent with `BleManager.sendBoth` (L then R, 250 ms, no retry; success = no timeout, see section 6). Failure aborts with "进入升级模式失败" ("failed to enter upgrade mode").
-  2. Wait **4 s** (log "wait 4 second after into upgrade mode"; code immediate 8 = Smi 4, which confirms the Smi rule for `.seconds`).
+  2. Wait **4 s** (log "wait 4 second after into upgrade mode").
   3. Split the file into **198-byte** chunks (last one shorter). Frame = `15 <seq> <chunk>`, `seq` = chunk index & 0xFF (wraps after 256 chunks), so at most 200 bytes per write.
-  4. Each frame is written with `sendData` (no reply expected), then a **5 ms** pause (Duration 5000 us). Progress = index x 198.
+  4. Each frame is written with `sendData` (no reply expected), then a **5 ms** pause. Progress = index x 198.
   5. **Resend request from the glasses**: an inbound frame `15 <seq>` (routed by BleManager's dispatcher, section 6) restarts the send loop from chunk index `seq` (earlier chunks are skipped, the running loop stops at its next packet). A request repeating the same `seq` is ignored ("seq is same"). A restart does not re-enter upgrade mode.
-  6. After the last chunk: wait **3 s**, then send **`20 0D 0E`** ("file end") with `request` timeout **3000 ms** (the dump shows 6000, Smi-tagged); on timeout wait 1 s and retry, at most 10 attempts. Success = reply byte 1 == `0xC9`; otherwise "文件结束标志接收错误" ("file end flag receive error").
+  6. After the last chunk: wait **3 s**, then send **`20 0D 0E`** ("file end") with `request` timeout **3000 ms**; on timeout wait 1 s and retry, at most 10 attempts. Success = reply byte 1 == `0xC9`; otherwise "文件结束标志接收错误" ("file end flag receive error").
   7. Wait **1 s**, then send **`16 <CRC32>`**: CRC-32/XZ (crclib `Crc32Xz`: standard reflected CRC-32, init and xor-out 0xFFFFFFFF, same as zlib) computed over the **raw file bytes only** (no `15 seq` headers, no address), written **big-endian** in 4 bytes. `request` with the default 500 ms. Success = reply byte **5** == `0xC9` (**[probable]** reply = `16 <crc echo, 4 bytes> C9`). Failure: "文件CRC校验错误" ("file CRC error") and, when enabled, the whole transfer of that temple is restarted.
   8. Success is logged with the elapsed time; the same sequence (from step 2) then runs for R.
 - While a font or firmware upload runs, four static flags are set; they suspend the keep-alive tasks (section 11).
 
 ### 12b. Navigation images (transport only; payloads in notes-notifications-dashboard-navigation.md)
 
-- **[certain]** `navigateSendOverviewImage` / `navigateSendDetailsImage`: the image buffer is cut into **185-byte** chunks (`ceil(len / 185)` chunks), with a **30 ms** pause before each chunk (code immediate 60 = Smi 30).
+- **[certain]** `navigateSendOverviewImage` / `navigateSendDetailsImage`: the image buffer is cut into **185-byte** chunks (`ceil(len / 185)` chunks), with a **30 ms** pause before each chunk.
 - **[certain]** Frame = 10-byte header + chunk: `0A <len lo> <len hi> <seq> <sub> <total: 2 bytes> <index: 2 bytes> 00 <data>`, where `len` is the whole frame length written little-endian in bytes 1-2, `seq` a global counter mod 255, `sub` = 3 for the overview image and 2 for the details image. **[probable]** byte order of the 2-byte `total` / `index` fields (helper `toUint8List(2)`, not checked).
 - **[certain]** All chunks except the last are written blind with `sendData` to L and then to R (no ack). The last chunk goes through `BleService.sendBothSide` (acknowledged, section 6b). The whole image is guarded by a 20 s timeout.
 - Other pictures (dashboard "city walk" map, stock chart bitmap) use their own commands through BleService (see [notes-notifications-dashboard-navigation.md](notes-notifications-dashboard-navigation.md)).
@@ -235,7 +231,7 @@ All **[certain]** unless marked.
 
 ### 13b. Transfer protocol
 
-- **[certain]** The firmware does **not** go through the NUS command channel. It uses the `mcumgr_flutter` plugin (Nordic Android McuMgr library): **SMP over BLE**, service `8D53DC1D-1DB7-4CD3-868B-8A527460AA84`, characteristic `DA2E7828-FBCE-4E01-AE9E-261174997C48` (library UUIDs present in the dex).
+- **[certain]** The firmware does **not** go through the NUS command channel. It uses the `mcumgr_flutter` plugin (Nordic Android McuMgr library): **SMP over BLE**, service `8D53DC1D-1DB7-4CD3-868B-8A527460AA84`, characteristic `DA2E7828-FBCE-4E01-AE9E-261174997C48` (the library's standard UUIDs).
 - **[certain]** Upgrade configuration: mode **CONFIRM_ONLY**, eraseAppSettings false, estimatedSwapTime 1 s, pipelineDepth 1, byte alignment 4, reassembly buffer 0.
 - **[certain]** Sequence (`Dfu._doUpgradeFirmware` / `__updateFirmwareImages`):
   1. **One temple only**: L if connected, else R. No code path uploads the other temple afterwards (the only other caller, `retryInstall`, retries the same side). After success the app just waits for both temples to reboot and reconnect (logs "right side disconnected, waiting for reconnection" / "both sides reconnected", timeout "reboot_time_out"). **[probable]** the temple that received the image updates the other one itself (inter-temple link).
@@ -250,7 +246,6 @@ All **[certain]** unless marked.
 
 - **[certain]** There is no standalone "set time" command in app 1.6.5: no Proto function builds a frame with the current time outside the dashboard. Local time reaches the glasses only inside the dashboard base-info frame (`dashboardBaseInfo`, built by the dashboard service with a timestamp-with-offset in milliseconds and in seconds, plus weather), see [notes-notifications-dashboard-navigation.md](notes-notifications-dashboard-navigation.md). It is sent when the dashboard service runs an update action, not on connect by itself.
 - **[certain]** The reverse direction exists: `getUpTime(lr)` sends `37` with `request` (500 ms) and reads a **little-endian 32-bit** value from reply bytes **2..5** (`sublist(2, 6)` + `readInt32`). The community document puts the 4-byte payload at bytes 1..4; the app reads one byte later. **[probable]** unit = seconds (debug page label "bootTime").
-  - Reading note: `sublist(start, end)` through the dispatch table takes `start` unboxed (exact) and `end` boxed (Smi-tagged): the dump shows `start = 2`, `end = 12`, i.e. `sublist(2, 6)`.
 
 ## 15. ASCII `#` commands
 

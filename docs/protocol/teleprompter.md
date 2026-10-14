@@ -1,10 +1,7 @@
 # Teleprompter (official Even app 1.6.5)
 
-Read line by line in the decompiled `Proto` (service/proto.dart), `Telepromt`
-(service/telepromt.dart) and `LayoutConfigs` (page/teleprompter). Every fact
-below is **[certain]** unless marked. Timeouts are the real values:
-what a caller passes as an argument is a tagged small integer, half of the
-immediate shown in the disassembly.
+Analysed in the official app (its `Proto`, `Telepromt` and `LayoutConfigs`
+classes). Every fact below is **[certain]** unless marked.
 
 ## Shared sequence counter
 

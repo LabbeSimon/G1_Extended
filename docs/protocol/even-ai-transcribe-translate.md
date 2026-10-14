@@ -1,7 +1,7 @@
 # Even AI, transcription, translation, microphone (official Even app 1.6.5)
 
-Source: reverse engineering of the official Even G1 app 1.6.5 (Flutter/Dart 3.5.3, blutter output). Protocol facts only.
-Tags: **certain** = read directly in the code; **probable** = deduced.
+Source: analysis of the official Even G1 app 1.6.5. Protocol facts only.
+Tags: **certain** = seen directly in the app; **probable** = deduced.
 
 ## Summary table (details and certainty in the sections below; L then R = R is sent only after L's reply passed the check)
 | opcode | sub-cmd | name (app 1.6.5) | side | length | response checked by the app |
@@ -37,8 +37,8 @@ No 0x4E frame is built anywhere in app 1.6.5 (replaced by 0x54 sub 0x03).
 - All multi-byte integers inside frames are little-endian.
 - `timeout` = per-attempt wait for the matching response on that side (ms). On timeout the call fails (and the caller may retry).
 - Text is UTF-8.
-- Timing values (certain): integer constants passed to BleManager.request(timeoutMs:), BleService.sendBothSide(retryCount:) and to the GetX helpers `.milliseconds` / `.seconds` are Dart tagged small integers, so the raw immediate in the binary is TWICE the real value (raw `4000` = 2000 ms, raw `10` retries = 5). Proof: the callees untag the argument (`sbfx ..., #1`) and other call sites box a computed int before calling the same helper. Defaults written inside a callee (request timeoutMs 500, requestRetry 200, sendOneSide 200 ms, sendBothSide 300 ms) are real values. All values below are real values.
-- BleService.sendBothSide retry pause: raw `40` passed to `.milliseconds` = 20 ms real (certain, same tagging rule).
+- Timeouts, pauses and retry counts below are the values the app applies (certain). Defaults: request 500 ms, requestRetry 200 ms per attempt, sendOneSide 200 ms, sendBothSide 300 ms.
+- BleService.sendBothSide pauses 20 ms before each retry (certain).
 - Frames that carry text: `opcode, length_lo, length_hi, seq, subtype, ...` where `length` (LE16) = total frame size including header (and trailer when present).
 - Sequence counters (global in the app, taken `% 255` when written to the frame, so values 0..254):
   - transcribe counter (T): used by 0x52 and 0x53, incremented after every 0x52 / 0x53 send.
@@ -53,13 +53,13 @@ No 0x4E frame is built anywhere in app 1.6.5 (replaced by 0x54 sub 0x03).
 Frame (6 bytes, certain): `52 06 00 T 01 status`
 - T = transcribe counter % 255.
 - status: 0 = exit, 1 = start normal, 2 = start low-power (app setting "transcribeIsLowPower"), 3 = pause, 4 = resume.
-- Send: BleService.sendBothSide in order: L first, R only after L returned a matching reply; timeout 3 s per side (raw `6` passed to `.seconds`); retryCount 5 (raw 10): when the L-then-R sequence fails it is re-sent completely after a 20 ms pause, so at most 6 attempts (certain).
+- Send: BleService.sendBothSide in order: L first, R only after L returned a matching reply; timeout 3 s per side; retryCount 5: when the L-then-R sequence fails it is re-sent completely after a 20 ms pause, so at most 6 attempts (certain).
 - Response match: byte0 = 0x52, length > 5, byte4 = 0x01, byte3 = T. Success when byte5 = 0xC9 (certain).
 - App level: up to 3 additional attempts ("retrySetStatusCount"), then failure.
 
 ## 0x53 subtype 0x03 - transcribe heartbeat (L then R)
 Frame (6 bytes, certain): `53 06 00 T 03 P` with T = transcribe counter % 255 (then incremented), P = teleprompter counter % 255 (read, not incremented).
-- L timeout 500 ms, then R timeout 2000 ms (raw immediates 1000 / 4000). R is sent only if the L reply has byte5 = 0xC9. (certain)
+- L timeout 500 ms, then R timeout 2000 ms. R is sent only if the L reply has byte5 = 0xC9. (certain)
 - Response: byte0 = 0x53, length > 5, byte4 = 0x03. byte5 = 0xC9 -> OK; any other byte5 -> "need exit" (glasses left the feature); timeout -> error.
 - App cadence: every 5 s (periodic timer). After 6 consecutive failures the app cancels the timer and exits the feature (certain).
 
@@ -78,7 +78,7 @@ Frame (certain): 12-byte header + UTF-8 text.
 | 10 | 1 when the "show display pic" flag is false, else 0 (inverted) |
 | 11 | 0 (low-light lines, always 0 in app) |
 
-- L timeout 500 ms, then R timeout 1000 ms (raw immediates 1000 / 2000). R is sent only if the L reply passed the check. (certain)
+- L timeout 500 ms, then R timeout 1000 ms. R is sent only if the L reply passed the check. (certain)
 - Response: byte0 = 0x52, length > 9, byte4 = 0x02, byte9 = 0xC9 (certain).
 - Pagination (certain, from the app's transcribe sender): text is first wrapped into display lines. At most 4 lines per screen, sent as at most 2 packets of 2 lines.
   - <= 2 lines: one packet (1/1), lines joined with "\n".
@@ -93,12 +93,12 @@ Read and checked separately: see [teleprompter.md](teleprompter.md).
 
 # 3. Even AI (opcodes 0x54 / 0x55 / 0x56)
 
-Source functions: Proto.sendAIStatus / sendAIAsr / sendAIAnswer / sendAICmd / sendAIHeartBeat / exitDashboardWhileBeAwake (service/proto.dart). All are "L then R": the R frame is sent only if the L response passed the check. All use BleManager.request (single attempt per side, no internal retry). Timeouts below are real values (raw immediates are doubled, see Conventions). (certain)
+Source functions: Proto.sendAIStatus / sendAIAsr / sendAIAnswer / sendAICmd / sendAIHeartBeat / exitDashboardWhileBeAwake. All are "L then R": the R frame is sent only if the L response passed the check. All use BleManager.request (single attempt per side, no internal retry). (certain)
 
 ## Sequence counters (certain)
 - `_aiSeq` (one global): shared by 0x54 sub 0x01/0x02/0x03/0x04.
   - sub 0x01 (status): byte 3 = `_aiSeq % 255`, then `_aiSeq += 1` after building the frame.
-  - sub 0x02 (asr) and 0x04 (cmd): `_aiSeq += 1` BEFORE building, byte 3 = new value & 0xFF (no % 255: the int is truncated to 8 bits when the list becomes a Uint8List).
+  - sub 0x02 (asr) and 0x04 (cmd): `_aiSeq += 1` BEFORE building, byte 3 = new value & 0xFF (no % 255: the value is simply truncated to 8 bits).
   - sub 0x03 (answer): `_aiSeq += 1` only when currentPackage == 1 (first packet of an answer), byte 3 = `_aiSeq & 0xFF`; all packets of one answer share the same seq.
 - `_aiSeqHeartBeat`: 0x55 only, `% 255`, incremented after each send.
 - `_aiSeqExitDashboard`: 0x56 only, `& 0xFF`, incremented after each send.
@@ -173,7 +173,7 @@ Frame (6 bytes, certain): `56 06 00 E 08 00` (E = `_aiSeqExitDashboard & 0xFF`).
 | 2 | no | - | exitAI(status: 2) just before translate / transcribe / teleprompter / navigation is started by a voice command | AI closes because another feature takes over |
 | 3 | no | - | startGlassStreamASR, voice-wake path only, sent just before status 1 | wake / prepare the AI screen |
 - The app sends no 0x54 status at all on the touch-bar (long press) path: the glasses open the AI screen themselves. (certain)
-- exitAI is wrapped in a retry helper: up to 3 attempts, 100 ms apart (retryTaskWithTimer(interval 100, attempts 3); these int arguments are unboxed register values, i.e. real). exitAI(status: 2) is passed on the stack as raw `4` = 2. (certain)
+- exitAI is wrapped in a retry helper: up to 3 attempts, 100 ms apart (retryTaskWithTimer). (certain)
 
 ## 0x54 sub 0x04 command index table (sendAICmd, byte 9) (certain for the index/text pairs)
 | index | text sent (UTF-8) | context |
@@ -191,7 +191,7 @@ Frame (6 bytes, certain): `56 06 00 E 08 00` (E = `_aiSeqExitDashboard & 0xFF`).
 | 16 / 17 / 20 | navigation failure texts (reasons home_not_found / office_not_found / app_in_background) | navigation by voice cannot start |
 | 18 (0x12) | "I'm having trouble understanding your request." | speech-to-text returned nothing |
 | 19 (0x13) | "Network error", or localized "network_error" | LLM stream error, or no network at wake time |
-- After an index 13..17/20 or 18 message the app waits 4 s (raw `8` passed to `.seconds`) and then sends exitAI (status 0). (certain)
+- After an index 13..17/20 or 18 message the app waits 4 s and then sends exitAI (status 0). (certain)
 - Normally sent through EvenAIHelper.sendAICommand (1 attempt). The no-network wake path calls Proto.sendAICmd directly, up to 3 tries 50 ms apart. (certain)
 
 # 4. Even AI end-to-end flow (app 1.6.5, class VoiceAssistantCenter) (certain unless noted)
@@ -214,10 +214,10 @@ App states: IDLE, COMMAND_DETECTION, COMMAND_LLM_ANALYSING, AI_REPLY_ANSWERING, 
 7. End of session: 4.3.
 - `F5 19` (touchpad double tap "to continue") is NOT used by Even AI; it only drives the onboarding tutorial (Onboarding.touchBarDoubleTapToContinue).
 - `F5 00` (double tap = exit) -> App.exitAll(isFromGlass): VoiceAssistantCenter.stopAIbyOS() = local cleanup only, no frame is sent for Even AI (the glasses already left). (The legacy EvenAI service class still sends Proto.exit `18` if it was running; it has no other protocol code left.)
-- Old opcode 0x4E ("send AI result"): no code in app 1.6.5 builds a 0x4E frame (all tagged and raw constants searched). It is replaced by `54 ... 03`. (certain)
+- Old opcode 0x4E ("send AI result"): nothing in app 1.6.5 builds a 0x4E frame. It is replaced by `54 ... 03`. (certain)
 
 ## 4.2 Answer display (0x54 sub 0x03)
-Text layout: UiUtils.splitTextIntoLines(text, 450.0): the text is split on "\n", then each paragraph is wrapped with Flutter TextPainter, font "GlassFont" size 20, max width 450 px. Pages are built from these lines. In every frame each line is terminated by "\n" (map closure: append "\n" unless the line already ends with it), lines are concatenated without separator. (certain)
+Text layout: UiUtils.splitTextIntoLines(text, 450.0): the text is split on "\n", then each paragraph is wrapped with Flutter TextPainter, font "GlassFont" size 20, max width 450 px. Pages are built from these lines. In every frame each line is terminated by "\n" (added unless the line already ends with it), lines are concatenated without separator. (certain)
 
 ### 4.2.1 Short answer (<= 3 lines) - sendLessThanThreeLines
 - One frame, payload = the lines, each terminated by "\n", plus one extra "\n" (e.g. "l1\nl2\n\n"). totalPackage 1, currentPackage 1, isOver = isFinal (true for a complete answer), isDynamic false, progress 255 -> byte 9 = 0, byte 11 = 0xFF. One attempt. (certain)
@@ -226,7 +226,7 @@ Text layout: UiUtils.splitTextIntoLines(text, 450.0): the text is split on "\n",
 ### 4.2.2 Long answer (> 3 lines), auto-scroll - scheduleNextRequest / doSendReplyWords
 - A "screen" is a window of at most 5 consecutive lines. doSendReplyWords splits the screen text on "\n"; because every line ends with "\n" the split has one extra empty element. If it has fewer than 4 elements (window of 1-2 lines) -> 1 frame (1/1) with everything; otherwise 2 frames with the same seq: packet 1/2 = lines 1-3 of the window, packet 2/2 = lines 4-5 (each re-terminated by "\n"). Consequences: a 3-line window gives packet 2/2 = "\n" only, a 4-line window gives packet 2/2 = "l4\n\n". Packet 2 is sent only if packet 1 was accepted by both arms. (certain)
 - isOver flag passed = isFinal, isDynamic = not isFinal (not in the frame), progress (byte 11) = getCurrentProgress(lines, c) = 255 if the answer has <= 5 lines, else min(100, 100 * c / (lines - 4)) with c = index of the current line. byte 9 = 1 whenever progress != 255.
-- Timeline: first screen (window starting at line 0, c = 0) 300 ms after the answer is ready (raw `600` to `.milliseconds`). Then a timer with the interval Utils.calculateEvenAIScrollInTerval(auto-scroll speed setting) fires repeatedly; at each tick c += 1 and the window starting at line c-1 is sent (so the first window is shown twice, then the text scrolls ONE line per tick). When c reaches lines - 4 (window = last 5 lines) the screen is sent with isFinal = true and the timer stops. (certain)
+- Timeline: first screen (window starting at line 0, c = 0) 300 ms after the answer is ready. Then a timer with the interval Utils.calculateEvenAIScrollInTerval(auto-scroll speed setting) fires repeatedly; at each tick c += 1 and the window starting at line c-1 is sent (so the first window is shown twice, then the text scrolls ONE line per tick). When c reaches lines - 4 (window = last 5 lines) the screen is sent with isFinal = true and the timer stops. (certain)
 - Tap on the touchpad during the answer (`F5 01`): from the R arm = next page, from the L arm = previous page (handled in BleManager by side). Effect: auto-scroll stops for the rest of the session ("manual" mode); c moves by +5 / -5 (clamped to 0; a next page is refused when c + 5 > lines - 1); the window starting at line c is re-sent (5 lines, or what is left). Taps are ignored until the answer display has started (flag couldResponseToSingleTap). If the answer fits in one page (getTotalPages < 2: 0 lines -> 0 pages, 1-4 -> 1, exactly 5 -> 2 (sic), else ceil(n/5)), a tap re-sends the single page padded with "\n\n" (<= 3 lines) or "\n" (4 lines). (certain)
 
 ### 4.2.3 Streaming answer (Even LLM) - sendAIReplyWithStream
@@ -255,12 +255,12 @@ Text layout: UiUtils.splitTextIntoLines(text, 450.0): the text is split on "\n",
 - One BleManager.request, default timeout 500 ms, no retry inside micOn.
 - Reply: success when byte 1 = 0xC9 (reply `0E C9 ...`). A timeout or any other byte = failure.
 - The app records the start time of the audio as the midpoint between send time and reply time (used to align audio timestamps).
-- Callers: teleprompter AI (voice-follow) mode, Transcribe (start / resume) and Translate when the PHONE microphone is the input (PhoneAudio.micOn -> TransAudio.micOn -> Proto.micOn: the app records on the phone and still sends `0E 01`). NOT Even AI (the glasses open the mic themselves on `F5 17` and stream for the wake word). NOT Translate with the glasses microphone: no call path from GlassAudio to Proto.micOn exists; the app sends `1C 00 <from> <to>` and then waits up to 5 s for the first `F1` frame (MicMonitor.startMonitoring, raw `10` to `.seconds`), exiting with "mic start error" if none arrives (certain for the wait; probable that `1C 00` is what opens the mic).
+- Callers: teleprompter AI (voice-follow) mode, Transcribe (start / resume) and Translate when the PHONE microphone is the input (PhoneAudio.micOn -> TransAudio.micOn -> Proto.micOn: the app records on the phone and still sends `0E 01`). NOT Even AI (the glasses open the mic themselves on `F5 17` and stream for the wake word). NOT Translate with the glasses microphone: no call path from GlassAudio to Proto.micOn exists; the app sends `1C 00 <from> <to>` and then waits up to 5 s for the first `F1` frame (MicMonitor.startMonitoring), exiting with "mic start error" if none arrives (certain for the wait; probable that `1C 00` is what opens the mic).
 
 ## 0x0E mic off - micOff(side, mode)
-- Frame (2 bytes): `0E 00`. (certain: the list literal is [0x0E, 0x00])
+- Frame (2 bytes): `0E 00`. (certain)
 - Side: same debug-flag rule; callers pass "R" when both arms or only R are connected, else "L".
-- Timeout 500 ms (raw 1000).
+- Timeout 500 ms.
 - The `mode` string ("modeTelepromt", "modeAsr", debug "DebugSavePcm"/"DebugClean"; "modeAsrStableDst" is mapped to "modeAsr") goes only to the native Android layer in the same "send" method-channel call (map keys data/lr/mode); it is NOT transmitted over BLE.
 - Callers retry immediately (no pause): teleprompter up to 6 sends, transcribe and translate (TransAudio.closeMic) up to 5, until the reply has 0xC9 at byte 1 OR at byte 2 (both accepted).
 
@@ -276,13 +276,13 @@ Text layout: UiUtils.splitTextIntoLines(text, 450.0): the text is split on "\n",
 - Used by: Even AI 33 s recording watchdog, App.exitAll (legacy EvenAI path), translate exit, debug pages.
 
 ## 0x18 - Proto.exitFeature() (log "exitFeature----0x18-----")
-- Same frame `18`, but sent to BOTH arms with BleService.sendBothSide in order (L, then R only after L's reply matched), timeout 300 ms per side (default), retryCount 3 (raw 6): a failed L-then-R sequence is re-sent after a 20 ms pause, at most 4 times.
+- Same frame `18`, but sent to BOTH arms with BleService.sendBothSide in order (L, then R only after L's reply matched), timeout 300 ms per side (default), retryCount 3: a failed L-then-R sequence is re-sent after a 20 ms pause, at most 4 times.
 - Reply filter: byte 0 = 0x18 and length > 1; success: byte 1 = 0xC9.
 - Used by FeatureCoordinatorService (below) and by the settings "reset" option.
 
 ## 0x50 sub 0x01 - Proto.featureRequestStart() (ask the glasses whether a feature may start)
 - Frame (6 bytes): `50 06 00 00 01 01` (byte 3 = 0, no counter; byte 4 = sub 0x01; byte 5 = 0x01).
-- Right arm only (BleService.sendRightSide), timeout 2 s (raw `4` to `.seconds`).
+- Right arm only (BleService.sendRightSide), timeout 2 s.
 - Reply filter: byte 0 = 0x50, length >= 6, byte 4 = 0x01. byte 5: 1 = start_now, 2 = wait_close; anything else / timeout = unknown (null).
 
 ## Start sequence used before a feature starts (FeatureCoordinatorService.requestStart, retryCount 3)
@@ -290,9 +290,9 @@ Text layout: UiUtils.splitTextIntoLines(text, 450.0): the text is split on "\n",
 2. `39 ... 01` fetchDeviceRunningStatus on L then R (see [settings.md](settings.md)). Unknown status on either arm -> retry.
 3. Only if both arms report the same status and it is "none" (0) or "dashboard" (3): `50 06 00 00 01 01` to R.
    - start_now -> the feature starts.
-   - wait_close -> `18` to both arms (exitFeature); if it succeeded, wait 100 ms (raw 200), then the feature starts.
+   - wait_close -> `18` to both arms (exitFeature); if it succeeded, wait 100 ms, then the feature starts.
    - no answer -> retry.
-4. Retry = wait 20 ms (raw 40) and run the whole sequence again, at most 3 more times (no loading dialog on retries).
+4. Retry = wait 20 ms and run the whole sequence again, at most 3 more times (no loading dialog on retries).
 5. If the arms report different statuses, or another feature is running, the start is refused (no retry).
 
 ## 0x51 - Proto._sendEnableIntoFunction(func) ("quick start failure")
@@ -308,7 +308,7 @@ Text layout: UiUtils.splitTextIntoLines(text, 450.0): the text is split on "\n",
 - Frame (4 bytes): `1C a from to`.
   - a = 0 when translation starts (TransSvc.startTrans), 1 when it stops but the translate feature stays open (TransSvc.stopTrans).
   - from / to = glasses language codes, from Glass.languageMap: CN 1, EN 2, JP 3, KR 4, FR 5, DE 6, ES 7, RU 8, NL 9, NO 10, DK 11, SV 12, FI 13, IT 14, AR 15, HI 16, BN 17, HK 18, PL 19, CZ 20, TR 21, PT 22, UK 23, EL 24, HU 25 (the app's from/to language entries carry a "code" key that indexes this map).
-- Sent with BleManager.sendBoth(retry 3) (raw 6): L first through requestRetry (up to 4 sends of 250 ms each, raw 500, retried only on timeout); L timeout -> false; if L's reply byte 1 != 0xC9 the call returns TRUE without sending to R (sic); if L replied 0xC9, R gets the same treatment and the result is "R replied" (no status check on R).
+- Sent with BleManager.sendBoth(retry 3): L first through requestRetry (up to 4 sends of 250 ms each, retried only on timeout); L timeout -> false; if L's reply byte 1 != 0xC9 the call returns TRUE without sending to R (sic); if L replied 0xC9, R gets the same treatment and the result is "R replied" (no status check on R).
 
 ## 0x0F (source text) / 0x0D (translated text) - sendTranslatorSrc / sendTranslatorDst(text, newScreen, pos, {timeoutMs})
 Packetisation (TranslatorProto.tansMultiPackListV2(cmd, utf8, newScreen, pos, seq)):
@@ -324,7 +324,7 @@ Packetisation (TranslatorProto.tansMultiPackListV2(cmd, utf8, newScreen, pos, se
   | 5-6 | pos as a BIG-endian 16-bit value |
   | 7.. | text chunk |
 - There is NO length field.
-- Transport: BleManager.requestList, L first, R only if every L packet was accepted. Packets are sent one by one; each needs a reply with byte 1 = 0xC9 or 0xCB, otherwise the list stops (failure). Per-packet timeout: 0x0F -> L 500 ms, R 500 ms; 0x0D -> L 350 ms, R 500 ms (unboxed register values, real), unless the caller passes timeoutMs (start-of-session retry uses 1000 ms, raw 2000).
+- Transport: BleManager.requestList, L first, R only if every L packet was accepted. Packets are sent one by one; each needs a reply with byte 1 = 0xC9 or 0xCB, otherwise the list stops (failure). Per-packet timeout: 0x0F -> L 500 ms, R 500 ms; 0x0D -> L 350 ms, R 500 ms, unless the caller passes timeoutMs (start-of-session retry uses 1000 ms).
 - An empty text is still sent (only logged).
 
 Text content and fields:
@@ -337,7 +337,7 @@ Text content and fields:
 2. `1C 00 <from> <to>`.
 3. Audio source started: the glasses mic, unless the user chose the phone mic and the app is in the foreground. Phone mic: the app also sends `0E 01` (section 5). Glasses mic: no frame.
 4. `0F "\r"` and `0D "\r"` (clear).
-5. The app waits up to 5 s for the first inbound `F1` frame, else "mic start error" and exit. While running, if no decoded voice chunk arrives for 10 s (raw 20) the mic monitor stops.
+5. The app waits up to 5 s for the first inbound `F1` frame, else "mic start error" and exit. While running, if no decoded voice chunk arrives for 10 s the mic monitor stops.
 6. `0F` / `0D` updates as recognition / translation results arrive. The native "eventTranslator" EventChannel delivers {sessionId, src, dst, isEnd} maps to Dart (phone-internal, not BLE); Dart turns them into `0F` / `0D` frames.
 7. Stop translating: `1C 01 <from> <to>`.
-8. Exit: mic off `0E 00` (up to 5 sends), then, unless the exit came from the glasses, wait 500 ms (raw 1000) and `18` (Proto.exit, one arm).
+8. Exit: mic off `0E 00` (up to 5 sends), then, unless the exit came from the glasses, wait 500 ms and `18` (Proto.exit, one arm).

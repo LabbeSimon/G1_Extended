@@ -23,10 +23,10 @@ enum TeleprompterMode {
 /// The glasses' own teleprompter: command 0x09, with 0x24 (pause) and 0x25
 /// (heartbeat).
 ///
-/// Not in `Even Realities G1 BLE Protocol.txt`. Reverse-engineered from the
-/// official Even app 1.6.5 (its `Proto` and `Telepromt` classes, decompiled);
-/// the frames are documented in docs/PROTOCOL_NOTES.md and have not been
-/// checked against a capture yet.
+/// Not in `Even Realities G1 BLE Protocol.txt`. Analysed in the official
+/// Even app 1.6.5 (its `Proto` and `Telepromt` classes); the frames are
+/// documented in docs/protocol/teleprompter.md and have not been checked
+/// against a capture yet.
 abstract final class TeleprompterProtocol {
   static const int command = 0x09;
   static const int pauseCommand = 0x24;

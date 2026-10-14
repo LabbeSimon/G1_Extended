@@ -1,7 +1,7 @@
 # Notes and recordings, notifications, allowlist, dashboard, navigation (official Even app 1.6.5)
 
-Source: decompiled official app (Flutter), service/proto.dart. Protocol facts only.
-Conventions: "certain" = read directly and cross-checked; "probable" = inferred. Multi-byte integers are little-endian unless stated.
+Source: analysis of the official Even app 1.6.5. Protocol facts only.
+Conventions: "certain" = seen directly in the app and cross-checked; "probable" = inferred. Multi-byte integers are little-endian unless stated.
 BothSide = sent to left (L) and right (R) arms, waiting for acks; Sync = per-command counter byte (0..255, wraps).
 
 ## Summary table
@@ -36,8 +36,6 @@ Side: L = left arm, R = right arm, L+R = BothSide with ack (default 300 ms per s
 | 0x0A | 0x06 | navigateArrive | L+R, retryCount 5, 2 s | 7 + text + 00 | ack |
 | 0x58 | - | calendar events | not present in 1.6.5 (calendar only via 0x06/0x03) | - | - |
 
-Units note [certain]: values passed as arguments are Smi-tagged (shown value / 2): `GetNumUtils.seconds/milliseconds(N)` = N/2, named `retryCount`/`timeoutMs` stored on the stack = N/2. Exceptions: Duration objects (microseconds), unboxed loop counters / unboxed fields (`cmp xN, #imm` after an 8-byte load, `add #1`), and unboxed positional int parameters such as the per-packet timeout of BleManager.requestList (it is boxed with `lsl #1` inside requestList before reaching request(), so 1000 ms and 300 ms above are the real values).
-
 Differences with this app (before the fixes listed in [README.md](README.md)), the community document and [PROTOCOL_NOTES.md](../PROTOCOL_NOTES.md): 0x1E/0x02 download fields mis-parsed by G1_Extended (works by accident, see 3.1); recordings start with 400 bytes the app drops; 0x4B byte 1 is a constant 0x00 and the official app sends 0x4B LEFT only with per-packet ack; 0x4C carries the msg_id (u32 big-endian); 0x06/0x01 is 22 bytes (extra date-format byte); news/stocks/calendar use 1-based u16 index and 180-byte chunks exactly as G1_Extended's even-utils port.
 
 ## SECTION 1 - Quick notes (audio recordings stored on the glasses), opcode 0x1E
@@ -54,7 +52,7 @@ Frame shape for every 0x1E command: `1E | len lo | len hi | sync | sub | args...
 - Response stream (certain): the app subscribes to incoming packets and keeps those with cmd 0x1E, length > 10, byte[4] == 0x02 and byte[9] == the requested id. Layout of each data packet: `1E LL LL sync 02 | total (u16 LE) | index (u16 LE) | id (u8) | payload...` where payload starts at byte 10. `total` = number of packets of the transfer (taken from the first packet received); `index` is the packet number (the app only sorts by it; probably 1-based, see 3.1); packets are stored in a map keyed by index (duplicates overwritten), a packet counter is incremented per packet.
 - Completion (certain): when the packet counter equals the `total` value read from the current packet, timers are cancelled and the payloads are sorted by index and concatenated into one buffer (the blob = LC3 audio frames, probable since the app later converts "lc3ToPcm" in the streaming code). No per-packet ack is sent.
 - Timeouts (certain, corrected by section 3): 10 s stream timeout; a 1 s inactivity timer restarted after every packet. On timeout/error: if received/total > 0.9 the partial data is accepted (concatenated), otherwise the transfer fails and the caller re-queries and retries: up to 5 retries (6 attempts), then it restarts the BLE link.
-- Max payload per packet: not fixed in code; the glasses decide (an MTU-sized chunk, probable ~ 200 bytes).
+- Max payload per packet: not fixed by the app; the glasses decide (an MTU-sized chunk, probable ~ 200 bytes).
 
 ### 1.3 deleteQuickNoteRecord - delete a recording (0x1E sub 0x04)
 - Request (certain): `1E 06 00 sync 04 id` where `id` = record id mod 255, or 0xFF when no id is given (meaning: delete ALL recordings; only the debug screen button "delete all record" does this - certain). Sent to RIGHT arm only (sendRightSide, default 200 ms timeout), with a 20 ms pause before and after (certain).
@@ -66,7 +64,7 @@ Internal helper of 1.2 (listener + reassembly described above). Not a command.
 
 ### 1.5 setGlassQuickNoteText - push a text note to the glasses (0x1E sub 0x03)
 Wrapper (text/title variant) around the packet sender 1.6. Signature seen: (title string, recordId int, body string).
-- The app builds one logical stream S (little-endian lengths): `recordId (low byte)` | `mode (1 byte)` | `len1 (1 byte, low byte of length of block 1)` | `block 1 = UTF-8 of body` | `len2 (u16 LE)` | `block 2 = UTF-8 of title`. `mode` (certain from branch logic, meaning probable): 0 = both empty, 1 = body and title present, 2 = body only, 3 = title only. When a string is empty its block is replaced by a single 0x00 byte (certain).
+- The app builds one logical stream S (little-endian lengths): `recordId (low byte)` | `mode (1 byte)` | `len1 (1 byte, low byte of length of block 1)` | `block 1 = UTF-8 of body` | `len2 (u16 LE)` | `block 2 = UTF-8 of title`. `mode` (values certain, meaning probable): 0 = both empty, 1 = body and title present, 2 = body only, 3 = title only. When a string is empty its block is replaced by a single 0x00 byte (certain).
 - S is cut into packets of at most 171 payload bytes; each packet is sent with 1.6 (9-byte header + <=171 = <=180 bytes on the wire). Packets are sent strictly in order, each acknowledged by both arms before the next; the function returns false at the first failure, true after the last.
 - Quirk (probable): the loop offsets start at 9 for the first packet and at index*180 for later ones, with a 171-byte window, so for bodies above ~340 bytes some 9-byte gaps appear between packets. Short notes (typical use) are not affected.
 - Packet numbering is 1-based.
@@ -79,7 +77,7 @@ Wrapper (text/title variant) around the packet sender 1.6. Signature seen: (titl
 
 ## SECTION 2 - Streaming quick note (live transcription of speech, 0x1E sub 0x07..0x0A)
 
-All five commands are BothSide with ack, retryCount 3 (the call site passes a tagged 6; corrected), default timeout 300 ms, new sync per call. Generic matcher (certain): cmd 0x1E, length >= 6, byte[3] == sync, byte[4] == sub. Generic success: byte[5] == 0x00.
+All five commands are BothSide with ack, retryCount 3, default timeout 300 ms, new sync per call. Generic matcher (certain): cmd 0x1E, length >= 6, byte[3] == sync, byte[4] == sub. Generic success: byte[5] == 0x00.
 
 ### 2.1 startStreamingQuickNote (sub 0x07)
 `1E 06 00 sync 07 01`. Byte 5 constant 1 (meaning unknown). Certain.
@@ -87,7 +85,7 @@ All five commands are BothSide with ack, retryCount 3 (the call site passes a ta
 ### 2.2 streamingQuickNoteText (sub 0x08) - send live text
 - Arguments: (flag bool, text string). Text is UTF-8 encoded and cut into 180-byte chunks; packets = ceil(bytes/180).
 - Frame per packet (certain): `1E | len lo | len hi | sync | 08 | total packets (u16 LE) | packet number (u16 LE, 1-based) | 00 | flag (0/1) | chunk(<=180 bytes)`. So 11-byte header, up to 191 bytes on the wire. Flag meaning is unknown (probable: "this is the final/complete text" vs partial); byte 9 is 0 for normal packets.
-- Matcher: cmd 0x1E, length >= 10, byte[3] == sync, byte[4] == 0x08. Success: byte[9] == 0x00. retryCount 3 per packet (corrected from 6); sends sequentially and returns false on first failure.
+- Matcher: cmd 0x1E, length >= 10, byte[3] == sync, byte[4] == 0x08. Success: byte[9] == 0x00. retryCount 3 per packet; sends sequentially and returns false on first failure.
 
 ### 2.3 stopStreamingQuickNote (sub 0x08, special packet)
 - Frame (certain): `1E 0C 00 sync 08 01 00 01 00 01 00 00` (12 bytes). Same layout as 2.2 with total=1, packet=1, byte[9]=1 (probable "end of stream"), flag 0 and one zero payload byte.
@@ -103,7 +101,7 @@ All five commands are BothSide with ack, retryCount 3 (the call site passes a ta
 
 ## SECTION 3 - Audio notes: verification and details
 
-Scope: re-checks sections 1.1-1.4 against proto.dart and common/services/quick_note/quick_note_ble_service.dart. Where this section disagrees with section 1, this section wins.
+Scope: re-checks sections 1.1-1.4 against the app's quick-note service. Where this section disagrees with section 1, this section wins.
 
 ### 3.1 Download 0x1E sub 0x02 - packet layout, index, end of transfer
 - Request `1E 06 00 sync 02 id`, written to the RIGHT arm with a plain write (no ack awaited). [certain]
@@ -111,8 +109,8 @@ Scope: re-checks sections 1.1-1.4 against proto.dart and common/services/quick_n
 - Layout [certain]: `1E | b1 | b2 | b3 | 02 | total (u16 LE, bytes 5-6) | index (u16 LE, bytes 7-8) | id (byte 9) | audio payload (byte 10 to end)`. Both u16 are read little-endian.
 - Index base: the app never interprets the index value; it is only the key of a map, sorted ascending at the end before concatenation. The official app therefore does not tell whether it is 0- or 1-based. [certain]
 - End of transfer [certain]: a counter is incremented for EVERY accepted packet (duplicates included, while the map overwrites duplicates); the transfer is complete when that counter equals the `total` of the packet just received. No end flag, no "last index" test, no ack.
-- Timers [certain; corrected]: inactivity timer 1 s (restarted after each packet), stream timeout 10 s. Section 1.2 said 2 s and 20 s: wrong, the `.seconds` argument is a tagged small integer (2 -> 1, 20 -> 10); the app's own log text "receiveQuickNoteRecordData 10s timeout" confirms 10 s. On timeout or error the partial data is still accepted if received/total > 0.9 (total = value of the first packet), otherwise the download fails.
-- Failure handling [certain]: on failure the app re-queries the list and retries, up to 5 retries (the counter is an untagged field: exact); at the 6th consecutive failure it resets the counter, restarts the BLE link ("quick note" reason) and shows a "connection lost" dialog. The whole task (query + download + delete + note creation) is bounded by a 30 s timeout.
+- Timers [certain]: inactivity timer 1 s (restarted after each packet), stream timeout 10 s (the app's own log line reads "receiveQuickNoteRecordData 10s timeout"). On timeout or error the partial data is still accepted if received/total > 0.9 (total = value of the first packet), otherwise the download fails.
+- Failure handling [certain]: on failure the app re-queries the list and retries, up to 5 retries; at the 6th consecutive failure it resets the counter, restarts the BLE link ("quick note" reason) and shows a "connection lost" dialog. The whole task (query + download + delete + note creation) is bounded by a 30 s timeout.
 
 What this app's download parser got right or wrong before it was fixed (now `VoiceNoteDownload` in `lib/models/g1/voice_note.dart`):
 - `totalPackets = (data[5] << 8) | data[4]` - WRONG. data[4] is the sub-command (0x02). Correct: `data[5] | (data[6] << 8)`. [certain]
@@ -170,7 +168,7 @@ What this app's download parser got right or wrong before it was fixed (now `Voi
 
 ## SECTION 4 - Notifications 0x4B (sendNotify) and 0x4C (removeNotify)
 
-Source: proto.dart (sendNotify, _getNotifyPackList, removeNotify), home page event handler, Android side `com.even.g1.notify.G1NLService` (decompiled Java; the JSON is built there, Dart only wraps and sends it).
+Source: sendNotify, _getNotifyPackList and removeNotify, the home page event handler, and the app's Android notification listener `com.even.g1.notify.G1NLService` (the JSON is built there; the Flutter side only wraps and sends it).
 
 ### 4.1 JSON payload [certain]
 The Android notification listener builds this map and passes it to Dart as `{"type":"add","data":{...}}`; Dart wraps it as `{"ncs_notification": data}`, `jsonEncode`s it (compact, no spaces) and UTF-8 encodes it. Keys, in this order:
@@ -179,13 +177,13 @@ The Android notification listener builds this map and passes it to Dart as `{"ty
 | msg_id | integer | id of the row stored in the app's local notification database (auto-increment, long); the notification is dropped if the insert returns -1 |
 | action | integer | always 0 for a new notification |
 | app_identifier | string | Android package name; cut to its first 31 characters when it is 32 characters or longer |
-| title | string | `android.title` extra (some apps: rewritten from text/bigText/textLines, see code) |
+| title | string | `android.title` extra (some apps: rewritten from text/bigText/textLines) |
 | subtitle | string | `android.subText` extra, often "" |
 | message | string | `android.text` extra (or bigText / last text line for some messaging apps) |
 | time_s | integer | post time in Unix SECONDS |
 | date | string | post time formatted `yyyy-MM-dd HH:mm:ss`, phone local time zone |
 | display_name | string | application label (human-readable app name), "" if unknown |
-No `type` key. No emoji stripping (the sanitizer is a no-op in 1.6.5). Notifications from the app itself, "android", system UI, settings, Play Store, Google "as", media-channel notifications and empty ones (no title and no text) are not forwarded. No whitelist filtering on the phone side (the glasses presumably filter with the 0x04 whitelist by app_identifier). [certain for the code, probable for the glasses-side filtering]
+No `type` key. No emoji stripping (the sanitizer is a no-op in 1.6.5). Notifications from the app itself, "android", system UI, settings, Play Store, Google "as", media-channel notifications and empty ones (no title and no text) are not forwarded. No whitelist filtering on the phone side (the glasses presumably filter with the 0x04 whitelist by app_identifier). [certain for the app, probable for the glasses-side filtering]
 
 ### 4.2 Packets [certain]
 - The UTF-8 JSON is cut into chunks of at most 176 bytes; count = ceil(len / 176).
@@ -276,7 +274,7 @@ Update sequence used by the app (debounced "markNeedsUpdate", skipped while tran
     - slot with a stock: `slot | 01 (update) | 01 len symbol | 02 len name | 03 len price | 04 len change | 05 len percent | 06 01 up/down | 07 chart len (u16 LE) chart`. All strings UTF-8 with a 1-byte length; symbol cut to 32 bytes, name cut to the pane width, price/change/percent cut to 16 bytes ("--" when missing). up/down: one byte from the quote (0 when unknown; sign convention not visible). chart: line-chart bitmap rendered by the app (`toBitmap`), preceded by its 16-bit LE length (bitmap format not decoded here).
     - empty slot: `slot | 02` (operation 2 = delete).
   - Other statuses: P = `layout | main widget | status`.
-- Chunking like 6.4/6.5: <= 180-byte chunks, `06 | len lo | len hi | sync | 04 | total (u16 LE) | index (u16 LE, 1-based) | chunk`, BothSide with ack, per-packet timeout 1 s (a Duration of 1 000 000 us), sending aborted if layout/widget changed meanwhile.
+- Chunking like 6.4/6.5: <= 180-byte chunks, `06 | len lo | len hi | sync | 04 | total (u16 LE) | index (u16 LE, 1-based) | chunk`, BothSide with ack, per-packet timeout 1 s, sending aborted if layout/widget changed meanwhile.
 - Whole command retried up to retryCount = 3 (default parameter) on failure.
 
 ### 6.7 City walk / map pane (0x06 sub 0x07: configCityWalkData + wrappers) [certain unless marked]
@@ -287,7 +285,7 @@ Update sequence used by the app (debounced "markNeedsUpdate", skipped while tran
   - configCityWalkArrowData: `03 | u16 LE | u16 LE | arrow sprite` (the two u16 are the arrow position, first argument first; probable x then y).
   These agree with G1_Extended `DashboardMap` (display modes 0..3, `02 01` + image, `03` + x + y + sprite).
 - Chunking: <= 180-byte chunks, `06 | len lo | len hi | sync | 07 | total (u16 LE) | index (u16 LE, 1-based) | chunk`, new sync per packet.
-- Pacing (different from the other panes): every packet except the last is sent to the LEFT then to the RIGHT arm with the single-side helpers (sendLeftSide / sendRightSide, which have an ack matcher) but the app does not wait for them; before every 5th packet (index multiple of 5) the app pauses 50 ms [probable: both values are tagged constants, 10 -> 5 and 100 -> 50]. The LAST packet is sent BothSide and awaited (retryCount 3 if the transfer is a single packet, else 0). Whole transfer limited to 10 s. Command retried up to retryCount = 3 (default) on failure.
+- Pacing (different from the other panes): every packet except the last is sent to the LEFT then to the RIGHT arm with the single-side helpers (sendLeftSide / sendRightSide, which have an ack matcher) but the app does not wait for them; before every 5th packet (index multiple of 5) the app pauses 50 ms [probable]. The LAST packet is sent BothSide and awaited (retryCount 3 if the transfer is a single packet, else 0). Whole transfer limited to 10 s. Command retried up to retryCount = 3 (default) on failure.
 
 ### 6.8 exitDashboardWhileBeAwake (opcode 0x56) [certain]
 - Frame: `56 06 00 seq 08 00` (6 bytes), seq = a dedicated counter (named "_aiSeqExitDashboard" in the log).
@@ -295,7 +293,7 @@ Update sequence used by the app (debounced "markNeedsUpdate", skipped while tran
 
 ## SECTION 7 - Navigation 0x0A
 
-Common frame [certain]: `0A | len lo | len hi | sync | sub | payload`, len = full packet length (u16 LE), sync from the shared counter (`_getSyncId`). Timeouts below are the real values (call sites pass tagged values: `seconds(4)` = 2 s, `retryCount 6` = 3, `10` = 5).
+Common frame [certain]: `0A | len lo | len hi | sync | sub | payload`, len = full packet length (u16 LE), sync from the shared counter (`_getSyncId`).
 
 ### 7.1 navigateStart (sub 0x00) [certain]
 - `0A 06 00 sync 00 01`. BothSide, retryCount 3, timeout 2 s.
@@ -319,7 +317,7 @@ Common frame [certain]: `0A | len lo | len hi | sync | sub | payload`, len = ful
 ### 7.6 navigateSendDetailsImage (sub 0x02) and navigateSendOverviewImage (sub 0x03) [certain unless marked]
 - Image bytes prepared by the navigation module (format not decoded here) are cut into chunks of at most 185 bytes.
 - Packet: `0A | len lo | len hi | sync | sub | total (u16 LE) | index (u16 LE, 1-based) | [00 only for the overview image, sub 0x03] | chunk`. So 9-byte header + chunk (details) and 10-byte header + chunk (overview), i.e. at most 194 / 195 bytes. Sync is a per-packet counter (mod 255).
-- Pacing: every packet but the last is written with plain writes, LEFT then RIGHT, no ack; a 30 ms pause between packets [probable: tagged `milliseconds(60)`]. The last packet is sent BothSide and its ack completes the transfer.
+- Pacing: every packet but the last is written with plain writes, LEFT then RIGHT, no ack; a 30 ms pause between packets [probable]. The last packet is sent BothSide and its ack completes the transfer.
 - Whole transfer limited to 20 s (overview) / 3 s (details).
 
 ### 7.7 Related: quickStartNavigationFailure [probable]

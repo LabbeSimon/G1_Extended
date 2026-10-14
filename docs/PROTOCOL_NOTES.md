@@ -9,8 +9,8 @@ notification command stayed broken for a year.
 Three tiers, and nothing is promoted without a reason.
 
 A fourth source now sits beside them: [docs/protocol/](protocol/README.md),
-the protocol as the official Even app 1.6.5 implements it, read in its
-decompiled code. It says what that app sends, not what the glasses accept,
+the protocol as the official Even app 1.6.5 implements it, as analysed in
+that app. It says what that app sends, not what the glasses accept,
 so it informs these tiers without promoting anything in them. Where it
 speaks to a line below, the line says so.
 

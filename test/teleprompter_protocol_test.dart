@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:g1_extended/models/g1/teleprompter.dart';
 
 /// The bytes the official Even app 1.6.5 builds for its teleprompter, as
-/// read in its decompiled `Proto` class. See docs/PROTOCOL_NOTES.md.
+/// analysed in its `Proto` class. See docs/protocol/teleprompter.md.
 void main() {
   group('start frame', () {
     test('a single-packet screen carries the trailer and the mode bit', () {

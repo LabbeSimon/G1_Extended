@@ -1,6 +1,6 @@
 # Settings and device commands (official Even app 1.6.5)
 
-Every settings and device command of the official app's protocol class that the other files do not cover: [teleprompter](teleprompter.md); [Even AI, transcription, translation, microphone, 0x18/0x50/0x51](even-ai-transcribe-translate.md); [notes, notifications, allowlist, dashboard, navigation](notes-notifications-dashboard-navigation.md); [transport, keep-alive, firmware, fonts, 0xF5 events](transport.md). Delays are real values (Dart integer tagging undone). "both (fire-and-forget)" = `sendData` without side: the frame is written to both arms, no reply awaited. Details and certainty marks follow the table.
+Every settings and device command of the official app's protocol class that the other files do not cover: [teleprompter](teleprompter.md); [Even AI, transcription, translation, microphone, 0x18/0x50/0x51](even-ai-transcribe-translate.md); [notes, notifications, allowlist, dashboard, navigation](notes-notifications-dashboard-navigation.md); [transport, keep-alive, firmware, fonts, 0xF5 events](transport.md). "both (fire-and-forget)" = `sendData` without side: the frame is written to both arms, no reply awaited. Details and certainty marks follow the table.
 
 | Opcode | Sub-cmd | Name | Side / timing | Length | Response |
 |---|---|---|---|---|---|
@@ -55,12 +55,11 @@ Opcodes listed by the reference document but never sent by this class: 0x2D (MAC
 
 ## Details
 
-All values below are real byte values (Dart small-integer tagging already undone). Marks: [certain] = read directly from the code; [probable] = inferred.
+Marks: [certain] = seen directly in the official app; [probable] = inferred.
 
 ## Conventions used by the app
 
 - Every frame is a plain byte array sent on the UART-style characteristic. Several settings use the "0x26 family" frame `[0x26, len, 0x00, seq, sub, params...]` (len = total frame length, here 6 or 7).
-- Reading note: integer constants that the app passes as call arguments are Dart tagged small integers, so a raw immediate of 500 in the binary means 250. Default values of named parameters are materialised untagged. `Duration` objects store microseconds (0x493e0 = 300 ms). All delays below are real values. [certain]
 - `BleManager.request(frame, {lr, timeoutMs = 500, useNext = false})`: sends the frame to one arm and waits for a notification whose first byte equals the frame first byte and that comes from the same arm. Default timeout 500 ms. The reply wait has no ceiling of its own; the 2 s limit in the app applies to the native write call (see [transport.md](transport.md), section 6). A timeout returns a pseudo-reply flagged "timeout". [certain]
 - `BleManager.requestRetry(frame, {lr, retry = 3, timeoutMs = 200})`: calls `request` up to retry + 1 times (default 4 attempts of 200 ms each, back to back, no pause); stops early as soon as one arm is disconnected. [certain]
 - `lr` omitted in `request`: R when R is connected (or both are), otherwise L. [certain]
@@ -100,7 +99,7 @@ All values below are real byte values (Dart small-integer tagging already undone
 ## 0x08 - setHeadUpType
 - Side: no side given, so `sendData` writes BOTH arms, fire-and-forget. [certain]
 - Frame (6 bytes): `[0x08, 0x06, 0x00, 0x00, 0x03, value]`; value = 0x00 -> Dashboard shown on head-up, 0x02 -> None (feature off). The seq byte is always 0 here although counter C is still incremented. [certain]
-- App meaning: the Dart parameter is a bool "dashboard selected"; true => 0x00, false => 0x02. [certain]
+- App meaning: the app's parameter is a bool "dashboard selected"; true => 0x00, false => 0x02. [certain]
 
 ## 0x08 sub 0x04 - getHeadUpType
 - Side: R. Frame (6 bytes): `[0x08, 0x06, 0x00, seq, 0x04, 0x00]`, seq = counter C. request, 500 ms (default). [certain]
@@ -174,7 +173,7 @@ Both use `requestRetry` with its defaults on the default side (R preferred): up 
 
 ## 0x2C - deviceInfo (battery / firmware version), sub 0x01
 - Sides: each arm is queried separately with an explicit side (`updateDeviceInfo("L")` and `updateDeviceInfo("R")`). [certain]
-- Frame (2 bytes): `[0x2C, platform]`. platform = 0x01 in the Android build (the byte is `cond ? 0x01 : 0x02` where cond is a platform getter that is constant true in this build; 0x02 is very likely what the iOS build sends). [certain for the Android value; iOS value probable]
+- Frame (2 bytes): `[0x2C, platform]`. platform = 0x01 in the Android build (0x02 is very likely what the iOS build sends). [certain for the Android value; iOS value probable]
 - Transport: `requestRetry` with retry = 5 (up to 6 attempts) and 500 ms per attempt (default when the caller passes nothing; `updateDeviceInfo` also passes 500 ms). [certain]
 - Reply: `[0x2C, status?, b2, b3, ..., b12, ...]`. The parser reads bytes 2 to 12 and also range-checks indexes 13 to 19, so a reply shorter than 20 bytes makes the app throw (caught, logged "updateDeviceInfo error"). Byte 1 is not checked. [certain]
 - Decoding (field order of the app object `DeviceInfo`), all unsigned bytes: [certain for the arithmetic, names probable unless stated]
@@ -231,7 +230,7 @@ Both use `requestRetry` with its defaults on the default side (R preferred): up 
 
 ## 0x26 sub 0x08 - updateVoiceWakeupSwitchStatus (voice wake-up for Even AI)
 - Frame (6 bytes): `[0x26, 0x06, 0x00, seq, 0x08, flag]`. Bytes 1-2 are the frame length written as a 16-bit little-endian value (6, 0). seq = a dedicated counter (counter E) taken modulo 255, incremented after every attempt. [certain]
-- flag = 0x00 when the Dart argument `isOn` is true and 0x01 when it is false (the code computes `isOn ? 0 : 1`; the argument name comes from the app log line "---isOn--"). The inverted polarity is what the code does; it was not checked against a device. [certain from code]
+- flag = 0x00 when `isOn` is true and 0x01 when it is false (the name comes from the app's log line "---isOn--"). The inverted polarity is what the app does; it was not checked against a device. [certain in the app]
 - Side: R only, `request` with a 1000 ms timeout. Up to 3 attempts, with a 100 ms pause after a failed attempt. A new seq is used for each attempt. [certain]
 - Success: reply `data[0] == 0x26`, length > 5, `data[4] == 0x08` and `data[5] == 0xC9`. [certain]
 
@@ -269,7 +268,7 @@ Both use `requestRetry` with its defaults on the default side (R preferred): up 
 - Frame (5 bytes): `[0x26, 0x05, 0x00, syncId, 0x01]`; syncId = counter A (`_getSyncId`, 0..255). [certain]
 - Sides: `sendBothSide` with isInOrder = false (L and R written in parallel), 300 ms timeout (default), retryCount 3 (20 ms pause between retries). [certain]
 - Reply accepted when `data[0] == 0x26`, length >= 6, `data[3] == syncId` and `data[4] == 0x01`; success when `data[5] == 0xC9` on both arms. [certain]
-- What exactly is reset (factory reset vs user settings) is not visible in the app code. [unknown]
+- What exactly is reset (factory reset vs user settings) is not visible from the app. [unknown]
 
 ## 0x23 0x6C ("#l" / "#l1") - debugLog (glasses log switch)
 - Frames: `debugLog(true)` sends ASCII "#l" = `[0x23, 0x6C]`; `debugLog(false)` sends "#l1" = `[0x23, 0x6C, 0x31]`. [certain]

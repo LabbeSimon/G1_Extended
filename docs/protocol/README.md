@@ -1,15 +1,13 @@
 # The G1 protocol as the official Even app 1.6.5 speaks it
 
 These files describe the Bluetooth protocol between the Even G1 glasses and
-the official Even app, version 1.6.5, read by static analysis of that app:
-its Dart code (compiled ahead of time, decompiled with blutter) and its native
-Android layer (JADX). They exist so that this app can interoperate with the
-glasses as the official one does.
+the official Even app, version 1.6.5, as analysed in that app. They exist so
+that this app can interoperate with the glasses as the official one does.
 
 Protocol facts only. No code from the official app is reproduced here, and
 nothing from it is redistributed: byte layouts, values, sides, timings and the
-order of exchanges, with the names of the functions they were read in so that
-anyone with the same APK can check them.
+order of exchanges, with the names of the functions involved so that anyone
+can check them against the same version.
 
 **What this is worth.** A `[certain]` fact is something the official app
 certainly does. It is not yet something the glasses were seen to accept:
@@ -29,11 +27,8 @@ in an app is evidence, a byte that works on a face is proof.
 
 ## Reading the numbers
 
-- Small integers that the app keeps in a Dart list, or passes as an argument,
-  appear doubled in the disassembly (Dart's tagged small integers). Every
-  value in these files is the real one. Defaults written inside a function,
-  values used in arithmetic, and `Duration` constants (stored in microseconds)
-  are not doubled.
+- Every timeout, delay and retry count in these files is the value the
+  official app actually applies.
 - "L" and "R" are the left and right temples, each its own BLE connection.
   "L then R" means the right temple only gets the frame once the left one
   answered as expected.
