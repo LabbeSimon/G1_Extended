@@ -117,7 +117,7 @@ class BluetoothReciever {
     // The chosen speech language, not the phone's system default: a French
     // user picking French in Voice should dictate in French through either
     // microphone, not only the glasses one.
-    final locale = (await VoskModelManager.singleton.loadSelection()).localeId;
+    final locale = (await VoskModelManager.chosen()).localeId;
     await _speechToText.listen(
       onResult: _onSpeechResult,
       listenOptions: SpeechListenOptions(

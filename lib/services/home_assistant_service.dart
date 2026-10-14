@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:g1_extended/models/dashboard/dashboard_widget.dart';
 import 'package:g1_extended/models/g1/note.dart';
+import 'package:g1_extended/services/vosk_model_manager.dart';
 
 /// One thing Home Assistant knows about.
 class HaEntity {
@@ -243,7 +244,11 @@ class HomeAssistantService implements DashboardWidget {
   /// This is the path that makes the glasses speak to the house: whatever
   /// agent is configured over there — the built-in one, or a model — is
   /// what answers, so the phone needs no intent parsing of its own.
-  Future<HaResult> converse(String sentence) async {
+  ///
+  /// [agentId] picks one of Home Assistant's conversation agents — its own,
+  /// or a model added to it — by entity id; without one, Home Assistant's
+  /// default answers.
+  Future<HaResult> converse(String sentence, {String? agentId}) async {
     final trimmed = sentence.trim();
     if (trimmed.isEmpty) return const HaFailure('Nothing to say.');
 
@@ -256,7 +261,15 @@ class HomeAssistantService implements DashboardWidget {
           .post(
             url,
             headers: await _headers(),
-            body: jsonEncode({'text': trimmed, 'language': 'en'}),
+            // The language it was dictated in, not English: Home
+            // Assistant's own agent matches a sentence against that
+            // language's intents, and French read as English is simply not
+            // understood.
+            body: jsonEncode({
+              'text': trimmed,
+              'language': await _language(),
+              if (agentId != null && agentId.isNotEmpty) 'agent_id': agentId,
+            }),
           )
           .timeout(timeout);
 
@@ -281,6 +294,16 @@ class HomeAssistantService implements DashboardWidget {
       client.close();
     }
   }
+
+  /// The language dictation is set to, as Home Assistant wants it: `fr`,
+  /// `en`.
+  Future<String> _language() async =>
+      (await VoskModelManager.chosen()).language;
+
+  /// The conversation agents Home Assistant offers — its own, and any model
+  /// added to it — for the assistant screen's picker.
+  Future<List<HaEntity>> conversationAgents() async =>
+      (await states()).where((e) => e.domain == 'conversation').toList();
 
   /// Digs the spoken reply out of a conversation response.
   ///

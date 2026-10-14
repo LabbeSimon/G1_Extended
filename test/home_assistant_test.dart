@@ -249,6 +249,62 @@ void main() {
       expect(jsonDecode(sent.single.body)['text'], 'turn off the hall light');
     });
 
+    test('the chosen agent gets the sentence, in the dictation language',
+        () async {
+      SharedPreferences.setMockInitialValues({
+        'home_assistant_enabled': true,
+        'home_assistant_base_url': 'http://ha.local:8123',
+        'speech_model_id': 'vosk-model-small-fr-0.22',
+      });
+      answerWith(
+        200,
+        jsonEncode({
+          'response': {
+            'speech': {
+              'plain': {'speech': 'C\'est fait.'}
+            }
+          }
+        }),
+      );
+
+      final result = await HomeAssistantService.singleton
+          .converse('éteins le salon', agentId: 'conversation.claude');
+
+      expect((result as HaOk).text, 'C\'est fait.');
+      final body = jsonDecode(sent.single.body);
+      expect(body['language'], 'fr', reason: 'French read as English fails');
+      expect(body['agent_id'], 'conversation.claude');
+    });
+
+    test('the agents on offer are the conversation entities', () async {
+      answerWith(
+        200,
+        jsonEncode([
+          {
+            'entity_id': 'conversation.home_assistant',
+            'state': 'unknown',
+            'attributes': {'friendly_name': 'Home Assistant'},
+          },
+          {
+            'entity_id': 'conversation.claude',
+            'state': 'unknown',
+            'attributes': {'friendly_name': 'Claude'},
+          },
+          {
+            'entity_id': 'light.salon',
+            'state': 'on',
+            'attributes': {'friendly_name': 'Salon'},
+          },
+        ]),
+      );
+
+      final agents =
+          await HomeAssistantService.singleton.conversationAgents();
+
+      expect(agents.map((a) => a.entityId),
+          ['conversation.claude', 'conversation.home_assistant']);
+    });
+
     test('an agent with nothing to say is a failure, not an empty lens',
         () async {
       answerWith(200, '{}');

@@ -38,15 +38,22 @@ class VoskModelManager {
   String get modelName => _selected.id;
   String get modelUrl => _selected.url;
 
-  /// Restores the chosen model. Safe to call more than once.
-  Future<SpeechModel> loadSelection() async {
+  /// The chosen model, read without touching the native plugin: the speech
+  /// language is needed where no model is ever loaded, such as the sentences
+  /// sent to Home Assistant.
+  static Future<SpeechModel> chosen() async {
     final prefs = await SharedPreferences.getInstance();
     final id = prefs.getString(_selectedKey);
     // Nothing chosen yet: the phone's own language is the best guess at what
     // will be said. The English default heard French as noise.
-    final restored = id != null
+    return id != null
         ? SpeechModel.byId(id)
         : SpeechModel.forLocale(Platform.localeName);
+  }
+
+  /// Restores the chosen model. Safe to call more than once.
+  Future<SpeechModel> loadSelection() async {
+    final restored = await chosen();
     if (restored.id != _selected.id) {
       _selected = restored;
       _model = null;
