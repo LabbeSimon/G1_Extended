@@ -72,7 +72,17 @@ class MainActivity : FlutterActivity() {
                 if (data == null) {
                     result.error("INVALID_ARGUMENT", "Data is null", null)
                 } else {
-                    result.success(Cpp.decodeLC3(data))
+                    // Throwable, not Exception. A native library that fails
+                    // to bind throws UnsatisfiedLinkError, an Error, which
+                    // Flutter hands to the thread's uncaught handler: the
+                    // process dies and Dart never hears of it. Answered as an
+                    // error instead, the recording is kept undecoded.
+                    try {
+                        result.success(Cpp.decodeLC3(data))
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "LC3 decoding failed", e)
+                        result.error("LC3_FAILED", e.toString(), null)
+                    }
                 }
             } else {
                 result.notImplemented()

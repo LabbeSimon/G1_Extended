@@ -13,8 +13,12 @@
 #include "errno.h"
 
 
+// JNI finds these by name: Java_<package of Cpp.kt>_Cpp_<method>. They kept
+// the original app's package after Cpp.kt moved to fr.simonlabbe.g1extended,
+// so every decode threw UnsatisfiedLinkError and took the process with it.
+// test/native_binding_test.dart now fails if the two drift apart again.
 extern "C" JNIEXPORT jbyteArray JNICALL
-Java_dev_agixt_agixt_cpp_Cpp_decodeLC3(JNIEnv *env, jclass instance, jbyteArray lc3Data) {
+Java_fr_simonlabbe_g1extended_cpp_Cpp_decodeLC3(JNIEnv *env, jclass instance, jbyteArray lc3Data) {
 //    __android_log_print(ANDROID_LOG_INFO, "cpp", "JNI decodeLC3 called!");
     jbyte *lc3Bytes = env->GetByteArrayElements(lc3Data, nullptr);
     int lc3Length = env->GetArrayLength(lc3Data);
@@ -75,7 +79,7 @@ Java_dev_agixt_agixt_cpp_Cpp_decodeLC3(JNIEnv *env, jclass instance, jbyteArray 
 
 
 extern "C" JNIEXPORT jfloatArray JNICALL
-Java_dev_agixt_agixt_cpp_Cpp_rnNoise(JNIEnv *env, jclass clazz,jlong st, jfloatArray input) {
+Java_fr_simonlabbe_g1extended_cpp_Cpp_rnNoise(JNIEnv *env, jclass clazz,jlong st, jfloatArray input) {
     jfloat *inputArray = env->GetFloatArrayElements(input, NULL);
 //    jfloat *outputArray = env->GetFloatArrayElements(output, NULL);
 
@@ -89,11 +93,11 @@ Java_dev_agixt_agixt_cpp_Cpp_rnNoise(JNIEnv *env, jclass clazz,jlong st, jfloatA
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_dev_agixt_agixt_cpp_Cpp_createRNNoiseState(JNIEnv *env, jclass clazz) {
+Java_fr_simonlabbe_g1extended_cpp_Cpp_createRNNoiseState(JNIEnv *env, jclass clazz) {
     return (jlong) rnnoise_create(NULL);
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_dev_agixt_agixt_cpp_Cpp_destroyRNNoiseState(JNIEnv *env, jclass clazz, jlong st) {
+Java_fr_simonlabbe_g1extended_cpp_Cpp_destroyRNNoiseState(JNIEnv *env, jclass clazz, jlong st) {
     rnnoise_destroy((DenoiseState*) st);
 }
