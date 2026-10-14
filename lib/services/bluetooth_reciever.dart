@@ -524,19 +524,13 @@ class BluetoothReciever {
       '[$side] Received voice data chunk: seq=$seq, length=${voiceData.length}',
     );
 
-    final usingGlassesMic = await _useGlassesMicrophone();
-    final isRecording = voiceCollector.isRecording;
-    debugPrint(
-        '[$side] Voice data: usingGlassesMic=$usingGlassesMic, isRecording=$isRecording');
-
-    // Only buffer when the glasses microphone is the active source.
-    if (usingGlassesMic && isRecording) {
-      debugPrint('[$side] Adding voice chunk to collector');
+    // Buffered for whoever opened the stream: glasses-microphone dictation,
+    // the teleprompter's voice mode, live captions. Checking the dictation
+    // microphone setting here as well used to starve the last two whenever
+    // dictation was set to the phone — which never sets isRecording, so it
+    // is unaffected either way.
+    if (voiceCollector.isRecording) {
       voiceCollector.addChunk(seq, voiceData);
-    } else if (!usingGlassesMic) {
-      // The phone microphone feeds the platform recogniser directly, so the
-      // glasses stream is not buffered at all in that mode.
-      debugPrint('[$side] Phone microphone in use, not buffering');
     } else {
       debugPrint('[$side] Not recording, discarding voice data');
     }
