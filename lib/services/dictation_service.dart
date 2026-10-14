@@ -231,7 +231,12 @@ class DictationService {
 
   Future<void> _askHouse(String question, DictationSource source) =>
       _askAndShow(question, source, () async {
-        final result = await HomeAssistantService.singleton.converse(question);
+        // The same agent the assistant would use: Claude when Home
+        // Assistant has it, not its built-in agent by default.
+        final result = await HomeAssistantService.singleton.converse(
+          question,
+          agentId: await AssistantService.singleton.resolvedHaAgent(),
+        );
         return switch (result) {
           HaOk(:final text) => text,
           HaFailure(:final reason) => reason,

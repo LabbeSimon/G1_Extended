@@ -347,15 +347,16 @@ class _AssistantScreenState extends State<AssistantScreen> {
           isExpanded: true,
           decoration: const InputDecoration(
             labelText: 'Agent',
-            helperText: 'Add Claude, Ollama or another model to Home '
-                'Assistant and it appears in this list.',
+            helperText: 'Automatic picks a model Home Assistant runs — '
+                'Claude, Ollama — and its own agent only when there is none. '
+                'Add a model to Home Assistant and it appears here.',
             helperMaxLines: 2,
             border: OutlineInputBorder(),
           ),
           items: [
             const DropdownMenuItem(
               value: '',
-              child: Text('Home Assistant\'s default'),
+              child: Text('Automatic'),
             ),
             for (final agent in _agents)
               DropdownMenuItem(

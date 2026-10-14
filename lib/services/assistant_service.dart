@@ -117,8 +117,11 @@ class AssistantService {
     );
   }
 
-  /// The Home Assistant agent to ask, as its entity id. Empty means Home
-  /// Assistant's own default.
+  /// Home Assistant's own agent, which only understands its intents.
+  static const String builtInAgent = 'conversation.home_assistant';
+
+  /// The Home Assistant agent chosen, as its entity id. Empty means none was
+  /// chosen; see [resolvedHaAgent].
   Future<String> haAgent() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_haAgentKey) ?? '';
@@ -127,6 +130,43 @@ class AssistantService {
   Future<void> setHaAgent(String value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_haAgentKey, value.trim());
+    forgetResolvedAgent();
+  }
+
+  String? _resolvedAgent;
+  DateTime? _resolvedAt;
+
+  /// The agent a question goes to: the one chosen, or — when none was —
+  /// the first model Home Assistant offers (Claude, Ollama…), and only
+  /// failing that its own agent (null).
+  ///
+  /// Home Assistant answers an agent-less request with its built-in agent,
+  /// not the one its Assist pipeline prefers. Leaving the choice empty sent
+  /// every question there, which knows a few house intents and answers the
+  /// rest "Sorry, I couldn't understand that" — even with Claude installed
+  /// one entry further down the list. Looked up once every ten minutes: the
+  /// list comes from every entity's state.
+  Future<String?> resolvedHaAgent() async {
+    final chosen = await haAgent();
+    if (chosen.isNotEmpty) return chosen;
+
+    final at = _resolvedAt;
+    if (at != null && DateTime.now().difference(at) < const Duration(minutes: 10)) {
+      return _resolvedAgent;
+    }
+    final agents = await HomeAssistantService.singleton.conversationAgents();
+    _resolvedAgent = agents
+        .map((a) => a.entityId)
+        .where((id) => id != builtInAgent)
+        .firstOrNull;
+    _resolvedAt = DateTime.now();
+    return _resolvedAgent;
+  }
+
+  /// Drops the looked-up agent, so the next question looks again.
+  void forgetResolvedAgent() {
+    _resolvedAgent = null;
+    _resolvedAt = null;
   }
 
   Future<String> model() async {
@@ -290,9 +330,8 @@ class AssistantService {
   /// Asks Home Assistant's conversation agent: the one chosen in the
   /// assistant screen, or Home Assistant's default.
   Future<AssistantResult> _askHomeAssistant(String question) async {
-    final agent = await haAgent();
     final result = await HomeAssistantService.singleton
-        .converse(question, agentId: agent.isEmpty ? null : agent);
+        .converse(question, agentId: await resolvedHaAgent());
     return switch (result) {
       HaOk(:final text) => AssistantAnswer(shorten(text)),
       HaFailure(:final reason) => AssistantFailure(reason),

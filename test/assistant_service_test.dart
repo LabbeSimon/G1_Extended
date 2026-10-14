@@ -1,6 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:g1_extended/services/assistant_service.dart';
+import 'package:g1_extended/services/home_assistant_service.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -121,6 +126,56 @@ void main() {
         await AssistantService.singleton.provider(),
         AssistantProvider.claude,
       );
+    });
+  });
+
+  group('Which Home Assistant agent answers', () {
+    void houseOffers(List<String> agents) {
+      HomeAssistantService.clientFactory = () => MockClient((_) async =>
+          http.Response(
+            jsonEncode([
+              for (final id in agents)
+                {
+                  'entity_id': id,
+                  'state': 'unknown',
+                  'attributes': {'friendly_name': id.split('.').last},
+                },
+            ]),
+            200,
+          ));
+    }
+
+    setUp(() {
+      SharedPreferences.setMockInitialValues({
+        'home_assistant_enabled': true,
+        'home_assistant_base_url': 'http://ha.local:8123',
+      });
+      FlutterSecureStorage.setMockInitialValues({
+        'home_assistant_token': 'a-long-lived-token',
+      });
+      AssistantService.singleton.forgetResolvedAgent();
+    });
+
+    tearDown(() => HomeAssistantService.clientFactory = null);
+
+    test('none chosen: the model Home Assistant runs, not its own agent',
+        () async {
+      houseOffers(['conversation.home_assistant', 'conversation.claude']);
+      expect(await AssistantService.singleton.resolvedHaAgent(),
+          'conversation.claude');
+    });
+
+    test('no model: Home Assistant\'s own agent', () async {
+      houseOffers(['conversation.home_assistant']);
+      expect(await AssistantService.singleton.resolvedHaAgent(), isNull);
+    });
+
+    test('a choice is kept, even the built-in agent', () async {
+      houseOffers(['conversation.home_assistant', 'conversation.claude']);
+      await AssistantService.singleton
+          .setHaAgent(AssistantService.builtInAgent);
+      expect(await AssistantService.singleton.resolvedHaAgent(),
+          AssistantService.builtInAgent);
     });
   });
 }
