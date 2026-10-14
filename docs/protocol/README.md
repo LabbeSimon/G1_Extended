@@ -41,6 +41,12 @@ in an app is evidence, a byte that works on a face is proof.
   `0xCA` for failure, `0xCB` for "continue" in multi-packet lists. The
   teleprompter is the exception: it answers `0x00` for success.
 
+## Every feature re-checked
+
+[audit.md](audit.md) lists each feature this app has, compared with the
+official app 1.6.5: what was fixed, what differs but works and is left alone,
+what is debug-only, and what is not implemented.
+
 ## What this changes for this app
 
 | Topic | Official app 1.6.5 | This app |
