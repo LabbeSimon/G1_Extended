@@ -2,6 +2,49 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:g1_extended/services/assistant_service.dart';
 
 void main() {
+  group('Reading a Claude reply', () {
+    test('takes the first text block', () {
+      final body = {
+        'content': [
+          {'type': 'text', 'text': 'It is 21 degrees.'},
+        ],
+      };
+      expect(AssistantService.claudeAnswerFrom(body), 'It is 21 degrees.');
+    });
+
+    test('skips a thinking block and finds the text', () {
+      final body = {
+        'content': [
+          {'type': 'thinking', 'thinking': 'the user asked about weather'},
+          {'type': 'text', 'text': 'Sunny and mild.'},
+        ],
+      };
+      expect(AssistantService.claudeAnswerFrom(body), 'Sunny and mild.');
+    });
+
+    test('shortens a long answer like any other', () {
+      final body = {
+        'content': [
+          {'type': 'text', 'text': '**Yes**, the `answer` is _42_.'},
+        ],
+      };
+      expect(AssistantService.claudeAnswerFrom(body), 'Yes, the answer is 42.');
+    });
+
+    test('is null when there is no usable text', () {
+      expect(AssistantService.claudeAnswerFrom({}), isNull);
+      expect(AssistantService.claudeAnswerFrom({'content': []}), isNull);
+      expect(
+        AssistantService.claudeAnswerFrom({
+          'content': [
+            {'type': 'tool_use', 'name': 'x'},
+          ],
+        }),
+        isNull,
+      );
+    });
+  });
+
   group('Working out the endpoint', () {
     test('accepts a bare host and port', () {
       expect(
@@ -58,11 +101,17 @@ void main() {
     test('survives a reply shaped differently than expected', () {
       expect(AssistantService.answerFrom({}), isNull);
       expect(AssistantService.answerFrom({'choices': []}), isNull);
-      expect(AssistantService.answerFrom({'choices': [{}]}), isNull);
+      expect(
+          AssistantService.answerFrom({
+            'choices': [{}]
+          }),
+          isNull);
       expect(
         AssistantService.answerFrom({
           'choices': [
-            {'message': {'content': 42}},
+            {
+              'message': {'content': 42}
+            },
           ],
         }),
         isNull,

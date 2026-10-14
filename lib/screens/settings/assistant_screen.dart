@@ -21,6 +21,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
 
   bool _loading = true;
   bool _enabled = false;
+  AssistantProvider _provider = AssistantProvider.claude;
   bool _testing = false;
   String? _testResult;
 
@@ -41,6 +42,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
 
   Future<void> _load() async {
     final enabled = await _assistant.isEnabled();
+    final provider = await _assistant.provider();
     _baseUrl.text = await _assistant.baseUrl();
     _model.text = await _assistant.model();
     _apiKey.text = await _assistant.apiKey() ?? '';
@@ -48,16 +50,20 @@ class _AssistantScreenState extends State<AssistantScreen> {
     if (!mounted) return;
     setState(() {
       _enabled = enabled;
+      _provider = provider;
       _loading = false;
     });
   }
 
   Future<void> _save() async {
+    await _assistant.setProvider(_provider);
     await _assistant.setBaseUrl(_baseUrl.text);
     await _assistant.setModel(_model.text);
     await _assistant.setApiKey(_apiKey.text);
     await _assistant.setPrompt(_prompt.text);
   }
+
+  bool get _isClaude => _provider == AssistantProvider.claude;
 
   Future<void> _test() async {
     await _save();
@@ -114,30 +120,54 @@ class _AssistantScreenState extends State<AssistantScreen> {
             },
           ),
           const Divider(),
-
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: TextField(
-              controller: _baseUrl,
-              keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                labelText: 'Endpoint',
-                hintText: 'http://192.168.1.20:11434',
-                helperText: 'Ollama, LM Studio, llama.cpp, or any '
-                    'OpenAI-compatible service',
-                helperMaxLines: 2,
-                border: OutlineInputBorder(),
-              ),
+            child: SegmentedButton<AssistantProvider>(
+              segments: const [
+                ButtonSegment(
+                  value: AssistantProvider.claude,
+                  label: Text('Claude'),
+                ),
+                ButtonSegment(
+                  value: AssistantProvider.openAiCompatible,
+                  label: Text('Self-hosted'),
+                ),
+              ],
+              selected: {_provider},
+              onSelectionChanged: (s) => setState(() => _provider = s.first),
             ),
           ),
+          if (!_isClaude)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+              child: TextField(
+                controller: _baseUrl,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(
+                  labelText: 'Endpoint',
+                  hintText: 'http://192.168.1.20:11434',
+                  helperText: 'Ollama, LM Studio, llama.cpp, or any '
+                      'OpenAI-compatible service',
+                  helperMaxLines: 2,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
             child: TextField(
               controller: _model,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Model',
-                hintText: 'llama3.2, qwen2.5, gpt-4o-mini…',
-                border: OutlineInputBorder(),
+                hintText: _isClaude
+                    ? AssistantService.defaultClaudeModel
+                    : 'llama3.2, qwen2.5, gpt-4o-mini…',
+                helperText: _isClaude
+                    ? 'Empty uses ${AssistantService.defaultClaudeModel} — '
+                        'fast and cheap. Try claude-opus-5 for harder questions.'
+                    : null,
+                helperMaxLines: 2,
+                border: const OutlineInputBorder(),
               ),
             ),
           ),
@@ -146,12 +176,15 @@ class _AssistantScreenState extends State<AssistantScreen> {
             child: TextField(
               controller: _apiKey,
               obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'API key (optional)',
-                helperText: 'Leave empty for a model you host yourself. '
-                    'Stored in the Android keystore.',
+              decoration: InputDecoration(
+                labelText: _isClaude ? 'Claude API key' : 'API key (optional)',
+                helperText: _isClaude
+                    ? 'From console.anthropic.com. Stored in the Android '
+                        'keystore, sent only to api.anthropic.com.'
+                    : 'Leave empty for a model you host yourself. '
+                        'Stored in the Android keystore.',
                 helperMaxLines: 2,
-                border: OutlineInputBorder(),
+                border: const OutlineInputBorder(),
               ),
             ),
           ),
@@ -169,7 +202,6 @@ class _AssistantScreenState extends State<AssistantScreen> {
               ),
             ),
           ),
-
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: OutlinedButton.icon(
@@ -195,19 +227,27 @@ class _AssistantScreenState extends State<AssistantScreen> {
                 ),
               ),
             ),
-
           const Divider(height: 40),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 0, 16, 24),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             child: Text(
-              'This is not the assistant that was removed from this project. '
-              'There is no account, no bundled provider and no default host: '
-              'the app has no idea where your questions go until you type an '
-              'address above. Point it at a machine you own and nothing '
-              'leaves your network.\n\n'
-              'The audio never travels. Speech is turned into text on the '
-              'phone by the offline model, and only that text is sent.',
-              style: TextStyle(fontSize: 12),
+              _isClaude
+                  ? 'Claude runs on Anthropic\'s servers. Your question and '
+                      'the system prompt are sent to api.anthropic.com with '
+                      'the key you paste; nothing is sent until you add one, '
+                      'and there is no account or sign-in — only your key.\n\n'
+                      'The audio never travels. Speech is turned into text on '
+                      'the phone by the offline model, and only that text is '
+                      'sent. Prefer self-hosted to keep everything on a '
+                      'machine you own.'
+                  : 'There is no account and no bundled credential: the app '
+                      'has no idea where your questions go until you type an '
+                      'address above. Point it at a machine you own and '
+                      'nothing leaves your network.\n\n'
+                      'The audio never travels. Speech is turned into text on '
+                      'the phone by the offline model, and only that text is '
+                      'sent.',
+              style: const TextStyle(fontSize: 12),
             ),
           ),
         ],
