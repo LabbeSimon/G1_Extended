@@ -206,7 +206,7 @@ App states: IDLE, COMMAND_DETECTION, COMMAND_LLM_ANALYSING, AI_REPLY_ANSWERING, 
    - If no `F5 18` arrives within 33 s of the long press, the watchdog sends Proto.exit (`18`, see section 6) and clears the session.
 5. handleTouchBarAIRecordingOver (only when state = COMMAND_DETECTION):
    a. `54 ... 02` fixed ASR frame (the app passes the text "Waiting..." internally, it is NOT transmitted), up to 3 attempts 100 ms apart while the state is COMMAND_DETECTION or COMMAND_LLM_ANALYSING.
-   b. LC3 -> PCM -> WAV on the phone, then cloud speech-to-text ("azure Audio2Text").
+   b. The recording goes to disk first, whole and raw, as `even_ai_<timestamp>/record.lc3` (nothing dropped; duration = bytes / 200 / 10 s). It is then converted file to file: LC3 to PCM through the native decoder (method channel `quickNoteLc3ToPcm`, the same decoder as recordings), PCM to WAV, and the WAV goes to the cloud speech-to-text ("azure Audio2Text"). The files are deleted afterwards and the buffer cleared. No noise reduction on this path.
    c. Empty result -> `54 04` index 18 "I'm having trouble understanding your request.", wait 4 s, `54 01` status 0.
    d. Otherwise state = COMMAND_LLM_ANALYSING and the question goes to the LLM (setting "evenllm" = streaming Even LLM, see 4.2.3; otherwise Even AI REST with answer length Compact = evenAiShort, Standard = evenAiMiddle, else evenAi). Bracketed parts "[...]" are removed from the answer. Network failure -> the answer text becomes "Even AI is unable to connect to the network" and is displayed like a normal answer.
    e. state = AI_REPLY_ANSWERING, startSendReply(answer) (4.2).

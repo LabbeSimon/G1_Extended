@@ -124,6 +124,40 @@ void main() {
     });
   });
 
+  group('Raw first', () {
+    test('the codec bytes are kept as they came, with their duration',
+        () async {
+      // 5 s of LC3: 500 frames of 20 bytes.
+      final codec = Uint8List.fromList(List.filled(10000, 0x5a));
+      final recording = await store.saveRawLc3(
+        codec,
+        source: RecordingSource.glassesLive,
+      );
+
+      expect(recording.format, RecordingFormat.lc3);
+      expect(recording.duration, const Duration(seconds: 5));
+      expect(recording.transcriptError, isNull,
+          reason: 'not decoded yet is not a failure');
+      expect(await (await store.fileFor(recording)).readAsBytes(), codec);
+    });
+
+    test('once decoded, the WAV takes the raw file\'s place', () async {
+      final raw = await store.saveRawLc3(
+        Uint8List.fromList(List.filled(200, 0x5a)),
+        source: RecordingSource.glassesLive,
+      );
+      final rawFile = await store.fileFor(raw);
+
+      await store.savePcm(pcm(1600), source: raw.source);
+      await store.remove(raw.id);
+
+      final left = await store.all();
+      expect(left, hasLength(1));
+      expect(left.single.format, RecordingFormat.wav);
+      expect(await rawFile.exists(), isFalse);
+    });
+  });
+
   group('Across isolates', () {
     test('a recording saved by the service is seen by the interface',
         () async {

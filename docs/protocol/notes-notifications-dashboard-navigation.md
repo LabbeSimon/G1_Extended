@@ -164,6 +164,7 @@ What this app's download parser got right or wrong before it was fixed (now `Voi
 - Download packets are parsed as `total = d[5] | d[6] << 8`, `index = d[7] | d[8] << 8`, `id = d[9]`, payload `d[10..]`, kept by index; only packets with `d[4] == 0x02` and the requested id are taken; the transfer completes when the count reaches `total`; the first 400 bytes are dropped before decoding.
 - The list is requested (`1E 06 00 sync 01 01`, right temple) a few seconds after the pair connects and after each saved recording, so recordings made while disconnected are fetched one after another. A 0x21 announcement still works as before.
 - A recording whose crc was saved during this run is deleted again instead of being downloaded twice (in memory only, not across restarts).
+- The raw LC3 reaches disk first, as the official app writes its record.lc3, and the glasses copy is deleted as soon as it is there; decoding and transcription come after. A decoder failure therefore cannot leave the recording on the glasses to be fetched again at every connection.
 - Not done: the 1 s inactivity timer, the 10 s overall limit with acceptance above 90 %, and the retry/reconnect policy. A stalled transfer is replaced by the next list after 10 s; the recording stays on the glasses until the phone has saved it.
 
 ## SECTION 4 - Notifications 0x4B (sendNotify) and 0x4C (removeNotify)

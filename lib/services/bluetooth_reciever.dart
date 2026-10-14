@@ -314,6 +314,12 @@ class BluetoothReciever {
   /// begin to finish.
   GlassSide? _captureSide;
 
+  /// Ends a held capture whose release never arrived.
+  Timer? _holdWatchdog;
+
+  /// How long the official app lets the touchpad be held for Even AI.
+  static const Duration _holdLimit = Duration(seconds: 33);
+
   /// Puts a recent notification back on the lens.
   ///
   /// Repeated taps walk further back, which is why the history keeps a
@@ -370,6 +376,19 @@ class BluetoothReciever {
       }
     }
 
+    // A hold that never reports its release would record forever. The
+    // official app gives a held touchpad 33 s and then drops the session;
+    // here the capture ends as if released, and what was said is kept and
+    // transcribed rather than thrown away. The right temple toggles, and a
+    // note may run long, so it has no such limit.
+    _holdWatchdog?.cancel();
+    if (side == GlassSide.left) {
+      _holdWatchdog = Timer(_holdLimit, () {
+        debugPrint('[$side] No release after ${_holdLimit.inSeconds} s');
+        unawaited(_finishDictation(side));
+      });
+    }
+
     // The glasses need the mic opened either way: it drives the on-screen
     // recording indicator the wearer sees.
     await bt.setMicrophone(true);
@@ -382,6 +401,8 @@ class BluetoothReciever {
       return;
     }
     _isCapturing = false;
+    _holdWatchdog?.cancel();
+    _holdWatchdog = null;
 
     final bt = BluetoothManager();
 
@@ -401,16 +422,18 @@ class BluetoothReciever {
       return;
     }
 
-    // Saved before it is recognised, for the same reason as a fetched note:
-    // the recogniser is the part that fails, and what someone said should
-    // not depend on whether a model happened to be installed.
-    final kept = await _keepAudio(
+    // Recorded first, transcribed after, and the raw codec bytes reach disk
+    // before any native code runs — the order the official app follows with
+    // its record.lc3. The decoder and the recogniser are the parts that
+    // fail; what someone said should depend on neither.
+    final audio = Uint8List.fromList(encoded);
+    final raw = await _keepRaw(
       side: side,
-      encoded: Uint8List.fromList(encoded),
+      encoded: audio,
       source: RecordingSource.glassesLive,
     );
 
-    if (kept == null) {
+    if (raw == null) {
       debugPrint('[$side] Live capture could not be saved');
       try {
         await bt.sendPriorityText('Could not save that recording.');
@@ -418,6 +441,7 @@ class BluetoothReciever {
       return;
     }
 
+    final kept = await _decodeKept(side: side, raw: raw, encoded: audio);
     await _transcribeKept(
       side: side,
       recording: kept.recording,
@@ -638,11 +662,11 @@ class BluetoothReciever {
       return;
     }
 
-    // The audio goes to disk before anything else happens to it. What
-    // follows — freeing the flash slot, transcribing — are both things
-    // that used to be able to destroy a recording, and neither runs until
-    // the phone holds its own copy.
-    final kept = await _keepAudio(
+    // The audio goes to disk before anything else happens to it, raw, as it
+    // arrived. What follows — freeing the flash slot, decoding,
+    // transcribing — are all things that used to be able to destroy a
+    // recording, and none runs until the phone holds its own copy.
+    final raw = await _keepRaw(
       side: side,
       encoded: encoded,
       source: RecordingSource.glassesNote,
@@ -650,7 +674,7 @@ class BluetoothReciever {
 
     final bt = BluetoothManager();
 
-    if (kept == null) {
+    if (raw == null) {
       // Nothing reached disk, so the glasses hold the only copy and it
       // stays there. Deleting it now is precisely how a recording is lost
       // for good; a full flash is the lesser problem and it is recoverable.
@@ -664,12 +688,16 @@ class BluetoothReciever {
       return;
     }
 
-    // Only now. The phone has it, so the slot can be freed. The id to delete
-    // is the one the list gave, which is what the download echoed back.
+    // Only now. The phone has it, so the slot can be freed — before the
+    // decoder runs, so that a decoder taking the app down cannot leave the
+    // same recording on the glasses to be fetched, and fail, at every
+    // connection. The id to delete is the one the list gave, which is what
+    // the download echoed back.
     if (crc != null) _savedNoteCrcs.add(crc);
     await bt.rightGlass
         ?.sendData(VoiceNote(index: index).buildDeleteCommand(_noteSyncId++));
 
+    final kept = await _decodeKept(side: side, raw: raw, encoded: encoded);
     await _transcribeKept(
       side: side,
       recording: kept.recording,
@@ -681,19 +709,35 @@ class BluetoothReciever {
     await requestVoiceNoteList();
   }
 
-  /// Decodes and stores captured audio, returning null only if nothing at
-  /// all could be written.
-  ///
-  /// A failed LC3 decode is not a reason to lose the recording: the codec
-  /// bytes are stored as they arrived so a working decoder can be pointed
-  /// at them later. The one unrecoverable case — the write itself failing —
-  /// is reported honestly to the caller, because the caller is about to
-  /// decide whether to delete the other copy.
-  Future<({Recording recording, Uint8List pcm})?> _keepAudio({
+  /// Writes captured audio to disk exactly as it arrived, before anything
+  /// decodes it. Null only if nothing could be written: the caller is about
+  /// to decide whether to delete the other copy.
+  Future<Recording?> _keepRaw({
     required GlassSide side,
     required Uint8List encoded,
     required RecordingSource source,
   }) async {
+    try {
+      return await VoiceRecordings.singleton
+          .saveRawLc3(encoded, source: source);
+    } catch (e) {
+      debugPrint('[$side] Could not write the recording to disk: $e');
+      return null;
+    }
+  }
+
+  /// Decodes a recording already on disk, and lets a playable WAV take the
+  /// raw file's place.
+  ///
+  /// A failed decode loses nothing: the raw codec bytes stay, marked, so a
+  /// working decoder can be pointed at them later.
+  Future<({Recording recording, Uint8List pcm})> _decodeKept({
+    required GlassSide side,
+    required Recording raw,
+    required Uint8List encoded,
+  }) async {
+    final store = VoiceRecordings.singleton;
+
     Uint8List pcm = Uint8List(0);
     try {
       pcm = await LC3.decodeLC3(encoded);
@@ -701,20 +745,28 @@ class BluetoothReciever {
       debugPrint('[$side] LC3 decoding failed: $e');
     }
 
-    try {
-      if (pcm.isNotEmpty) {
-        final recording =
-            await VoiceRecordings.singleton.savePcm(pcm, source: source);
-        return (recording: recording, pcm: pcm);
-      }
-
+    if (pcm.isEmpty) {
       debugPrint('[$side] LC3 gave no samples; keeping the raw codec bytes');
-      final recording = await VoiceRecordings.singleton
-          .saveUndecodedLc3(encoded, source: source);
-      return (recording: recording, pcm: Uint8List(0));
+      await store.attachTranscriptError(
+        raw.id,
+        'Audio could not be decoded; kept as raw LC3.',
+      );
+      return (recording: raw, pcm: pcm);
+    }
+
+    try {
+      final playable = await store.savePcm(
+        pcm,
+        source: raw.source,
+        capturedAt: raw.capturedAt,
+      );
+      await store.remove(raw.id);
+      return (recording: playable, pcm: pcm);
     } catch (e) {
-      debugPrint('[$side] Could not write the recording to disk: $e');
-      return null;
+      // The raw file is still there and the decoded audio is in hand: the
+      // transcript need not wait for a second write to succeed.
+      debugPrint('[$side] Could not store the decoded audio: $e');
+      return (recording: raw, pcm: pcm);
     }
   }
 

@@ -259,6 +259,31 @@ class VoiceRecordings {
     );
   }
 
+  /// Writes the codec bytes exactly as they arrived, before any decoding.
+  ///
+  /// The first thing done with captured audio, as the official app does
+  /// with its record.lc3: whatever the native decoder does next, the
+  /// recording already exists. LC3 here is 20 bytes per 10 ms frame, which
+  /// gives the duration without decoding anything.
+  Future<Recording> saveRawLc3(
+    Uint8List encoded, {
+    required RecordingSource source,
+    DateTime? capturedAt,
+  }) async {
+    if (encoded.isEmpty) {
+      throw ArgumentError('Refusing to store an empty recording');
+    }
+
+    return _store(
+      bytes: encoded,
+      extension: 'lc3',
+      format: RecordingFormat.lc3,
+      source: source,
+      capturedAt: capturedAt ?? DateTime.now(),
+      duration: Duration(milliseconds: encoded.length ~/ 20 * 10),
+    );
+  }
+
   /// Keeps the undecoded codec bytes when LC3 decoding gave us nothing.
   ///
   /// Not playable, and deliberately kept anyway. The alternative is
@@ -362,8 +387,8 @@ class VoiceRecordings {
     return _entries[id];
   }
 
-  /// Deletes a recording and its file. Only ever called from the interface,
-  /// on something a person chose to remove.
+  /// Deletes a recording and its file: something a person chose to remove,
+  /// or raw codec bytes once their decoded WAV has taken their place.
   Future<void> remove(String id) async {
     await _load();
     final entry = _entries.remove(id);
