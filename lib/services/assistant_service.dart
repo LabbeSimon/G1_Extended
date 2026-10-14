@@ -163,6 +163,35 @@ class AssistantService {
     return _resolvedAgent;
   }
 
+  /// How long a follow-up keeps the thread: asked within this, "and the
+  /// Moon?" still knows what it follows.
+  static const Duration followUpWindow = Duration(minutes: 5);
+
+  /// How many earlier messages go along with a question to Claude: four
+  /// exchanges, enough to chain without paying for a long history.
+  static const int claudeTurnsKept = 8;
+
+  String? _houseConversation;
+  final List<Map<String, String>> _claudeTurns = [];
+  DateTime? _lastExchange;
+
+  /// Forgets the thread once it has gone quiet, so an unrelated question
+  /// later in the day starts afresh.
+  void _expireThread() {
+    final last = _lastExchange;
+    if (last != null && DateTime.now().difference(last) < followUpWindow) {
+      return;
+    }
+    forgetThread();
+  }
+
+  /// The next question opens a new thread.
+  void forgetThread() {
+    _houseConversation = null;
+    _claudeTurns.clear();
+    _lastExchange = null;
+  }
+
   /// Drops the looked-up agent, so the next question looks again.
   void forgetResolvedAgent() {
     _resolvedAgent = null;
@@ -274,12 +303,13 @@ class AssistantService {
 
     return switch (await provider()) {
       AssistantProvider.claude => _askClaude(trimmed),
-      AssistantProvider.homeAssistant => _askHomeAssistant(trimmed),
+      AssistantProvider.homeAssistant => askHomeAssistant(trimmed),
     };
   }
 
   /// Asks Claude, through the Anthropic Messages API.
   Future<AssistantResult> _askClaude(String question) async {
+    _expireThread();
     final key = await apiKey();
     if (key == null || key.isEmpty) {
       return const AssistantFailure('No Claude API key set');
@@ -298,7 +328,10 @@ class AssistantService {
               'model': await claudeModel(),
               'max_tokens': maxTokens,
               'system': await prompt(),
+              // The thread so far, then the question: a follow-up is
+              // read in the light of what came before.
               'messages': [
+                ..._claudeTurns,
                 {'role': 'user', 'content': question},
               ],
             }),
@@ -318,6 +351,13 @@ class AssistantService {
       if (answer == null || answer.isEmpty) {
         return const AssistantFailure('Empty answer');
       }
+      _claudeTurns
+        ..add({'role': 'user', 'content': question})
+        ..add({'role': 'assistant', 'content': answer});
+      if (_claudeTurns.length > claudeTurnsKept) {
+        _claudeTurns.removeRange(0, _claudeTurns.length - claudeTurnsKept);
+      }
+      _lastExchange = DateTime.now();
       return AssistantAnswer(answer);
     } on TimeoutException {
       return const AssistantFailure('Timed out');
@@ -327,14 +367,22 @@ class AssistantService {
     }
   }
 
-  /// Asks Home Assistant's conversation agent: the one chosen in the
-  /// assistant screen, or Home Assistant's default.
-  Future<AssistantResult> _askHomeAssistant(String question) async {
-    final result = await HomeAssistantService.singleton
-        .converse(question, agentId: await resolvedHaAgent());
-    return switch (result) {
-      HaOk(:final text) => AssistantAnswer(shorten(text)),
-      HaFailure(:final reason) => AssistantFailure(reason),
-    };
+  /// Asks Home Assistant's conversation agent — the one chosen, or the
+  /// model it runs — inside the current thread, so questions chain.
+  Future<AssistantResult> askHomeAssistant(String question) async {
+    _expireThread();
+    final result = await HomeAssistantService.singleton.converse(
+      question,
+      agentId: await resolvedHaAgent(),
+      conversationId: _houseConversation,
+    );
+    switch (result) {
+      case HaOk(:final text, :final conversationId):
+        _houseConversation = conversationId ?? _houseConversation;
+        _lastExchange = DateTime.now();
+        return AssistantAnswer(shorten(text));
+      case HaFailure(:final reason):
+        return AssistantFailure(reason);
+    }
   }
 }

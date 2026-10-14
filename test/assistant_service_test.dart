@@ -178,4 +178,80 @@ void main() {
           AssistantService.builtInAgent);
     });
   });
+
+  group('Questions chain', () {
+    setUp(() {
+      AssistantService.singleton
+        ..forgetThread()
+        ..forgetResolvedAgent();
+    });
+
+    tearDown(() => HomeAssistantService.clientFactory = null);
+
+    test('Home Assistant: the follow-up carries the thread', () async {
+      SharedPreferences.setMockInitialValues({
+        'assistant_provider': 'ha',
+        'assistant_ha_agent': 'conversation.claude',
+        'home_assistant_enabled': true,
+        'home_assistant_base_url': 'http://ha.local:8123',
+      });
+      FlutterSecureStorage.setMockInitialValues({
+        'home_assistant_token': 'a-long-lived-token',
+      });
+      final bodies = <Map<String, dynamic>>[];
+      HomeAssistantService.clientFactory = () => MockClient((request) async {
+            bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+            return http.Response(
+              jsonEncode({
+                'conversation_id': 'thread-1',
+                'response': {
+                  'speech': {
+                    'plain': {'speech': 'Lisbonne.'}
+                  }
+                }
+              }),
+              200,
+            );
+          });
+
+      final assistant = AssistantService.singleton;
+      await assistant.ask('Capitale du Portugal ?');
+      await assistant.ask('Et combien d habitants ?');
+      assistant.forgetThread();
+      await assistant.ask('Autre chose');
+
+      expect(bodies[0].containsKey('conversation_id'), isFalse);
+      expect(bodies[1]['conversation_id'], 'thread-1');
+      expect(bodies[2].containsKey('conversation_id'), isFalse,
+          reason: 'a forgotten thread starts afresh');
+    });
+
+    test('Claude: the follow-up carries the earlier turns', () async {
+      SharedPreferences.setMockInitialValues({});
+      FlutterSecureStorage.setMockInitialValues({
+        'assistant_api_key': 'sk-ant-test',
+      });
+      final bodies = <Map<String, dynamic>>[];
+
+      await http.runWithClient(() async {
+        final assistant = AssistantService.singleton;
+        await assistant.ask('Capitale du Portugal ?');
+        await assistant.ask('Et combien d habitants ?');
+      }, () => MockClient((request) async {
+            bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+            return http.Response(
+              jsonEncode({
+                'content': [
+                  {'type': 'text', 'text': 'Lisbonne.'}
+                ]
+              }),
+              200,
+            );
+          }));
+
+      final second = bodies[1]['messages'] as List;
+      expect(second.map((m) => m['role']), ['user', 'assistant', 'user']);
+      expect(second.first['content'], 'Capitale du Portugal ?');
+    });
+  });
 }

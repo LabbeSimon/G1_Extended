@@ -55,7 +55,12 @@ sealed class HaResult {
 
 class HaOk extends HaResult {
   final String text;
-  const HaOk(this.text);
+
+  /// The thread Home Assistant opened or continued; passing it back with
+  /// the next sentence keeps the agent's context.
+  final String? conversationId;
+
+  const HaOk(this.text, {this.conversationId});
 }
 
 class HaFailure extends HaResult {
@@ -248,7 +253,11 @@ class HomeAssistantService implements DashboardWidget {
   /// [agentId] picks one of Home Assistant's conversation agents — its own,
   /// or a model added to it — by entity id; without one, Home Assistant's
   /// default answers.
-  Future<HaResult> converse(String sentence, {String? agentId}) async {
+  Future<HaResult> converse(
+    String sentence, {
+    String? agentId,
+    String? conversationId,
+  }) async {
     final trimmed = sentence.trim();
     if (trimmed.isEmpty) return const HaFailure('Nothing to say.');
 
@@ -269,6 +278,7 @@ class HomeAssistantService implements DashboardWidget {
               'text': trimmed,
               'language': await _language(),
               if (agentId != null && agentId.isNotEmpty) 'agent_id': agentId,
+              if (conversationId != null) 'conversation_id': conversationId,
             }),
           )
           .timeout(timeout);
@@ -284,7 +294,7 @@ class HomeAssistantService implements DashboardWidget {
       if (spoken == null || spoken.isEmpty) {
         return const HaFailure('Home Assistant had nothing to say.');
       }
-      return HaOk(spoken);
+      return HaOk(spoken, conversationId: conversationIdFrom(response.body));
     } on TimeoutException {
       return const HaFailure('Home Assistant did not answer in time.');
     } catch (e) {
@@ -304,6 +314,18 @@ class HomeAssistantService implements DashboardWidget {
   /// added to it — for the assistant screen's picker.
   Future<List<HaEntity>> conversationAgents() async =>
       (await states()).where((e) => e.domain == 'conversation').toList();
+
+  /// The thread id of a conversation response, null when there is none.
+  @visibleForTesting
+  static String? conversationIdFrom(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      final id = decoded is Map ? decoded['conversation_id'] : null;
+      return id is String && id.isNotEmpty ? id : null;
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// Digs the spoken reply out of a conversation response.
   ///

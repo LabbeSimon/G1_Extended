@@ -276,6 +276,26 @@ void main() {
       expect(body['agent_id'], 'conversation.claude');
     });
 
+    test('the thread id goes out and comes back', () async {
+      answerWith(
+        200,
+        jsonEncode({
+          'conversation_id': 'thread-1',
+          'response': {
+            'speech': {
+              'plain': {'speech': 'OK'}
+            }
+          }
+        }),
+      );
+
+      final result = await HomeAssistantService.singleton
+          .converse('et la suite ?', conversationId: 'thread-1');
+
+      expect((result as HaOk).conversationId, 'thread-1');
+      expect(jsonDecode(sent.single.body)['conversation_id'], 'thread-1');
+    });
+
     test('the agents on offer are the conversation entities', () async {
       answerWith(
         200,
