@@ -11,6 +11,7 @@ import 'package:g1_extended/screens/dictation_history_screen.dart';
 import 'package:g1_extended/screens/recordings_screen.dart';
 import 'package:g1_extended/screens/notification_history_screen.dart';
 import 'package:g1_extended/screens/quick_note_screen.dart';
+import 'package:g1_extended/screens/settings/assistant_screen.dart';
 import 'package:g1_extended/screens/settings/display_settings_screen.dart';
 import 'package:g1_extended/screens/teleprompter_screen.dart';
 import 'package:g1_extended/screens/live_captions_screen.dart';
@@ -19,6 +20,7 @@ import 'package:g1_extended/screens/settings/extensions_screen.dart';
 import 'package:g1_extended/services/extensions_service.dart';
 import 'package:g1_extended/screens/settings/permissions_screen.dart';
 import 'package:g1_extended/screens/settings_screen.dart';
+import 'package:g1_extended/services/assistant_service.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/glasses_settings_service.dart';
 import 'package:g1_extended/services/onboarding_service.dart';
@@ -117,11 +119,16 @@ class _HomeScreenState extends State<HomeScreen>
 
   int _installedExtensions = 0;
 
+  bool _assistantSetUp = false;
+  bool _assistantOn = false;
+  AssistantProvider _assistantProvider = AssistantProvider.claude;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadInstalledExtensions();
+    _loadAssistant();
 
     _clock = Timer.periodic(const Duration(seconds: 20), (_) {
       if (mounted) setState(() => _now = DateTime.now());
@@ -436,6 +443,7 @@ class _HomeScreenState extends State<HomeScreen>
       MaterialPageRoute(builder: (_) => const GlassesSettingsPage()),
     );
     _refresh();
+    _loadAssistant();
   }
 
   Future<void> _toggleSilentMode() async {
@@ -464,6 +472,8 @@ class _HomeScreenState extends State<HomeScreen>
               _buildHero(),
               const SizedBox(height: AppMetrics.gutter),
               _buildDeviceRow(),
+              const SizedBox(height: AppMetrics.gutter),
+              _buildAssistantTile(),
               const SizedBox(height: AppMetrics.gutter),
               _buildExtensionsTile(),
               const SizedBox(height: AppMetrics.gutter),
@@ -687,6 +697,73 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
     );
+  }
+
+  /// The assistant, where people look for it.
+  ///
+  /// It used to live only behind the unlabelled settings icon, fifth in a
+  /// list, and nothing said that holding the left temple asks it anything:
+  /// from the home screen, the app had no AI at all. The line under the
+  /// title is the instruction, or what is still missing.
+  Widget _buildAssistantTile() {
+    final isClaude = _assistantProvider == AssistantProvider.claude;
+    final subtitle = !_assistantSetUp
+        ? (isClaude
+            ? 'Not set up · paste a Claude key'
+            : 'Not set up · add your endpoint')
+        : _assistantOn
+            ? '${isClaude ? 'Claude' : 'Your model'} · hold the left temple '
+                'and ask'
+            : 'Off · tap to turn it on';
+
+    return SizedBox(
+      height: 84,
+      child: BentoTile(
+        onTap: () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const AssistantScreen()))
+            .then((_) => _loadAssistant()),
+        child: Row(
+          children: [
+            const PixelArt(
+              rows: PixelArtwork.chat,
+              size: 24,
+              color: AppColors.ink,
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Assistant',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _loadAssistant() async {
+    final assistant = AssistantService.singleton;
+    final setUp = await assistant.hasCredentials();
+    final on = await assistant.isEnabled();
+    final provider = await assistant.provider();
+    if (!mounted) return;
+    setState(() {
+      _assistantSetUp = setUp;
+      _assistantOn = on;
+      _assistantProvider = provider;
+    });
   }
 
   Future<void> _loadInstalledExtensions() async {

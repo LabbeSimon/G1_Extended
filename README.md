@@ -67,7 +67,8 @@ still an independent project, not made or endorsed by Even Realities.
 - Live captions from the glasses microphone
 - A teleprompter that follows your voice, or a set pace, or your thumb
 - Your own lines on the lens, built from live values or a URL you choose
-- Optionally, questions answered by a model you host or chose — never a
+- Optionally, an assistant: hold the left temple, ask, and read the answer
+  on the lens. Claude with your own API key, or a model you host; never a
   bundled one, and only ever the transcribed text, never the audio
 - Dictation: hold a temple touchpad, speak, see the text on the lens
 - Optionally, your house: speak to Home Assistant and read a few of its
