@@ -9,9 +9,10 @@ enum TeleprompterMode {
   /// The reader moves it, by taps or from the phone.
   manual(1),
 
-  /// The official app's voice-following mode. Its screens carry a highlight
-  /// position whose exact meaning is not established, so this app follows
-  /// the voice itself and announces [manual] instead.
+  /// The voice follows the script. The only mode in which the official app
+  /// opens the glasses microphone during the teleprompter. Its screens may
+  /// carry a highlight position, whose exact meaning is not established;
+  /// this app sends none.
   voiceFollow(2);
 
   const TeleprompterMode(this.wire);
@@ -145,10 +146,12 @@ abstract final class TeleprompterProtocol {
     return [join(window.take(3)), join(window.skip(3).take(2))];
   }
 
-  /// The scroll position the glasses draw, 0 to 100.
-  static int progress(int top, int lineCount) {
-    if (lineCount <= visibleLines) return 100;
-    return _percent(100 * top ~/ (lineCount - visibleLines));
+  /// The scroll position the glasses draw, 0 to 100. The official app counts
+  /// it against two lines instead of five when following the voice.
+  static int progress(int top, int lineCount, {bool voiceFollow = false}) {
+    final span = voiceFollow ? 2 : visibleLines;
+    if (lineCount <= span) return 100;
+    return _percent(100 * top ~/ (lineCount - span));
   }
 
   static int _percent(int value) => value.clamp(0, 100);

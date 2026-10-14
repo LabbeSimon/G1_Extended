@@ -32,6 +32,18 @@ void main() {
       expect(frame.length, 32);
     });
 
+    test('following the voice is announced as mode 2', () {
+      final frame = TeleprompterProtocol.start(
+        seq: 0,
+        packetCount: 1,
+        packetIndex: 1,
+        mode: TeleprompterMode.voiceFollow,
+        progress: 0,
+        text: '',
+      );
+      expect(frame[10], 0x82);
+    });
+
     test('only the last packet of a screen is closed by the trailer', () {
       final first = TeleprompterProtocol.start(
         seq: 4,
@@ -145,6 +157,11 @@ void main() {
     test('fewer than four lines go out in one packet', () {
       expect(TeleprompterProtocol.screenPackets(lines, 4), ['l4\nl5\nl6\n']);
       expect(TeleprompterProtocol.screenPackets(['only'], 0), ['only\n']);
+    });
+
+    test('following the voice counts progress against two lines', () {
+      expect(TeleprompterProtocol.progress(0, 2, voiceFollow: true), 100);
+      expect(TeleprompterProtocol.progress(4, 12, voiceFollow: true), 40);
     });
 
     test('progress counts screens, not lines', () {

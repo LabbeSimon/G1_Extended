@@ -102,6 +102,7 @@ class GlassesTeleprompter {
   final Stream<GlassesEvent> _taps;
 
   List<String> _lines = const [];
+  TeleprompterMode _mode = TeleprompterMode.manual;
   int _seq = 0;
   int _top = 0;
   bool _running = false;
@@ -137,12 +138,13 @@ class GlassesTeleprompter {
     await active?.stop();
 
     _lines = List.unmodifiable(lines);
+    _mode = mode;
     _top = 0;
     top.value = 0;
     _scrollAnimates = true;
 
     final packets = TeleprompterProtocol.screenPackets(_lines, 0);
-    final progress = TeleprompterProtocol.progress(0, _lines.length);
+    final progress = _progress(0);
     for (var i = 0; i < packets.length; i++) {
       final frame = TeleprompterProtocol.start(
         seq: _seq++,
@@ -252,7 +254,7 @@ class GlassesTeleprompter {
   Future<bool> _sendScreen(int line, {required bool scrolled}) async {
     final animate = scrolled && _scrollAnimates;
     final packets = TeleprompterProtocol.screenPackets(_lines, line);
-    final progress = TeleprompterProtocol.progress(line, _lines.length);
+    final progress = _progress(line);
 
     for (var i = 0; i < packets.length; i++) {
       Uint8List frame(bool animated) => TeleprompterProtocol.screen(
@@ -274,6 +276,12 @@ class GlassesTeleprompter {
     }
     return true;
   }
+
+  int _progress(int line) => TeleprompterProtocol.progress(
+        line,
+        _lines.length,
+        voiceFollow: _mode == TeleprompterMode.voiceFollow,
+      );
 
   /// Left first, then right only if the left took it.
   Future<bool> _toBoth(

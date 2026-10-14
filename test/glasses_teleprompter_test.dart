@@ -93,6 +93,16 @@ void main() {
     expect([for (final (_, frame) in link.sent) frame[3]], [0, 0, 1, 1]);
   });
 
+  test('a voice-following session counts its progress against two lines',
+      () async {
+    await teleprompter.start(lines(12), mode: TeleprompterMode.voiceFollow);
+    link.sent.clear();
+
+    await teleprompter.show(4);
+
+    expect(link.sent.first.$2[9], 40, reason: '100 * 4 ~/ (12 - 2)');
+  });
+
   test('moving one line asks for the animated scroll', () async {
     await teleprompter.start(lines(7));
     link.sent.clear();

@@ -159,9 +159,12 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
     final glasses = GlassesTeleprompter()..onEnded = _onGlassesEnded;
     final started = await glasses.start(
       [for (final line in lines) line.text],
-      mode: _mode == ScrollMode.timed
-          ? TeleprompterMode.timed
-          : TeleprompterMode.manual,
+      mode: switch (_mode) {
+        ScrollMode.timed => TeleprompterMode.timed,
+        ScrollMode.manual => TeleprompterMode.manual,
+        // The official app opens the glasses microphone in this mode only.
+        ScrollMode.voice => TeleprompterMode.voiceFollow,
+      },
     );
     if (!started) {
       _notify('The glasses did not open their teleprompter. '
@@ -520,7 +523,11 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
             .take(TeleprompterProtocol.visibleLines)
             .map((line) => line.text)
             .join('\n');
-        final progress = TeleprompterProtocol.progress(top, _lines.length);
+        final progress = TeleprompterProtocol.progress(
+          top,
+          _lines.length,
+          voiceFollow: _mode == ScrollMode.voice,
+        );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
