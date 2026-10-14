@@ -304,7 +304,7 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
       _SettingsEntry(
         pixels: PixelArtwork.chat,
         title: 'Assistant',
-        subtitle: 'Ask a model you host, or one you chose.',
+        subtitle: 'Ask Claude with your own key, or a model you host.',
         builder: (_) => const AssistantScreen(),
       ),
       _SettingsEntry(

@@ -75,7 +75,7 @@ class DictationService {
 
   /// Handles a finished transcript: display it, then remember it.
   ///
-  /// When an assistant endpoint is configured, the transcript is a question
+  /// When an assistant is configured, the transcript is a question
   /// rather than a note, and the answer is what reaches the lens.
   Future<void> record(
     String text, {
