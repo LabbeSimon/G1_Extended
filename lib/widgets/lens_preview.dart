@@ -4,25 +4,27 @@ import 'package:intl/intl.dart';
 import 'package:g1_extended/models/g1/glasses_settings.dart';
 import 'package:g1_extended/models/g1/note_slots.dart';
 import 'package:g1_extended/theme/app_theme.dart';
+import 'package:g1_extended/widgets/pixel_art.dart';
 
-/// The glasses' display, reproduced at its own proportions.
+/// The glasses' dashboard, laid out the way the official app previews it.
 ///
-/// The lens is 640 by 200, and this draws the same layout the firmware
-/// composes for the dashboard: the header line of time, date and battery,
-/// then the body the configured mode dictates — everything in full, two
-/// panes side by side, or the header alone in minimal. The slot titles come
-/// from the same plan that is actually written to the glasses, not from a
-/// separate guess, so the mirror cannot drift from the real thing.
+/// A status block that is always there — the time large, the date, the
+/// weather, a low-battery warning when there is one — then what the mode
+/// adds: in full, the next calendar event under the status and the chosen
+/// widget beside it; in dual, the widget beside the status alone; in
+/// minimal, the status and nothing else. The arrangement follows the
+/// official app's preview; the glyphs and icons are this app's own.
 ///
-/// It is an approximation of typography, not of truth: the firmware's exact
-/// glyphs are its own, but what is shown, and where, is what the wearer
-/// sees.
+/// Drawn at the lens's own 640 by 200 and scaled to fit, so the proportions
+/// cannot drift with the phone's width. The slot contents come from the same
+/// plan that is written to the glasses.
 class LensPreview extends StatelessWidget {
   const LensPreview({
     super.key,
     required this.now,
     required this.temperature,
-    required this.batteryLabel,
+    this.isDay,
+    this.batteryPercent,
     required this.mode,
     required this.pane,
     required this.slots,
@@ -34,8 +36,11 @@ class LensPreview extends StatelessWidget {
   /// Already formatted, "18" or "--".
   final String temperature;
 
-  /// Already formatted, "84%" or "--".
-  final String batteryLabel;
+  /// Null when there is no weather yet.
+  final bool? isDay;
+
+  /// The lower of the two temples, null before the first reading.
+  final int? batteryPercent;
 
   final DashboardMode mode;
   final DashboardPane pane;
@@ -46,8 +51,16 @@ class LensPreview extends StatelessWidget {
 
   final String? nextEvent;
 
-  /// The lens's own proportions, 640 over 200.
-  static const double aspect = 3.2;
+  /// The lens, in its own pixels.
+  static const double width = 640;
+  static const double height = 200;
+  static const double aspect = width / height;
+
+  /// Below this the status shows the warning the glasses show.
+  static const int lowBattery = 20;
+
+  /// How many note slots the glasses have.
+  static const int noteSlots = 4;
 
   static const Color _ground = Color(0xFF050506);
 
@@ -61,81 +74,197 @@ class LensPreview extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: AppColors.tile, width: 1),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _header(),
-            if (mode != DashboardMode.minimal) ...[
-              const SizedBox(height: 6),
-              Expanded(child: _body()),
-            ] else
-              const Spacer(),
-          ],
+        clipBehavior: Clip.antiAlias,
+        child: FittedBox(
+          child: SizedBox(
+            width: width,
+            height: height,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(26, 14, 26, 14),
+              child: _layout(),
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _header() {
-    return Row(
-      children: [
-        _text(DateFormat('HH:mm').format(now), size: 14),
-        const SizedBox(width: 10),
-        _text(DateFormat('EEE dd/MM').format(now), muted: true),
-        const Spacer(),
-        _text('$temperature°', muted: true),
-        const SizedBox(width: 10),
-        _text(batteryLabel, muted: true),
-      ],
-    );
-  }
-
-  Widget _body() {
+  Widget _layout() {
     switch (mode) {
-      case DashboardMode.minimal:
-        return const SizedBox.shrink();
       case DashboardMode.full:
-        return _notes(slots);
-      case DashboardMode.dual:
-        final split = (slots.length / 2).ceil();
         return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(child: _notes(slots.take(split).toList())),
-            Container(
-              width: 1,
-              margin: const EdgeInsets.symmetric(horizontal: 10),
-              color: AppColors.tile,
+            SizedBox(
+              width: 250,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _status(),
+                  const Spacer(),
+                  _calendarSide(),
+                ],
+              ),
             ),
-            Expanded(child: _paneBody(slots.skip(split).toList())),
+            _divider(),
+            Expanded(child: _widgetArea()),
           ],
+        );
+      case DashboardMode.dual:
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(width: 230, child: _status(dateFirst: true)),
+            _divider(),
+            Expanded(child: _widgetArea()),
+          ],
+        );
+      case DashboardMode.minimal:
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: _status(dateFirst: true),
         );
     }
   }
 
-  Widget _paneBody(List<SlotContent> remainingSlots) {
+  /// Time, date, weather, and the battery warning when it applies. Dual and
+  /// minimal put the date above the time, full puts it under.
+  Widget _status({bool dateFirst = false}) {
+    final date = _text(DateFormat('EEE dd/MM').format(now), muted: true);
+    final low = batteryPercent != null && batteryPercent! < lowBattery;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (dateFirst) date,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Shrinks rather than overflows: the column is fixed, the
+            // glyphs are whatever the phone's monospace face makes them.
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: _text(DateFormat('HH:mm').format(now), size: 48),
+              ),
+            ),
+            if (low) ...[
+              const SizedBox(width: 14),
+              const PixelArt(
+                rows: PixelArtwork.warning,
+                size: 22,
+                color: AppColors.ink,
+              ),
+              const SizedBox(width: 6),
+              _text('$batteryPercent%', muted: true),
+            ],
+          ],
+        ),
+        if (!dateFirst) date,
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            PixelArt(
+              rows: isDay == false ? PixelArtwork.moon : PixelArtwork.sun,
+              size: 22,
+              color: AppColors.inkMuted,
+            ),
+            const SizedBox(width: 8),
+            Flexible(child: _text('$temperature°C', muted: true)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// The next event, under the status in full mode.
+  Widget _calendarSide() => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const PixelArt(
+            rows: PixelArtwork.calendar,
+            size: 22,
+            color: AppColors.inkMuted,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _text(nextEvent ?? 'No upcoming event',
+                muted: nextEvent == null, lines: 2),
+          ),
+        ],
+      );
+
+  /// The chosen widget, beside the status in full and dual.
+  Widget _widgetArea() {
     switch (pane) {
       case DashboardPane.notes:
-        return _notes(remainingSlots);
+        return _panel(
+          PixelArtwork.note,
+          'Notes',
+          trailing: slots.isEmpty ? null : '${slots.length}/$noteSlots',
+          lines: slots.isEmpty
+              ? const ['Hold the right temple to record a quick note.']
+              : [for (final entry in slots.take(3)) _slotLine(entry)],
+          muted: slots.isEmpty,
+        );
       case DashboardPane.calendar:
-        return _lines([nextEvent ?? 'No upcoming event']);
-      case DashboardPane.navigation:
-        return _lines(const ['Navigation']);
+        return _panel(
+          PixelArtwork.calendar,
+          'Calendar',
+          lines: [nextEvent ?? 'No upcoming event'],
+          muted: nextEvent == null,
+        );
       case DashboardPane.stock:
-        return _lines(const ['Stock graph']);
+        return _panel(PixelArtwork.list, 'Stocks',
+            lines: const ['Your watch list, as the glasses chart it.'],
+            muted: true);
       case DashboardPane.news:
-        return _lines(const ['News']);
+        return _panel(PixelArtwork.list, 'News',
+            lines: const ['Headlines from the sources you chose.'],
+            muted: true);
+      case DashboardPane.navigation:
+        return _panel(PixelArtwork.lens, 'Map',
+            lines: const ['Your route, while you navigate.'], muted: true);
       case DashboardPane.empty:
         return const SizedBox.shrink();
     }
   }
 
-  Widget _notes(List<SlotContent> entries) => entries.isEmpty
-      ? _lines(const ['No notes'])
-      : _lines([
-          for (final entry in entries.take(4)) _slotLine(entry),
-        ]);
+  Widget _panel(
+    List<String> icon,
+    String title, {
+    String? trailing,
+    required List<String> lines,
+    bool muted = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            PixelArt(rows: icon, size: 22, color: AppColors.ink),
+            const SizedBox(width: 10),
+            Expanded(child: _text(title)),
+            if (trailing != null) _text(trailing, muted: true),
+          ],
+        ),
+        const SizedBox(height: 10),
+        for (final line in lines)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _text(line, muted: muted, lines: muted ? 2 : 1),
+          ),
+      ],
+    );
+  }
+
+  Widget _divider() => Container(
+        width: 1,
+        margin: const EdgeInsets.symmetric(horizontal: 22),
+        color: AppColors.tile,
+      );
 
   /// "Courses · lait, pain" — the name, then the first line of the body,
   /// because a title alone shows the arrangement but not the content, and
@@ -146,29 +275,20 @@ class LensPreview extends StatelessWidget {
     return '${entry.name} · $firstLine';
   }
 
-  Widget _lines(List<String> lines) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final line in lines)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: _text(line, muted: true, ellipsis: true),
-          ),
-      ],
-    );
-  }
-
-  Widget _text(String value,
-      {double size = 11, bool muted = false, bool ellipsis = false}) {
+  Widget _text(
+    String value, {
+    double size = 22,
+    bool muted = false,
+    int lines = 1,
+  }) {
     return Text(
       value,
-      maxLines: 1,
-      overflow: ellipsis ? TextOverflow.ellipsis : TextOverflow.clip,
+      maxLines: lines,
+      overflow: TextOverflow.ellipsis,
       style: TextStyle(
         fontFamily: AppTheme.technicalFont,
         fontSize: size,
-        height: 1.2,
+        height: 1.15,
         color: muted ? AppColors.inkMuted : AppColors.ink,
       ),
     );

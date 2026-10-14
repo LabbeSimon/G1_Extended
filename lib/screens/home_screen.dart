@@ -534,8 +534,8 @@ class _HomeScreenState extends State<HomeScreen>
       battery.leftBattery?.percentage,
       battery.rightBattery?.percentage,
     ].whereType<int>();
-    final batteryLabel =
-        levels.isEmpty ? '--' : '${levels.reduce((a, b) => a < b ? a : b)}%';
+    final lowest =
+        levels.isEmpty ? null : levels.reduce((a, b) => a < b ? a : b);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppMetrics.tileRadius),
@@ -549,7 +549,8 @@ class _HomeScreenState extends State<HomeScreen>
               LensPreview(
                 now: _now,
                 temperature: temperature,
-                batteryLabel: batteryLabel,
+                isDay: _weather?.isDay,
+                batteryPercent: lowest,
                 mode: _dashMode,
                 pane: _dashPane,
                 slots: _slots,
