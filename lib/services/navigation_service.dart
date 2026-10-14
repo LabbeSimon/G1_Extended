@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:notification_listener_service/notification_event.dart';
@@ -6,7 +7,10 @@ import 'package:notification_listener_service/notification_event.dart';
 import 'package:g1_extended/services/navigation_capture.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:g1_extended/models/g1/glasses_settings.dart';
+import 'package:g1_extended/models/g1/navigation.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/native_navigation.dart';
 import 'package:g1_extended/services/speedometer_service.dart';
 
 /// Puts turn-by-turn directions on the glasses by reading the notification the
@@ -36,6 +40,15 @@ class NavigationService {
   };
 
   static const String _enabledKey = 'navigation_enabled';
+  static const String _nativeKey = 'navigation_native';
+
+  /// Countries that drive on the left, where roundabouts and U-turns turn
+  /// clockwise on the glasses' arrows.
+  static const Set<String> _leftHandTraffic = {
+    'GB', 'IE', 'AU', 'NZ', 'IN', 'ZA', 'JP', 'HK', 'SG', 'MY', 'TH', 'ID',
+    'KE', 'CY', 'MT', 'PK', 'BD', 'LK', 'MU', 'JM', 'TT', 'BB', 'BS', 'UG',
+    'TZ', 'ZM', 'ZW', 'BW', 'NA', 'MZ',
+  };
 
   /// Redrawing the lens faster than this is unreadable and drains the battery.
   static const Duration _minimumInterval = Duration(seconds: 2);
@@ -61,6 +74,26 @@ class NavigationService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_enabledKey, enabled);
     if (!enabled) await _clear();
+  }
+
+  /// Whether directions use the glasses' own navigation screen — an arrow,
+  /// the distance and the road, where the official app puts them — rather
+  /// than a line of text.
+  Future<bool> isNativeEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_nativeKey) ?? true;
+  }
+
+  Future<void> setNativeEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_nativeKey, enabled);
+    await _clear();
+  }
+
+  static bool get _drivesOnTheLeft {
+    final parts = Platform.localeName.split(RegExp('[_-]'));
+    return parts.length > 1 &&
+        _leftHandTraffic.contains(parts[1].toUpperCase());
   }
 
   /// True when this notification is a navigation instruction rather than
@@ -99,7 +132,14 @@ class NavigationService {
     final instruction = format(notification.title, notification.content);
     if (instruction == null) return true;
 
-    await _push(instruction);
+    await _push(
+      instruction,
+      NavigationRoute.parse(
+        notification.title,
+        notification.content,
+        leftHandTraffic: _drivesOnTheLeft,
+      ),
+    );
     return true;
   }
 
@@ -124,7 +164,7 @@ class NavigationService {
     return '$manoeuvre\n$road';
   }
 
-  Future<void> _push(String instruction) async {
+  Future<void> _push(String instruction, NavigationRoute? route) async {
     if (instruction == _lastInstruction) {
       _restartExpiry();
       return;
@@ -140,6 +180,18 @@ class NavigationService {
     _restartExpiry();
 
     final speed = SpeedometerService.singleton.label;
+
+    // The glasses' own navigation screen first. Plain text only when it is
+    // switched off, or when the glasses would not open it.
+    if (route != null && await isNativeEnabled()) {
+      final native = NativeNavigation.singleton;
+      if (route.arrived && native.isOpen) {
+        await native.arrive(route.road.isEmpty ? instruction : route.road);
+        return;
+      }
+      if (await native.show(route, speed: speed ?? '')) return;
+    }
+
     final line = speed == null ? instruction : '$instruction  ·  $speed';
 
     try {
@@ -165,7 +217,13 @@ class NavigationService {
     _lastSent = null;
 
     try {
-      await BluetoothManager.singleton.clearGlassesDisplay();
+      if (NativeNavigation.singleton.isOpen) {
+        await NativeNavigation.singleton.close();
+      } else {
+        // Exit to the dashboard. Blank text left the text window up.
+        await BluetoothManager.singleton
+            .sendCommandToGlasses(ClearScreen.buildCommand());
+      }
     } catch (e) {
       debugPrint('NavigationService: could not clear the display: $e');
     }

@@ -28,6 +28,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   String _query = '';
   bool _loading = true;
   bool _navigation = true;
+  bool _nativeNavigation = true;
   bool _nowPlaying = true;
   bool _noteSlot = true;
 
@@ -40,6 +41,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   Future<void> _load() async {
     _blocklist = Hive.box('notificationBlocklist');
     _navigation = await NavigationService.singleton.isEnabled();
+    _nativeNavigation =
+        await NavigationService.singleton.isNativeEnabled();
     _nowPlaying = await NowPlayingService.singleton.isEnabled();
     _noteSlot = await BluetoothManager().isNotificationNoteSlotEnabled();
 
@@ -132,6 +135,20 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                     if (mounted) setState(() => _navigation = value);
                   },
                 ),
+                if (_navigation)
+                  SwitchListTile(
+                    value: _nativeNavigation,
+                    title: const Text('Glasses navigation screen'),
+                    subtitle: const Text(
+                      'The arrow, the distance and the road on the glasses\' '
+                      'own navigation screen, as the official app shows them. '
+                      'Off: a line of text.',
+                    ),
+                    onChanged: (value) async {
+                      await NavigationService.singleton.setNativeEnabled(value);
+                      if (mounted) setState(() => _nativeNavigation = value);
+                    },
+                  ),
                 SwitchListTile(
                   value: _nowPlaying,
                   title: const Text('Now playing'),
