@@ -86,6 +86,10 @@ class DictationService {
   final StreamController<Dictation> _controller =
       StreamController<Dictation>.broadcast();
 
+  /// Bumped on every lens message, so a scheduled clear only fires if nothing
+  /// newer has been shown since.
+  int _displayToken = 0;
+
   /// Emits every new dictation as it is captured.
   Stream<Dictation> get stream => _controller.stream;
 
@@ -149,11 +153,7 @@ class DictationService {
     );
 
     if (showOnGlasses) {
-      try {
-        await BluetoothManager.singleton.sendPriorityText(trimmed);
-      } catch (e) {
-        debugPrint('DictationService: could not display on glasses: $e');
-      }
+      await _show(trimmed);
     }
 
     await _persist(entry);
@@ -179,11 +179,7 @@ class DictationService {
     final where = note.pinnedSlot != null
         ? 'Noted · slot ${note.pinnedSlot}'
         : 'Noted · on the phone';
-    try {
-      await BluetoothManager.singleton.sendPriorityText('$where\n$text');
-    } catch (e) {
-      debugPrint('DictationService: could not confirm the note: $e');
-    }
+    await _show('$where\n$text');
 
     await _persist(Dictation(
       text: text,
@@ -208,11 +204,7 @@ class DictationService {
     final outcome = await VoiceCommandRunner.singleton.run(command);
     if (outcome.isEmpty) return;
 
-    try {
-      await BluetoothManager.singleton.sendPriorityText(outcome);
-    } catch (e) {
-      debugPrint('DictationService: could not show the outcome: $e');
-    }
+    await _show(outcome);
 
     await _persist(Dictation(
       text: outcome,
@@ -251,26 +243,48 @@ class DictationService {
   /// displayed like an answer on purpose — "The token was refused" on the
   /// lens is how someone finds out their setup is wrong, where a silent
   /// return leaves them tapping the temple again.
+  /// Shows [text] on the lens and, unless told otherwise, clears it once
+  /// there has been time to read it.
+  ///
+  /// The glasses hold whatever was last sent until something replaces or
+  /// clears it: left alone, an answer or a confirmation stays on the lens
+  /// for good, which is what "the glasses don't clear it" looks like. The
+  /// official app faces the same thing and exits its AI screen a few seconds
+  /// after the answer; this mirrors that, scaled to how much there is to read.
+  Future<void> _show(String text, {bool clearAfter = true}) async {
+    final bluetooth = BluetoothManager.singleton;
+    final token = ++_displayToken;
+    try {
+      await bluetooth.sendPriorityText(text);
+    } catch (e) {
+      debugPrint('DictationService: could not display on glasses: $e');
+      return;
+    }
+    if (!clearAfter) return;
+
+    final seconds = (text.length / 8).clamp(8, 20).round();
+    Future.delayed(Duration(seconds: seconds), () async {
+      // A newer message took the lens in the meantime: leave it be.
+      if (token != _displayToken) return;
+      try {
+        await bluetooth.clearGlassesDisplay();
+      } catch (e) {
+        debugPrint('DictationService: could not clear the lens: $e');
+      }
+    });
+  }
+
   Future<void> _askAndShow(
     String question,
     DictationSource source,
     Future<String> Function() answer,
   ) async {
-    final bluetooth = BluetoothManager.singleton;
-
-    try {
-      await bluetooth.sendPriorityText('$question\n…');
-    } catch (e) {
-      debugPrint('DictationService: could not echo the question: $e');
-    }
+    // The question stays up while the answer is fetched; the answer replaces
+    // it and is what gets cleared.
+    await _show('$question\n…', clearAfter: false);
 
     final text = await answer();
-
-    try {
-      await bluetooth.sendPriorityText(text);
-    } catch (e) {
-      debugPrint('DictationService: could not display the answer: $e');
-    }
+    await _show(text);
 
     await _persist(Dictation(
       text: '$question\n$text',
