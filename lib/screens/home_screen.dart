@@ -713,13 +713,13 @@ class _HomeScreenState extends State<HomeScreen>
     final subtitle = !_assistantSetUp
         ? (isClaude
             ? 'Not set up · paste a Claude key'
-            : 'Not set up · add your endpoint')
+            : 'Not set up · connect Home Assistant')
         : !_assistantOn
             ? 'Off · tap to turn it on'
             : _assistantNeedsModel
                 ? 'Needs the speech model · tap to set it up'
-                : '${isClaude ? 'Claude' : 'Your model'} · hold the left '
-                    'temple and ask';
+                : '${isClaude ? 'Claude' : 'Home Assistant'} · hold the '
+                    'left temple and ask';
 
     return SizedBox(
       height: 84,

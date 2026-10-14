@@ -42,9 +42,9 @@ feature plainly needs, and can be turned off. Claude is the strongest case to
 watch: it sends the question you asked to Anthropic. It earns its place only
 because it is off by default, uses a key *you* obtained and pasted (no account
 and no bundled credential — exactly the sign-in the fork was created to
-remove), is announced in `PRIVACY.md`, and sits beside a self-hosted
-alternative that keeps everything on a machine you own. The user-configured
-endpoints — a Home Assistant address, a self-hosted model, a URL inside a card
+remove), is announced in `PRIVACY.md`, and sits beside the user's own Home
+Assistant, which keeps everything on a machine they own. The user-configured
+endpoints — a Home Assistant address, a URL inside a card
 you installed — are the user's own servers and are not counted here.
 
 What stays rejected on sight is anything the *app* phones home with on its own

@@ -47,80 +47,6 @@ void main() {
     });
   });
 
-  group('Working out the endpoint', () {
-    test('accepts a bare host and port', () {
-      expect(
-        AssistantService.endpointFor('http://192.168.1.20:11434').toString(),
-        'http://192.168.1.20:11434/v1/chat/completions',
-      );
-    });
-
-    test('assumes http when no scheme is typed', () {
-      // People type an address, not a URL.
-      expect(
-        AssistantService.endpointFor('192.168.1.20:11434').toString(),
-        'http://192.168.1.20:11434/v1/chat/completions',
-      );
-    });
-
-    test('does not double up when /v1 is already there', () {
-      expect(
-        AssistantService.endpointFor('https://api.example.com/v1').toString(),
-        'https://api.example.com/v1/chat/completions',
-      );
-    });
-
-    test('leaves a full path alone', () {
-      const full = 'https://api.example.com/v1/chat/completions';
-      expect(AssistantService.endpointFor(full).toString(), full);
-    });
-
-    test('forgives trailing slashes', () {
-      expect(
-        AssistantService.endpointFor('http://host:11434///').toString(),
-        'http://host:11434/v1/chat/completions',
-      );
-    });
-
-    test('gives nothing for an empty field', () {
-      expect(AssistantService.endpointFor(''), isNull);
-      expect(AssistantService.endpointFor('   '), isNull);
-    });
-  });
-
-  group('Reading the answer', () {
-    test('pulls the content out of a chat completion', () {
-      final body = {
-        'choices': [
-          {
-            'message': {'role': 'assistant', 'content': 'It is 21 degrees.'},
-          },
-        ],
-      };
-      expect(AssistantService.answerFrom(body), 'It is 21 degrees.');
-    });
-
-    test('survives a reply shaped differently than expected', () {
-      expect(AssistantService.answerFrom({}), isNull);
-      expect(AssistantService.answerFrom({'choices': []}), isNull);
-      expect(
-          AssistantService.answerFrom({
-            'choices': [{}]
-          }),
-          isNull);
-      expect(
-        AssistantService.answerFrom({
-          'choices': [
-            {
-              'message': {'content': 42}
-            },
-          ],
-        }),
-        isNull,
-      );
-    });
-  });
-
   group('Fitting an answer on the lens', () {
     test('strips the markdown a model insists on producing', () {
       expect(
@@ -173,14 +99,28 @@ void main() {
       expect(await assistant.isConfigured(), isTrue);
     });
 
-    test('a hosted model needs an endpoint and a model', () async {
+    test('Home Assistant counts once the house is connected', () async {
       final assistant = AssistantService.singleton;
-      await assistant.setProvider(AssistantProvider.openAiCompatible);
-      await assistant.setBaseUrl('192.168.1.20:11434');
+      await assistant.setProvider(AssistantProvider.homeAssistant);
       expect(await assistant.hasCredentials(), isFalse);
 
-      await assistant.setModel('qwen3:4b');
+      SharedPreferences.setMockInitialValues({
+        'assistant_provider': 'ha',
+        'home_assistant_enabled': true,
+        'home_assistant_base_url': 'http://192.168.1.20:8123',
+      });
+      FlutterSecureStorage.setMockInitialValues({
+        'home_assistant_token': 'a-long-lived-token',
+      });
       expect(await assistant.hasCredentials(), isTrue);
+    });
+
+    test('the old self-hosted setting falls back to Claude', () async {
+      SharedPreferences.setMockInitialValues({'assistant_provider': 'openai'});
+      expect(
+        await AssistantService.singleton.provider(),
+        AssistantProvider.claude,
+      );
     });
   });
 }

@@ -68,8 +68,9 @@ still an independent project, not made or endorsed by Even Realities.
 - A teleprompter that follows your voice, or a set pace, or your thumb
 - Your own lines on the lens, built from live values or a URL you choose
 - Optionally, an assistant: hold the left temple, ask, and read the answer
-  on the lens. Claude with your own API key, or a model you host; never a
-  bundled one, and only ever the transcribed text, never the audio
+  on the lens. Claude with your own API key, or your own Home Assistant and
+  whichever agent it runs (a model you host included); never a bundled one,
+  and only ever the transcribed text, never the audio
 - Dictation: hold a temple touchpad, speak, see the text on the lens
 - Optionally, your house: speak to Home Assistant and read a few of its
   values on the lens
@@ -149,7 +150,6 @@ optional:
 - `api.github.com` to check for a newer release, if you leave that on
 - `raw.githubusercontent.com` for the extension catalogue, when you ask for it
 - `api.anthropic.com` for Claude, the assistant, once you paste your own API key
-- or an assistant endpoint you chose instead, if you configured one
 - your own Home Assistant, if you connected one
 
 ## Privacy

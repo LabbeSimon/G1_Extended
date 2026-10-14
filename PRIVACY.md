@@ -68,8 +68,8 @@ question and the brevity prompt are sent to Anthropic with your key, and the
 answer comes back to the lens. The audio never travels: speech is turned into
 text on the phone first. Anthropic sees the request under your own key and
 handles it under their terms, which this project does not control:
-<https://www.anthropic.com/legal/privacy>. Choose the self-hosted assistant
-instead to keep everything on a machine you own.
+<https://www.anthropic.com/legal/privacy>. Choose Home Assistant as the
+assistant instead to keep everything on a machine you own.
 
 **The Home Assistant address you type** — only if you switch on Home
 Assistant in Settings and enter your own instance's address and access

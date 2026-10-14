@@ -6,6 +6,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:g1_extended/services/home_assistant_service.dart';
+
 /// How a request to the assistant ended.
 sealed class AssistantResult {
   const AssistantResult();
@@ -26,19 +28,19 @@ enum AssistantProvider {
   /// Claude, through the Anthropic API with a key the user pastes in.
   claude,
 
-  /// Any OpenAI-compatible endpoint: Ollama, LM Studio, llama.cpp, or a
-  /// commercial service, at an address the user types.
-  openAiCompatible,
+  /// The user's own Home Assistant, through its conversation agent: the
+  /// built-in one, or any model added to it — Claude, Ollama — which shows
+  /// up there as a `conversation.*` entity.
+  homeAssistant,
 }
 
 /// Sends a question to an assistant and brings back an answer short enough to
 /// read on a lens.
 ///
-/// Two providers, both the user's choice and both off until they turn one on.
-/// Claude is offered first because it needs only a key, not a server to run;
-/// but the app contacts nothing until a key is in the keystore, and the
-/// OpenAI-compatible provider still lets the whole thing stay on a machine the
-/// user owns, where no question ever leaves their network.
+/// Two providers, both the user's choice and both off until they turn one on:
+/// Claude with a key the user pasted, or their own Home Assistant. A model
+/// the user hosts goes through the second — added to Home Assistant, it is
+/// one more agent there — so no question need leave their network.
 ///
 /// This is not the account-bound assistant that was carved out of the fork:
 /// there is no sign-in and no bundled credential. Claude here means an API key
@@ -50,7 +52,7 @@ class AssistantService {
 
   static const _enabledKey = 'assistant_enabled';
   static const _providerKey = 'assistant_provider';
-  static const _baseUrlKey = 'assistant_base_url';
+  static const _haAgentKey = 'assistant_ha_agent';
   static const _modelKey = 'assistant_model';
   static const _promptKey = 'assistant_prompt';
   static const _apiKeyKey = 'assistant_api_key';
@@ -100,8 +102,10 @@ class AssistantService {
 
   Future<AssistantProvider> provider() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_providerKey) == 'openai'
-        ? AssistantProvider.openAiCompatible
+    // 'openai' was the self-hosted provider, now reached through Home
+    // Assistant; whoever had it set falls back to Claude, off until a key.
+    return prefs.getString(_providerKey) == 'ha'
+        ? AssistantProvider.homeAssistant
         : AssistantProvider.claude;
   }
 
@@ -109,18 +113,20 @@ class AssistantService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _providerKey,
-      value == AssistantProvider.openAiCompatible ? 'openai' : 'claude',
+      value == AssistantProvider.homeAssistant ? 'ha' : 'claude',
     );
   }
 
-  Future<String> baseUrl() async {
+  /// The Home Assistant agent to ask, as its entity id. Empty means Home
+  /// Assistant's own default.
+  Future<String> haAgent() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_baseUrlKey) ?? '';
+    return prefs.getString(_haAgentKey) ?? '';
   }
 
-  Future<void> setBaseUrl(String value) async {
+  Future<void> setHaAgent(String value) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_baseUrlKey, value.trim());
+    await prefs.setString(_haAgentKey, value.trim());
   }
 
   Future<String> model() async {
@@ -174,41 +180,16 @@ class AssistantService {
   Future<bool> isConfigured() async =>
       await isEnabled() && await hasCredentials();
 
-  /// True when the chosen provider has what it needs — a key for Claude, an
-  /// endpoint and a model for one you host — switched on or not.
+  /// True when the chosen provider has what it needs — a key for Claude, a
+  /// connected Home Assistant for the other — switched on or not.
   Future<bool> hasCredentials() async {
     switch (await provider()) {
       case AssistantProvider.claude:
         final key = await apiKey();
         return key != null && key.isNotEmpty;
-      case AssistantProvider.openAiCompatible:
-        return endpointFor(await baseUrl()) != null &&
-            (await model()).isNotEmpty;
+      case AssistantProvider.homeAssistant:
+        return HomeAssistantService.singleton.isConfigured();
     }
-  }
-
-  /// Turns whatever the user typed into the completions endpoint.
-  ///
-  /// People paste `http://192.168.1.20:11434`, or the same with `/v1`, or the
-  /// full path. All three should work rather than failing on a trailing
-  /// slash. Plain http is allowed here, unlike everywhere else in the app,
-  /// because a self-hosted model on a home network has no certificate and
-  /// refusing it would rule out the best reason to use this at all.
-  @visibleForTesting
-  static Uri? endpointFor(String input) {
-    var text = input.trim();
-    if (text.isEmpty) return null;
-
-    if (!text.startsWith('http://') && !text.startsWith('https://')) {
-      text = 'http://$text';
-    }
-    while (text.endsWith('/')) {
-      text = text.substring(0, text.length - 1);
-    }
-
-    if (text.endsWith('/chat/completions')) return Uri.tryParse(text);
-    if (text.endsWith('/v1')) return Uri.tryParse('$text/chat/completions');
-    return Uri.tryParse('$text/v1/chat/completions');
   }
 
   /// Pulls the reply out of an Anthropic Messages response: the text of the
@@ -224,21 +205,6 @@ class AssistantService {
       }
     }
     return null;
-  }
-
-  /// Pulls the reply out of a chat completions response.
-  @visibleForTesting
-  static String? answerFrom(Map<String, dynamic> body) {
-    final choices = body['choices'];
-    if (choices is! List || choices.isEmpty) return null;
-
-    final message = (choices.first as Map)['message'];
-    if (message is! Map) return null;
-
-    final content = message['content'];
-    if (content is! String) return null;
-
-    return shorten(content);
   }
 
   /// Collapses an answer into something a lens can hold.
@@ -268,7 +234,7 @@ class AssistantService {
 
     return switch (await provider()) {
       AssistantProvider.claude => _askClaude(trimmed),
-      AssistantProvider.openAiCompatible => _askOpenAi(trimmed),
+      AssistantProvider.homeAssistant => _askHomeAssistant(trimmed),
     };
   }
 
@@ -321,58 +287,15 @@ class AssistantService {
     }
   }
 
-  /// Asks an OpenAI-compatible endpoint.
-  Future<AssistantResult> _askOpenAi(String trimmed) async {
-    final endpoint = endpointFor(await baseUrl());
-    if (endpoint == null) {
-      return const AssistantFailure('No endpoint set');
-    }
-
-    final chosenModel = await model();
-    if (chosenModel.isEmpty) {
-      return const AssistantFailure('No model set');
-    }
-
-    final key = await apiKey();
-
-    try {
-      final response = await http
-          .post(
-            endpoint,
-            headers: {
-              'Content-Type': 'application/json',
-              if (key != null && key.isNotEmpty) 'Authorization': 'Bearer $key',
-            },
-            body: jsonEncode({
-              'model': chosenModel,
-              'messages': [
-                {'role': 'system', 'content': await prompt()},
-                {'role': 'user', 'content': trimmed},
-              ],
-              'stream': false,
-            }),
-          )
-          .timeout(timeout);
-
-      if (response.statusCode != 200) {
-        return AssistantFailure('Endpoint returned ${response.statusCode}');
-      }
-
-      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-      if (decoded is! Map<String, dynamic>) {
-        return const AssistantFailure('Unexpected reply');
-      }
-
-      final answer = answerFrom(decoded);
-      if (answer == null || answer.isEmpty) {
-        return const AssistantFailure('Empty answer');
-      }
-      return AssistantAnswer(answer);
-    } on TimeoutException {
-      return const AssistantFailure('Timed out');
-    } catch (e) {
-      debugPrint('AssistantService: request failed: $e');
-      return AssistantFailure('Could not reach the endpoint');
-    }
+  /// Asks Home Assistant's conversation agent: the one chosen in the
+  /// assistant screen, or Home Assistant's default.
+  Future<AssistantResult> _askHomeAssistant(String question) async {
+    final agent = await haAgent();
+    final result = await HomeAssistantService.singleton
+        .converse(question, agentId: agent.isEmpty ? null : agent);
+    return switch (result) {
+      HaOk(:final text) => AssistantAnswer(shorten(text)),
+      HaFailure(:final reason) => AssistantFailure(reason),
+    };
   }
 }
