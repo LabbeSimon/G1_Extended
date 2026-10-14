@@ -7,7 +7,6 @@ import 'dart:typed_data';
 /// without a pair of glasses on the desk.
 abstract final class SettingsCommands {
   static const int dashboard = 0x06;
-  static const int setDebugMode = 0xF4;
 
   static const int setBrightness = 0x01;
   static const int getBrightness = 0x29;
@@ -102,12 +101,13 @@ class HeadUpAngle {
   static Uint8List buildGetCommand() =>
       Uint8List.fromList([SettingsCommands.getHeadUpAngle]);
 
-  /// Response is `32 6d 0f <angle> ...`.
+  /// Response is `32 <status> <angle> <level>`: the official app reads the
+  /// angle at byte 2 and a small level (0 to 2) at byte 3.
   static HeadUpAngle? parseResponse(List<int> data) {
-    if (data.length < 4 || data[0] != SettingsCommands.getHeadUpAngle) {
+    if (data.length < 3 || data[0] != SettingsCommands.getHeadUpAngle) {
       return null;
     }
-    return HeadUpAngle(data[3].clamp(0, maxDegrees));
+    return HeadUpAngle(data[2].clamp(0, maxDegrees));
   }
 }
 
@@ -143,11 +143,10 @@ class DisplayPosition {
   static Uint8List buildGetCommand() =>
       Uint8List.fromList([SettingsCommands.getDisplayPosition]);
 
-  /// Response is `3B C9 <height> <depth>`.
+  /// Response is `3B <status> <height> <depth>`. The official app reads the
+  /// two values without looking at the status byte.
   static DisplayPosition? parseResponse(List<int> data) {
-    if (data.length < 4 ||
-        data[0] != SettingsCommands.getDisplayPosition ||
-        data[1] != SettingsCommands.responseSuccess) {
+    if (data.length < 4 || data[0] != SettingsCommands.getDisplayPosition) {
       return null;
     }
     return DisplayPosition(
@@ -168,14 +167,12 @@ abstract final class WearDetection {
   static Uint8List buildGetCommand() =>
       Uint8List.fromList([SettingsCommands.getWearDetection]);
 
-  /// Response is `3A C9 <enabled>`.
+  /// Response is `3A <status> <enabled>`, enabled being 0x01 or 0xFF.
   static bool? parseResponse(List<int> data) {
-    if (data.length < 3 ||
-        data[0] != SettingsCommands.getWearDetection ||
-        data[1] != SettingsCommands.responseSuccess) {
+    if (data.length < 3 || data[0] != SettingsCommands.getWearDetection) {
       return null;
     }
-    return data[2] == 0x01;
+    return data[2] == 0x01 || data[2] == 0xFF;
   }
 }
 
@@ -184,10 +181,12 @@ abstract final class SilentMode {
   static const int _on = 0x0C;
   static const int _off = 0x0A;
 
-  /// `03 0C` to enable, `03 0A` to disable — both arms.
+  /// `03 0C 00` to enable, `03 0A 00` to disable — both arms. The official
+  /// app always sends the third byte.
   static Uint8List buildSetCommand(bool enabled) => Uint8List.fromList([
         SettingsCommands.setSilentMode,
         enabled ? _on : _off,
+        0x00,
       ]);
 
   static Uint8List buildGetCommand() =>
@@ -224,13 +223,18 @@ abstract final class DeviceInfo {
     return text.isEmpty ? null : text;
   }
 
-  /// Response is `37 <uint32 little endian seconds> ...`.
+  /// Response is `37 <status> <uint32 little endian seconds>`: the official
+  /// app reads bytes 2 to 5. A five-byte reply, as in the community
+  /// document's example, carries the value at 1 to 4.
   static Duration? parseUptime(List<int> data) {
     if (data.length < 5 || data[0] != SettingsCommands.timeSinceBoot) {
       return null;
     }
-    final seconds =
-        data[1] | (data[2] << 8) | (data[3] << 16) | (data[4] << 24);
+    final at = data.length >= 6 ? 2 : 1;
+    final seconds = data[at] |
+        (data[at + 1] << 8) |
+        (data[at + 2] << 16) |
+        (data[at + 3] << 24);
     return Duration(seconds: seconds);
   }
 }
@@ -303,15 +307,6 @@ abstract final class DashboardLayoutCommand {
       mode.hasSecondaryPane ? pane.id : 0x00,
     ]);
   }
-}
-
-/// Some settings, height and depth among them, are only accepted while the
-/// glasses are in debug mode. Turning it on is a single byte.
-abstract final class DebugMode {
-  static Uint8List buildSetCommand(bool enabled) => Uint8List.fromList([
-        SettingsCommands.setDebugMode,
-        enabled ? 0x01 : 0x00,
-      ]);
 }
 
 

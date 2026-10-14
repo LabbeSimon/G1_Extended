@@ -107,7 +107,7 @@ class GlassesSettingsService {
   }) async {
     final sequence = _displaySequence = (_displaySequence + 1) & 0xFF;
 
-    await setDebugMode(true);
+    // The official app needs no debug mode for this: preview, then commit.
     try {
       await _sendBoth(
         position.buildSetCommand(sequence: sequence, preview: true),
@@ -117,7 +117,6 @@ class GlassesSettingsService {
       await _sendBoth(
         position.buildSetCommand(sequence: sequence, preview: false),
       );
-      await setDebugMode(false);
     }
 
     await _remember('glasses_display_height', position.height);
@@ -137,12 +136,6 @@ class GlassesSettingsService {
     ));
     await _remember('dashboard_mode', mode.index);
     await _remember('dashboard_pane', pane.index);
-  }
-
-  /// Height and depth are only accepted while the glasses are in debug mode,
-  /// so it is turned on for the length of the change and off again after.
-  Future<void> setDebugMode(bool enabled) async {
-    await _sendBoth(DebugMode.buildSetCommand(enabled));
   }
 
   Future<void> setWearDetection(bool enabled) async {

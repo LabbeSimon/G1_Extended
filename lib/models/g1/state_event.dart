@@ -6,8 +6,8 @@
 /// `debugPrint` and stopped there — a head lifted, a pair taken off, the
 /// case opened, the dashboard closed, all of it discarded.
 ///
-/// The table below is the community's, cross-checked between openg1-sdk's
-/// protocol specification and g1bridge. Naming an event is not the same as
+/// The table below is the official app's (1.6.5, see
+/// docs/protocol/transport.md), which supersedes the community's. Naming an event is not the same as
 /// acting on it: nothing here changes what the app does. It makes the
 /// glasses' own reports readable, which is the step before deciding which
 /// of them are worth a behaviour.
@@ -16,23 +16,29 @@ enum StateEvent {
   touchbarSingleTap(0x01, 'Single tap'),
   headUp(0x02, 'Head up'),
   headDown(0x03, 'Head down'),
-  touchbarTripleTap(0x04, 'Triple tap'),
-  touchbarTripleTapAlt(0x05, 'Triple tap (alt)'),
+  silentModeOn(0x04, 'Silent mode on'),
+  silentModeOff(0x05, 'Silent mode off'),
   glassesWorn(0x06, 'Glasses worn'),
   glassesRemoved(0x07, 'Glasses removed'),
-  caseLidOpen(0x08, 'Case opened'),
+  inCaseLidOpen(0x08, 'In the case, lid open'),
   chargingState(0x09, 'Charging state'),
-  unknown0A(0x0A, 'Unknown 0x0A'),
-  caseLidClosed(0x0B, 'Case closed'),
+  glassesBattery(0x0A, 'Glasses battery'),
+  inCaseLidClosed(0x0B, 'In the case, lid closed'),
   caseCharging(0x0E, 'Case charging'),
   caseBattery(0x0F, 'Case battery'),
+  headUpEnded(0x10, 'Head-up display ended'),
   blePaired(0x11, 'BLE paired'),
   unknown12(0x12, 'Unknown 0x12'),
+  onboardingDashboardStart(0x13, 'Onboarding: dashboard begins'),
+  onboardingDashboardEnd(0x14, 'Onboarding: dashboard ends'),
+  onboardingNotificationStart(0x15, 'Onboarding: notification begins'),
+  onboardingNotificationEnd(0x16, 'Onboarding: notification ends'),
   touchbarHoldStart(0x17, 'Hold start'),
   touchbarHoldEnd(0x18, 'Hold end'),
+  touchbarDoubleTapContinue(0x19, 'Double tap to continue'),
   dashboardOpened(0x1E, 'Dashboard opened'),
   dashboardClosed(0x1F, 'Dashboard closed'),
-  translateTranscribeToggle(0x20, 'Translate/transcribe toggle');
+  doubleTapShortcut(0x20, 'Double tap shortcut');
 
   const StateEvent(this.id, this.label);
 

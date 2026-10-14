@@ -41,8 +41,12 @@ void main() {
           HeadUpAngle.maxDegrees);
     });
 
-    test('parses the angle out of a get response', () {
-      expect(HeadUpAngle.parseResponse([0x32, 0x6d, 0x0f, 0x1E])?.degrees, 30);
+    test('reads the angle at byte 2, as the official app does', () {
+      expect(HeadUpAngle.parseResponse([0x32, 0xC9, 0x1E, 0x01])?.degrees, 30);
+    });
+
+    test('does not take the level byte for the angle', () {
+      expect(HeadUpAngle.parseResponse([0x32, 0xC9, 0x0F, 0x02])?.degrees, 15);
     });
   });
 
@@ -76,15 +80,17 @@ void main() {
       expect(position?.depth, 6);
     });
 
-    test('rejects a failure response', () {
-      expect(DisplayPosition.parseResponse([0x3B, 0xCA, 0x03, 0x06]), isNull);
+    test('reads the values whatever the status byte, as the official app does',
+        () {
+      expect(DisplayPosition.parseResponse([0x3B, 0x00, 0x03, 0x06])?.height, 3);
+      expect(DisplayPosition.parseResponse([0x3C, 0xC9, 0x03, 0x06]), isNull);
     });
   });
 
   group('SilentMode', () {
     test('uses the documented on and off subcommands', () {
-      expect(SilentMode.buildSetCommand(true), [0x03, 0x0C]);
-      expect(SilentMode.buildSetCommand(false), [0x03, 0x0A]);
+      expect(SilentMode.buildSetCommand(true), [0x03, 0x0C, 0x00]);
+      expect(SilentMode.buildSetCommand(false), [0x03, 0x0A, 0x00]);
     });
 
     test('parses both states from a get response', () {
@@ -101,6 +107,8 @@ void main() {
 
     test('parses a get response', () {
       expect(WearDetection.parseResponse([0x3A, 0xC9, 0x01]), isTrue);
+      expect(WearDetection.parseResponse([0x3A, 0xC9, 0xFF]), isTrue);
+      expect(WearDetection.parseResponse([0x3A, 0xC9, 0x00]), isFalse);
     });
   });
 
@@ -117,6 +125,13 @@ void main() {
     test('decodes uptime as little endian seconds', () {
       expect(
         DeviceInfo.parseUptime([0x37, 0x49, 0x1a, 0x00, 0x00]),
+        const Duration(seconds: 0x1a49),
+      );
+    });
+
+    test('skips the status byte when the reply carries one', () {
+      expect(
+        DeviceInfo.parseUptime([0x37, 0xC9, 0x49, 0x1a, 0x00, 0x00]),
         const Duration(seconds: 0x1a49),
       );
     });
@@ -201,13 +216,6 @@ void main() {
         sequence: 260,
       );
       expect(command[3], 260 & 0xFF);
-    });
-  });
-
-  group('DebugMode', () {
-    test('is a single byte either way', () {
-      expect(DebugMode.buildSetCommand(true), [0xF4, 0x01]);
-      expect(DebugMode.buildSetCommand(false), [0xF4, 0x00]);
     });
   });
 
