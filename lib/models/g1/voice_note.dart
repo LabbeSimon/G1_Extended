@@ -22,6 +22,19 @@ class VoiceNote {
     this.crc,
   });
 
+  /// Asks the right temple which recordings its flash holds. The answer has
+  /// the layout of a 0x21 announcement, under 0x1E.
+  static Uint8List buildListCommand(int syncid) {
+    return Uint8List.fromList([
+      Commands.QUICK_NOTE_ADD,
+      0x06,
+      0x00,
+      syncid % 255,
+      NoteSubCommands.REQUEST_AUDIO_INFO,
+      0x01,
+    ]);
+  }
+
   Uint8List buildFetchCommand(int syncid) {
     return Uint8List.fromList([
       Commands.QUICK_NOTE_ADD,
@@ -142,7 +155,11 @@ class VoiceNoteNotification {
        7a a3 7a 67 
        de ef 2a 85
      */
-    if (data[0] != Commands.QUICK_NOTE) throw Exception('Invalid command');
+    // 0x21 is the glasses announcing a recording; 0x1E is their answer to a
+    // list request. Both carry the same list.
+    if (data[0] != Commands.QUICK_NOTE && data[0] != Commands.QUICK_NOTE_ADD) {
+      throw Exception('Invalid command');
+    }
     if (data.length < 6) throw Exception('Invalid data length');
     if (data[4] != 0x01) throw Exception('Invalid subcommand');
     int length = data[1] + (data[2] << 8);

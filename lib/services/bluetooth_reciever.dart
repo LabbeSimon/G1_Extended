@@ -38,6 +38,34 @@ class BluetoothReciever {
 
   /// The voice note being fetched from the glasses' flash, if any.
   VoiceNoteDownload? _noteDownload;
+  int? _noteDownloadCrc;
+  DateTime? _noteDownloadStarted;
+
+  /// How long a download may stay unfinished before a new list replaces it.
+  /// The official app gives a transfer ten seconds.
+  static const Duration _noteDownloadStall = Duration(seconds: 10);
+
+  /// Recordings saved during this run, by the crc the glasses list them with.
+  /// One still listed after its delete is not fetched a second time — the
+  /// official app uses the crc as a recording's identity the same way.
+  final Set<int> _savedNoteCrcs = {};
+
+  bool get _noteDownloadInFlight {
+    final started = _noteDownloadStarted;
+    return _noteDownload != null &&
+        started != null &&
+        DateTime.now().difference(started) < _noteDownloadStall;
+  }
+
+  /// Asks the right temple which recordings its flash holds (0x1E sub 0x01).
+  /// The answer carries the same list as a 0x21 announcement and goes through
+  /// the same handler, so recordings made while disconnected are fetched too.
+  Future<void> requestVoiceNoteList() async {
+    if (_isCapturing || _noteDownloadInFlight) return;
+    final right = BluetoothManager().rightGlass;
+    if (right == null) return;
+    await right.sendData(VoiceNote.buildListCommand(_noteSyncId++));
+  }
 
   /// Rolls with each 0x1E exchange, echoed back by the firmware.
   int _noteSyncId = 0;
@@ -535,22 +563,41 @@ class BluetoothReciever {
       return;
     }
 
+    // One transfer at a time: a list arriving mid-download would restart it
+    // and throw away the chunks already in.
+    if (_noteDownloadInFlight) {
+      debugPrint('[$side] Voice note list during a download, deferred');
+      return;
+    }
+
     try {
       final notif = VoiceNoteNotification(Uint8List.fromList(data));
       debugPrint('[$side] Voice notes on glasses: ${notif.entries.length}');
       if (notif.entries.isEmpty) return;
 
-      final entry = notif.entries.first;
       final right = BluetoothManager().rightGlass;
       if (right == null) {
-        debugPrint(
-            '[$side] Right temple missing, cannot fetch voice note #${entry.index}');
+        debugPrint('[$side] Right temple missing, cannot fetch voice notes');
         return;
       }
-      _noteDownload = VoiceNoteDownload(entry.index);
+
+      VoiceNote? next;
+      for (final entry in notif.entries) {
+        if (entry.crc != null && _savedNoteCrcs.contains(entry.crc)) {
+          // Already on the phone; its delete did not take. Ask again.
+          right.sendData(entry.buildDeleteCommand(_noteSyncId++));
+        } else {
+          next ??= entry;
+        }
+      }
+      if (next == null) return;
+
+      _noteDownload = VoiceNoteDownload(next.index);
+      _noteDownloadCrc = next.crc;
+      _noteDownloadStarted = DateTime.now();
       debugPrint(
-          '[$side] Fetching voice note #${entry.index} from glasses flash');
-      right.sendData(entry.buildFetchCommand(_noteSyncId++));
+          '[$side] Fetching voice note #${next.index} from glasses flash');
+      right.sendData(next.buildFetchCommand(_noteSyncId++));
     } catch (e) {
       debugPrint('[$side] Could not parse the voice note list: $e');
     }
@@ -563,6 +610,10 @@ class BluetoothReciever {
   /// done once as many packets as `total` have been counted, not when a
   /// particular index shows up — the firmware does not flag the last one.
   void handleQuickNoteAudioData(GlassSide side, List<int> data) async {
+    if (data.length > 4 && data[4] == NoteSubCommands.REQUEST_AUDIO_INFO) {
+      handleQuickNoteCommand(side, data); // The answer to a list request.
+      return;
+    }
     if (data.length > 4 && data[4] != NoteSubCommands.REQUEST_AUDIO_DATA) {
       debugPrint(
           '[$side] 0x1E subcmd 0x${data[4].toRadixString(16)}, not audio, ignored');
@@ -586,8 +637,11 @@ class BluetoothReciever {
 
     debugPrint('[$side] Voice note complete: ${download.total} packets');
     final index = download.id;
+    final crc = _noteDownloadCrc;
     final encoded = download.audio;
     _noteDownload = null;
+    _noteDownloadCrc = null;
+    _noteDownloadStarted = null;
 
     if (encoded.isEmpty) {
       debugPrint('[$side] Voice note carried no audio; glasses copy kept');
@@ -622,6 +676,7 @@ class BluetoothReciever {
 
     // Only now. The phone has it, so the slot can be freed. The id to delete
     // is the one the list gave, which is what the download echoed back.
+    if (crc != null) _savedNoteCrcs.add(crc);
     await bt.rightGlass
         ?.sendData(VoiceNote(index: index).buildDeleteCommand(_noteSyncId++));
 
@@ -631,6 +686,9 @@ class BluetoothReciever {
       pcm: kept.pcm,
       saveAsNote: true,
     );
+
+    // Recordings are fetched one at a time; ask whether more are waiting.
+    await requestVoiceNoteList();
   }
 
   /// Decodes and stores captured audio, returning null only if nothing at

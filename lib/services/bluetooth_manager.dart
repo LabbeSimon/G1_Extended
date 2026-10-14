@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:g1_extended/services/lens_emulator.dart';
 import 'package:g1_extended/services/lens_text_width.dart';
 import 'package:g1_extended/services/bluetooth_background_service.dart';
+import 'package:g1_extended/services/bluetooth_reciever.dart';
 import 'package:android_package_manager/android_package_manager.dart';
 import 'package:g1_extended/models/dashboard/dashboard.dart';
 import 'package:g1_extended/models/g1/bmp.dart';
@@ -476,6 +477,7 @@ class BluetoothManager {
     if (leftGlass?.isConnected == true && rightGlass?.isConnected == true) {
       _notifyConnectionStatusChanged();
       await _sync();
+      _fetchVoiceNotesSoon();
     }
   }
 
@@ -665,6 +667,7 @@ class BluetoothManager {
             ); // Increased delay for stability
             _notifyConnectionStatusChanged();
             await _sync();
+            _fetchVoiceNotesSoon();
           }
         }
       } catch (e) {
@@ -1205,6 +1208,15 @@ class BluetoothManager {
 
   Future<void> sync() async {
     await _sync();
+  }
+
+  /// Fetches the recordings the glasses made while the phone was away. Asked
+  /// a few seconds after the pair is up, as the official app does, once the
+  /// first burst of setup traffic has gone through.
+  void _fetchVoiceNotesSoon() {
+    Future.delayed(const Duration(seconds: 3), () {
+      if (isConnected) BluetoothReciever().requestVoiceNoteList();
+    });
   }
 
   /// Fills the glasses' four note slots from a single plan.
