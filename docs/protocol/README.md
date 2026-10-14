@@ -47,6 +47,7 @@ in an app is evidence, a byte that works on a face is proof.
 |---|---|---|
 | Recordings (`0x1E` sub `0x02`) | total at bytes 5–6, packet index at 7–8, done when the count reaches total, first 400 bytes dropped; list requested on connection and after each download | **Fixed** to match: `VoiceNoteDownload`, list requested on connection and after each saved recording |
 | Teleprompter | Its own `0x09` mode: five lines, a progress bar, one-row scroll animation, a heartbeat every 2 s | **Added** as "Glasses teleprompter" (beta, waits for real glasses); voice mode starts in the AI mode (`0x82`), the only one in which the official app opens the microphone, without the highlight dot; text pages remain as the fallback |
+| Translation (`0x1C`, `0x0F`, `0x0D`) | Start request `0x50` to the right temple, `1C 00`, both areas cleared with a lone `\r`, full redraws of up to 193 bytes per packet with lines joined by `\r`; `1C 01` then `18` to close | **Aligned** with it, with 25 languages; it used to send a stray position byte and never closed the glasses' translation screen |
 | Assistant | Even AI, through Even's servers | **Added** Claude with the user's own API key, off until a key is pasted; self-hosted endpoint unchanged |
 | `0x4B` notification | Left temple only, byte 1 is `0x00`, each packet acknowledged, six attempts | Both temples, byte 1 is `0x01`. Confirmed working on glasses (see PROTOCOL_NOTES.md), left unchanged |
 | `0x4C` dismiss | Five bytes: `4C` + message id (u32 big-endian), left temple | A bare `4C` to both temples, never tried |

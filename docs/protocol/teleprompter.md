@@ -16,7 +16,7 @@ by the right temple, so the frames that follow a successful start count again
 from 0. Responses are matched by BleManager on side + first byte (0x09, 0x24,
 0x25), not on `P`.
 
-## 0x09 sub 0x01 - start (first screen)
+## 0x09 sub 0x01 - start (first screen) - `startTeleprompt`
 
 ```
 09 LL LL P 01 T0 T1 N0 N1 CD MM PR  <UTF-8 text>  [00 x8 on the last packet]
@@ -40,7 +40,7 @@ from 0. Responses are matched by BleManager on side + first byte (0x09, 0x24,
   queue, sets its "teleprompter started" flag and resets `P` to 0.
 - The app retries the whole start up to 3 times; mode 2 (AI) also clears the pending update queue first.
 
-## 0x09 sub 0x03 / 0x07 - screen update
+## 0x09 sub 0x03 / 0x07 - screen update - `sendTeleprompterScreen`, `enqueueAction`, `doSendTelepromptScreen`
 
 ```
 09 LL LL P SS T0 T1 N0 N1 PR 00 00  <UTF-8 text>  [00 x8 on the last packet]
@@ -53,7 +53,7 @@ from 0. Responses are matched by BleManager on side + first byte (0x09, 0x24,
 - Updates go through a single-flight queue; when a new first packet (N < T)
   is enqueued, a pending stale update is dropped.
 
-## 0x09 sub 0x03 / 0x07 - AI (voice-follow) screen
+## 0x09 sub 0x03 / 0x07 - AI (voice-follow) screen - `sendAITeleprompterScreen`
 
 Same as the update, except bytes 10-11 = `position`, LE16: the character offset
 of the matched spoken word in the screen text (indent spaces included).
@@ -71,22 +71,22 @@ L timeout 300 ms, R 1000 ms.
 - Progress: AUTO/MANUAL: `lines <= 5 ? 100 : 100 * top / (lines - 5)`;
   AI: `lines <= 2 ? 100 : 100 * top / (lines - 2)` (integer division).
 
-## 0x09 sub 0x02 - run dot (AI mode)
+## 0x09 sub 0x02 - run dot (AI mode) - `sendTeleprompterRunDot`
 
 `09 10 00 P 02 X Ylo Yhi` + 8 zero bytes (16 bytes). X = progress byte,
 Y = LE16 position. Only sent once a start has succeeded (the flag set at the
 end of the start sequence); before that the app skips it.
 
-## 0x09 sub 0x05 - stop
+## 0x09 sub 0x05 - stop - `stopTelepromt`
 
 `09 06 00 P 05 01`, L then R (1000 ms each).
 
-## 0x24 - pause / resume
+## 0x24 - pause / resume - `pauseTelepromt`
 
 `24 12 00 P 06 F` + 8 zero bytes + `S` as LE32 (18 bytes). F = pause flag
 (1 paused, 0 running), S = seconds elapsed. L (500 ms) then R (1000 ms).
 
-## 0x25 sub 0x04 - heartbeat
+## 0x25 sub 0x04 - heartbeat - `sendTelepromtHeartBeat`
 
 `25 06 00 P 04 P` (P twice), right temple only, timeout 2000 ms.
 Sent every 2 s while the teleprompter runs (1 s timer, every other tick).
