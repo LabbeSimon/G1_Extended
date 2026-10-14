@@ -29,9 +29,8 @@ Future<void> showCrashReport(BuildContext context, CrashReport report) async {
           children: [
             Text(
               report.wasNativeKill
-                  ? 'Nothing was caught, so the details are thin: the process '
-                      'was ended from outside. The log leading up to it is in '
-                      'the report.'
+                  ? 'Dart caught nothing: the process was ended from '
+                      'outside. What Android says about it is in the report.'
                   : 'The details and the log leading up to it are in the '
                       'report.',
             ),

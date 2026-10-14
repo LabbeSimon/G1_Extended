@@ -6,5 +6,6 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         registerActivityLifecycleCallbacks(LifecycleDetector.activityLifecycleCallbacks)
+        CrashTrail.install(this)
     }
 }

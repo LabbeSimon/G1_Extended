@@ -36,6 +36,7 @@ class MainActivity : FlutterActivity() {
         const val CHANNEL_BATTERY = "$PACKAGE/battery_optimization"
         const val CHANNEL_INSTALL = "$PACKAGE/apk_install"
         const val CHANNEL_MEMORY = "$PACKAGE/memory"
+        const val CHANNEL_CRASH_TRAIL = "$PACKAGE/crash_trail"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,6 +87,23 @@ class MainActivity : FlutterActivity() {
                 }
             } else {
                 result.notImplemented()
+            }
+        }
+
+        // Asked once, on the launch after the app died: what Dart could not
+        // see. See CrashTrail.
+        MethodChannel(messenger, CHANNEL_CRASH_TRAIL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "takeJavaCrash" -> result.success(CrashTrail.takeJavaCrash(this))
+                "lastExit" -> result.success(
+                    try {
+                        CrashTrail.lastExit(this)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Exit history unavailable", e)
+                        null
+                    }
+                )
+                else -> result.notImplemented()
             }
         }
 
