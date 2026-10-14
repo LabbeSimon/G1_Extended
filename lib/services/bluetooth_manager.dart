@@ -1095,7 +1095,9 @@ class BluetoothManager {
     if (await NotificationApps.singleton.remember(packageName, appName)) {
       debugPrint('BluetoothManager: first notification from $packageName, '
           'refreshing the glasses allowlist');
-      unawaited(sendSetup());
+      // Awaited: with the list now read by the firmware, a notification sent
+      // before its application is on it would be filtered out.
+      await sendSetup();
     }
 
     // Into the history whether or not the glasses are reachable. It used to
