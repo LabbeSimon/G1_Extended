@@ -18,6 +18,8 @@ import 'package:shared_preferences/shared_preferences.dart'; // Added import
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
+import 'package:g1_extended/services/vosk_model_manager.dart';
+
 // Command response status codes
 const int RESPONSE_SUCCESS = 0xC9;
 const int RESPONSE_FAILURE = 0xCA;
@@ -112,12 +114,16 @@ class BluetoothReciever {
     }
     debugPrint('Starting speech recognition listener');
     _lastWords = '';
-    // TODO: Consider locale from settings? speech_to_text uses system default
+    // The chosen speech language, not the phone's system default: a French
+    // user picking French in Voice should dictate in French through either
+    // microphone, not only the glasses one.
+    final locale = (await VoskModelManager.singleton.loadSelection()).localeId;
     await _speechToText.listen(
       onResult: _onSpeechResult,
       listenOptions: SpeechListenOptions(
         listenFor: const Duration(seconds: 60),
         pauseFor: const Duration(seconds: 5),
+        localeId: locale,
       ),
     );
     _isListening = true; // Set listening status based on callback?

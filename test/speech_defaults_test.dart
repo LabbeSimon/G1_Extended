@@ -12,6 +12,11 @@ void main() {
     expect(SpeechModel.forLocale('de_DE'), SpeechModel.english);
   });
 
+  test('the chosen language drives the phone recogniser locale too', () {
+    expect(SpeechModel.french.localeId, 'fr_FR');
+    expect(SpeechModel.english.localeId, 'en_US');
+  });
+
   group('The touchpad records first, then transcribes', () {
     test('through the glasses microphone by default', () async {
       SharedPreferences.setMockInitialValues({});

@@ -20,6 +20,13 @@ class SpeechModel {
   /// ISO 639-1 code, used to pick the matching wake-word vocabulary.
   final String language;
 
+  /// The locale handed to the phone's own recogniser, so the chosen language
+  /// drives phone-microphone dictation as well as the offline Vosk model.
+  String get localeId => switch (language) {
+        'fr' => 'fr_FR',
+        _ => 'en_US',
+      };
+
   /// Shown in the interface.
   final String languageLabel;
 
