@@ -34,7 +34,8 @@ too coarse to identify a building. No device identifier, no account, no
 timestamped history. Open-Meteo's policy: <https://open-meteo.com/en/terms>.
 
 **`alphacephei.com`** — a one-off download of the offline speech recognition
-model, only if you turn on glasses-microphone dictation or the wake word. A
+model, when dictation or the assistant first needs it through the glasses
+microphone (the default), or for the wake word. A
 plain file download; no audio and nothing about you is sent, then or ever.
 After it, speech recognition runs entirely on your phone.
 
@@ -108,7 +109,10 @@ note recorded by the glasses was deleted from their flash *before* any of
 that ran, so nothing was left to retry from.
 
 So the order is now the other way round. The audio is written to your phone
-first, and only then is it transcribed. Concretely:
+first, and only then is it transcribed. That is the glasses microphone, the
+default. Choose the phone microphone in the Voice settings instead and
+Android's own recogniser listens live: nothing is recorded, and that
+recogniser is Android's, which may use the network. Concretely:
 
 - Recordings live in the app's own private storage, in
   `voice_recordings/`, readable by no other app.

@@ -75,13 +75,15 @@ still an independent project, not made or endorsed by Even Realities.
   values on the lens
 
 **Voice**
-- Speech recognition runs on the device, through Vosk or the platform recogniser
+- Recorded first, transcribed after: hold the touchpad, speak, let go, and the
+  recording is turned into text on the phone by the offline Vosk model. The
+  phone-microphone option uses Android's live recogniser instead
 - Optional wake word
 - **The audio is kept.** A recording reaches your phone's storage before it is
   transcribed, so a missing speech model or a word the recogniser did not know
   costs you a transcript, never the recording. Play, export or delete any of
   them on the Recordings screen
-- No audio is ever uploaded
+- This app never uploads audio
 
 ## Running in the background
 

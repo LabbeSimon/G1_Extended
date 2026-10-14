@@ -52,6 +52,13 @@ class SpeechModel {
   static SpeechModel byId(String id) =>
       all.firstWhere((m) => m.id == id, orElse: () => english);
 
+  /// The model for a phone language such as `fr_FR`; English when there is
+  /// none for it.
+  static SpeechModel forLocale(String locale) {
+    final language = locale.split(RegExp('[_-]')).first.toLowerCase();
+    return all.firstWhere((m) => m.language == language, orElse: () => english);
+  }
+
   @override
   String toString() => '$id ($language)';
 }

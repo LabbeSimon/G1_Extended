@@ -22,6 +22,7 @@ import 'package:g1_extended/screens/settings/permissions_screen.dart';
 import 'package:g1_extended/screens/settings_screen.dart';
 import 'package:g1_extended/services/assistant_service.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/dictation_service.dart';
 import 'package:g1_extended/services/glasses_settings_service.dart';
 import 'package:g1_extended/services/onboarding_service.dart';
 import 'package:g1_extended/services/open_meteo_weather_service.dart';
@@ -33,6 +34,7 @@ import 'package:g1_extended/services/crash_reporter.dart';
 import 'package:g1_extended/models/g1/note_slots.dart';
 import 'package:g1_extended/services/notes_library.dart';
 import 'package:g1_extended/services/speedometer_service.dart';
+import 'package:g1_extended/services/vosk_model_manager.dart';
 import 'package:g1_extended/widgets/bento.dart';
 import 'package:g1_extended/widgets/pixel_art.dart';
 import 'package:g1_extended/widgets/permission_banner.dart';
@@ -121,6 +123,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   bool _assistantSetUp = false;
   bool _assistantOn = false;
+  bool _assistantNeedsModel = false;
   AssistantProvider _assistantProvider = AssistantProvider.claude;
 
   @override
@@ -711,10 +714,12 @@ class _HomeScreenState extends State<HomeScreen>
         ? (isClaude
             ? 'Not set up · paste a Claude key'
             : 'Not set up · add your endpoint')
-        : _assistantOn
-            ? '${isClaude ? 'Claude' : 'Your model'} · hold the left temple '
-                'and ask'
-            : 'Off · tap to turn it on';
+        : !_assistantOn
+            ? 'Off · tap to turn it on'
+            : _assistantNeedsModel
+                ? 'Needs the speech model · tap to set it up'
+                : '${isClaude ? 'Claude' : 'Your model'} · hold the left '
+                    'temple and ask';
 
     return SizedBox(
       height: 84,
@@ -758,10 +763,17 @@ class _HomeScreenState extends State<HomeScreen>
     final setUp = await assistant.hasCredentials();
     final on = await assistant.isEnabled();
     final provider = await assistant.provider();
+    // Recorded through the glasses, a question needs the offline model to
+    // become text; without it the answer never comes.
+    final models = VoskModelManager.singleton;
+    await models.loadSelection();
+    final needsModel = await DictationService.usesGlassesMicrophone() &&
+        !await models.isModelInstalled();
     if (!mounted) return;
     setState(() {
       _assistantSetUp = setUp;
       _assistantOn = on;
+      _assistantNeedsModel = needsModel;
       _assistantProvider = provider;
     });
   }

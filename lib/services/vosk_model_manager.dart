@@ -42,7 +42,15 @@ class VoskModelManager {
   Future<SpeechModel> loadSelection() async {
     final prefs = await SharedPreferences.getInstance();
     final id = prefs.getString(_selectedKey);
-    if (id != null) _selected = SpeechModel.byId(id);
+    // Nothing chosen yet: the phone's own language is the best guess at what
+    // will be said. The English default heard French as noise.
+    final restored = id != null
+        ? SpeechModel.byId(id)
+        : SpeechModel.forLocale(Platform.localeName);
+    if (restored.id != _selected.id) {
+      _selected = restored;
+      _model = null;
+    }
     return _selected;
   }
 

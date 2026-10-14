@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'package:g1_extended/screens/settings/voice_settings_screen.dart';
 import 'package:g1_extended/services/assistant_service.dart';
+import 'package:g1_extended/services/dictation_service.dart';
+import 'package:g1_extended/services/vosk_model_manager.dart';
 import 'package:g1_extended/theme/app_theme.dart';
 
 /// Points the glasses at an assistant endpoint of the user's choosing.
@@ -22,6 +25,8 @@ class _AssistantScreenState extends State<AssistantScreen> {
   bool _loading = true;
   bool _enabled = false;
   bool _hadCredentials = false;
+  bool _glassesMic = true;
+  bool _speechModelReady = true;
   AssistantProvider _provider = AssistantProvider.claude;
   bool _testing = false;
   String? _testResult;
@@ -30,6 +35,21 @@ class _AssistantScreenState extends State<AssistantScreen> {
   void initState() {
     super.initState();
     _load();
+    _loadSpeech();
+  }
+
+  /// Whether a question can be understood at all: the glasses microphone
+  /// records it and needs the offline model to turn it into text.
+  Future<void> _loadSpeech() async {
+    final glassesMic = await DictationService.usesGlassesMicrophone();
+    final models = VoskModelManager.singleton;
+    await models.loadSelection();
+    final ready = !glassesMic || await models.isModelInstalled();
+    if (!mounted) return;
+    setState(() {
+      _glassesMic = glassesMic;
+      _speechModelReady = ready;
+    });
   }
 
   @override
@@ -103,6 +123,13 @@ class _AssistantScreenState extends State<AssistantScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    final speech = _glassesMic
+        ? 'Only the text of your question is sent, never the audio: it is '
+            'recorded, then turned into text on the phone by the offline model.'
+        : 'Only the text of your question is sent, never the audio. With the '
+            'phone microphone, Android\'s own recogniser turns it into text, '
+            'and it may use the network.';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Assistant'),
@@ -128,6 +155,23 @@ class _AssistantScreenState extends State<AssistantScreen> {
               style: Theme.of(context).textTheme.titleMedium,
             ),
           ),
+          if (!_speechModelReady)
+            ListTile(
+              leading: const Icon(Icons.download_outlined),
+              title: const Text('Download the speech model first'),
+              subtitle: Text(
+                'Your question is recorded, then turned into text on the '
+                'phone by an offline model '
+                '(${VoskModelManager.singleton.model.languageLabel}). A '
+                'one-time download, in Voice.',
+              ),
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const VoiceSettingsScreen()),
+                );
+                _loadSpeech();
+              },
+            ),
           SwitchListTile(
             value: _enabled,
             title: const Text('Ask an assistant'),
@@ -257,17 +301,12 @@ class _AssistantScreenState extends State<AssistantScreen> {
                       'the system prompt are sent to api.anthropic.com with '
                       'the key you paste; nothing is sent until you add one, '
                       'and there is no account or sign-in — only your key.\n\n'
-                      'The audio never travels. Speech is turned into text on '
-                      'the phone by the offline model, and only that text is '
-                      'sent. Prefer self-hosted to keep everything on a '
+                      '$speech Prefer self-hosted to keep everything on a '
                       'machine you own.'
                   : 'There is no account and no bundled credential: the app '
                       'has no idea where your questions go until you type an '
                       'address above. Point it at a machine you own and '
-                      'nothing leaves your network.\n\n'
-                      'The audio never travels. Speech is turned into text on '
-                      'the phone by the offline model, and only that text is '
-                      'sent.',
+                      'nothing leaves your network.\n\n$speech',
               style: const TextStyle(fontSize: 12),
             ),
           ),

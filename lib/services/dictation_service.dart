@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:g1_extended/services/assistant_service.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
@@ -65,6 +66,21 @@ class DictationService {
   factory DictationService() => singleton;
 
   static const String _boxName = 'dictations';
+
+  /// Where the touchpad's choice of microphone is kept.
+  static const String glassesMicrophoneKey = 'use_glasses_microphone';
+
+  /// Whether the touchpad dictates through the glasses microphone.
+  ///
+  /// The default, because that path records first and transcribes once the
+  /// touchpad is released, on the phone, with the offline model: what was
+  /// said exists before anything can go wrong with the text, as with Even AI
+  /// in the official app. The phone microphone is the other choice —
+  /// Android's own recogniser, live, with nothing recorded.
+  static Future<bool> usesGlassesMicrophone() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(glassesMicrophoneKey) ?? true;
+  }
   static const int _maxEntries = 200;
 
   final StreamController<Dictation> _controller =

@@ -166,15 +166,11 @@ class BluetoothReciever {
     }
   }
 
-  /// Which microphone the touchpad dictates through.
-  ///
-  /// The phone microphone uses the platform recogniser: more accurate, no
-  /// model to download. The glasses microphone is hands-free but goes through
-  /// the offline Vosk model. Both stay on the device.
-  Future<bool> _useGlassesMicrophone() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('use_glasses_microphone') ?? false;
-  }
+  /// Which microphone the touchpad dictates through. See
+  /// [DictationService.usesGlassesMicrophone] for why the glasses are the
+  /// default.
+  Future<bool> _useGlassesMicrophone() =>
+      DictationService.usesGlassesMicrophone();
 
   /// Requests waiting for a reply, keyed by the command byte they sent.
   ///
