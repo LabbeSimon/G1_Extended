@@ -21,6 +21,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
 
   bool _loading = true;
   bool _enabled = false;
+  bool _hadCredentials = false;
   AssistantProvider _provider = AssistantProvider.claude;
   bool _testing = false;
   String? _testResult;
@@ -47,9 +48,11 @@ class _AssistantScreenState extends State<AssistantScreen> {
     _model.text = await _assistant.model();
     _apiKey.text = await _assistant.apiKey() ?? '';
     _prompt.text = await _assistant.prompt();
+    final hadCredentials = await _assistant.hasCredentials();
     if (!mounted) return;
     setState(() {
       _enabled = enabled;
+      _hadCredentials = hadCredentials;
       _provider = provider;
       _loading = false;
     });
@@ -61,6 +64,16 @@ class _AssistantScreenState extends State<AssistantScreen> {
     await _assistant.setModel(_model.text);
     await _assistant.setApiKey(_apiKey.text);
     await _assistant.setPrompt(_prompt.text);
+
+    // Pasting a key is asking for the assistant. Making people also find the
+    // switch above left a key saved and every question shown back as plain
+    // dictation. Only the first time: someone who turned it off on purpose
+    // and then edits the prompt keeps it off.
+    if (!_hadCredentials && await _assistant.hasCredentials()) {
+      _hadCredentials = true;
+      await _assistant.setEnabled(true);
+      if (mounted) setState(() => _enabled = true);
+    }
   }
 
   bool get _isClaude => _provider == AssistantProvider.claude;
@@ -107,6 +120,14 @@ class _AssistantScreenState extends State<AssistantScreen> {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Text(
+              'Hold the left temple, ask, then let go: the answer appears on '
+              'the lens. The right temple dictates a note instead.',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
           SwitchListTile(
             value: _enabled,
             title: const Text('Ask an assistant'),

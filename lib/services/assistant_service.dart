@@ -171,8 +171,12 @@ class AssistantService {
   }
 
   /// True when there is enough configuration to try.
-  Future<bool> isConfigured() async {
-    if (!await isEnabled()) return false;
+  Future<bool> isConfigured() async =>
+      await isEnabled() && await hasCredentials();
+
+  /// True when the chosen provider has what it needs — a key for Claude, an
+  /// endpoint and a model for one you host — switched on or not.
+  Future<bool> hasCredentials() async {
     switch (await provider()) {
       case AssistantProvider.claude:
         final key = await apiKey();

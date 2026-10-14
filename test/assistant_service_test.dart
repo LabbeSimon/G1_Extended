@@ -1,5 +1,7 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:g1_extended/services/assistant_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('Reading a Claude reply', () {
@@ -150,6 +152,35 @@ void main() {
       final short = AssistantService.shorten(long);
       expect(short.length, lessThanOrEqualTo(AssistantService.maxAnswerLength));
       expect(short.endsWith('…'), isTrue);
+    });
+  });
+
+  group('What counts as set up', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      FlutterSecureStorage.setMockInitialValues({});
+    });
+
+    test('a pasted Claude key is enough, switched on or not', () async {
+      final assistant = AssistantService.singleton;
+      expect(await assistant.hasCredentials(), isFalse);
+
+      await assistant.setApiKey('sk-ant-test');
+      expect(await assistant.hasCredentials(), isTrue);
+      expect(await assistant.isConfigured(), isFalse, reason: 'still off');
+
+      await assistant.setEnabled(true);
+      expect(await assistant.isConfigured(), isTrue);
+    });
+
+    test('a hosted model needs an endpoint and a model', () async {
+      final assistant = AssistantService.singleton;
+      await assistant.setProvider(AssistantProvider.openAiCompatible);
+      await assistant.setBaseUrl('192.168.1.20:11434');
+      expect(await assistant.hasCredentials(), isFalse);
+
+      await assistant.setModel('qwen3:4b');
+      expect(await assistant.hasCredentials(), isTrue);
     });
   });
 }
