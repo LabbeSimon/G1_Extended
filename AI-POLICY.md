@@ -27,20 +27,30 @@ The same things, whoever or whatever wrote it:
 **No accounts, no telemetry, no phoning home.**
 
 This fork exists because the upstream app shipped a server that could read
-contacts, send SMS, take photos and list files on the phone. The app makes
-three network requests, each optional and user-visible:
+contacts, send SMS, take photos and list files on the phone. The hosts the
+app itself can contact are each optional and user-visible:
 
 | Host | Why |
 |---|---|
 | `api.open-meteo.com` | Weather on the glasses, if enabled |
 | `alphacephei.com` | One-off download of the offline speech model |
 | `api.github.com` | Update check, if left enabled |
+| `api.anthropic.com` | Claude, the assistant, only once you paste an API key |
 
-Every one of them is optional, carries nothing about the user, and can be
-turned off. Anything that adds a fourth on weaker terms is rejected on sight —
-analytics, crash reporting, "anonymous" usage statistics, remote
-configuration, an account system. Speech recognition runs on the device and
-stays there.
+Every one of them is optional, carries nothing about the user beyond what the
+feature plainly needs, and can be turned off. Claude is the strongest case to
+watch: it sends the question you asked to Anthropic. It earns its place only
+because it is off by default, uses a key *you* obtained and pasted (no account
+and no bundled credential — exactly the sign-in the fork was created to
+remove), is announced in `PRIVACY.md`, and sits beside a self-hosted
+alternative that keeps everything on a machine you own. The user-configured
+endpoints — a Home Assistant address, a self-hosted model, a URL inside a card
+you installed — are the user's own servers and are not counted here.
+
+What stays rejected on sight is anything the *app* phones home with on its own
+behalf: analytics, crash reporting, "anonymous" usage statistics, remote
+configuration, an account system, a bundled provider key. Speech recognition
+runs on the device and stays there.
 
 If you need data out of the app to debug something, the answer is the
 diagnostic report: a JSON file the user generates deliberately, sees the
