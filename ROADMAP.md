@@ -9,6 +9,16 @@ Contributions go through pull requests onto `beta` — see
 Code complete, verified as far as tests reach, but only a face wearing the
 hardware can confirm them:
 
+- [ ] **The glasses' own teleprompter** — command `0x09` as the official app
+      1.6.5 sends it ([docs/protocol/teleprompter.md](docs/protocol/teleprompter.md)):
+      five lines that scroll on the lens with a progress bar, one-row
+      animation, a tap on a temple to turn the page, a heartbeat every two
+      seconds. On by default in the teleprompter screen; switching it off
+      brings back the text pages
+- [ ] **Every recording fetched, not only the newest** — the download is
+      now parsed as the official app parses it (it worked by accident
+      before), and the list is asked for on connection and after each saved
+      recording, so notes made while the phone was away come in one by one
 - [ ] Wake word « souffleur » — the recognizer used to keep its old grammar
       and its old model across changes; both fixed, settings now display
       what is genuinely armed (`lib/services/wake_word_service.dart`)
@@ -53,6 +63,10 @@ in Settings → About to get them.
       other reason it waits.
 - [ ] **Heart rate** from a chest strap or a watch in broadcast mode, as
       `{hr}` in any card
+- [ ] **Claude as the assistant** — with an Anthropic API key the user
+      pastes; nothing is sent until there is one, and the self-hosted
+      endpoint is still one tap away. Can be checked without glasses with
+      the Test button
 
 ## Blocked on information
 
