@@ -57,5 +57,6 @@ glasses".
 
 ## Not implemented
 
-Firmware update (`0x17` then Nordic SMP on its own GATT service), font upload
-(`0x15`/`0x20`/`0x16`), navigation (`0x0A`). Documented, not built.
+Firmware update (`0x17` then Nordic SMP on its own GATT service) and font
+upload (`0x15`/`0x20`/`0x16`). Documented, not built. Navigation (`0x0A`) is
+now driven without its map images: open, route info, heartbeat, arrival, exit.

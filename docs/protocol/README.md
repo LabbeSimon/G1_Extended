@@ -60,3 +60,4 @@ what is debug-only, and what is not implemented.
 | `0x4E` text | Not built anywhere in 1.6.5 (`0x54` sub `0x03` replaced it) | Still used for all text. Works |
 | `0x15` bitmap | Used for font upload only; no full-screen bitmap | Used for bitmaps, inherited. Works |
 | Firmware update | Nordic SMP (McuMgr) on its own GATT service, not the UART channel | Not implemented |
+| Navigation (`0x0A`) | Its own route (Mapbox): open, route info with one of 35 built-in arrows, overview and detail images, heartbeat every second to the right temple, exit | **Added**: the glasses' navigation screen fed from the navigation app's notification — arrow read from the wording, distance, road, speed; no map images; plain text if the glasses refuse the screen |

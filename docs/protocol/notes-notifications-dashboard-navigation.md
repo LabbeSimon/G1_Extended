@@ -307,6 +307,7 @@ Common frame [certain]: `0A | len lo | len hi | sync | sub | payload`, len = ful
 ### 7.3 navigateHeartBeat (sub 0x04) [certain]
 - `0A 06 00 sync 04 n` (n = argument byte supplied by the caller, probable heartbeat counter).
 - RIGHT arm only (sendRightSide), timeout 2 s.
+- Cadence: sent from the navigation service's 1 s task timer, every tick while navigating. A 20 s watchdog ("看门狗 20s 没有喂狗") declares the service lost when it is not fed.
 
 ### 7.4 navigateExit (sub 0x05) [certain]
 - `0A 06 00 sync 05 01`. BothSide, retryCount 5, timeout 3 s.
@@ -323,3 +324,22 @@ Common frame [certain]: `0A | len lo | len hi | sync | sub | payload`, len = ful
 
 ### 7.7 Related: quickStartNavigationFailure [probable]
 - Not a 0x0A frame: it calls the generic "enter function" command `51 06 00 seq 01 01` (opcode 0x51 = `_sendEnableIntoFunction(1)`), plain write.
+
+### 7.8 Turn icons (the `icon` byte of 7.2) [certain]
+The official app runs its route through the Mapbox Navigation SDK and maps each Mapbox turn icon to one of the glasses' built-in arrows (`MapboxStyleRes.glassIconIndex`). The index is the byte sent; 1 is the fallback for anything unmapped. "Counterclockwise" roundabouts are those of right-hand traffic.
+
+| index | arrow | index | arrow |
+|---|---|---|---|
+| 1 | default | 19 / 18 | roundabout straight (clockwise / counterclockwise) |
+| 2 | straight | 21 / 20 | roundabout slight left |
+| 3 / 4 | turn right / left | 23 / 22 | roundabout left |
+| 5 / 6 | slight right / left | 25 / 24 | roundabout sharp left |
+| 7 / 8 | sharp right / left | 27 / 26 | roundabout U-turn |
+| 9 / 10 | U-turn counterclockwise / clockwise | 29 / 28 | roundabout (generic) |
+| 11 | merge | 31 / 30 | roundabout exit |
+| 13 / 12 | roundabout sharp right (clockwise / counterclockwise) | 32 / 33 | merge right / left |
+| 15 / 14 | roundabout right | 34 / 35 | fork right / left |
+| 17 / 16 | roundabout slight right | | |
+
+The other route fields come from the same SDK: `remainingTime`, `remainingDistance` (mileage), `roadName` (current road), `nextDirectionDistance` (distance-remaining label), `speed`, and `x`/`y`, the current position converted to pixels on the overview image.
+

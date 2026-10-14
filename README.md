@@ -62,7 +62,8 @@ still an independent project, not made or endorsed by Even Realities.
 **On the display**
 - A dashboard with the time, weather, your agenda, checklists and reminders
 - Phone notifications forwarded in real time, filtered per app
-- Turn-by-turn directions, read from whatever navigation app you already use
+- Turn-by-turn directions on the glasses' own navigation screen — arrow,
+  distance, road — read from whatever navigation app you already use
 - Optional live speed readout from GPS
 - Live captions from the glasses microphone
 - A teleprompter that follows your voice, or a set pace, or your thumb
