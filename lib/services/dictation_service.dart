@@ -105,6 +105,7 @@ class DictationService {
     bool showOnGlasses = true,
     bool saveAsNote = false,
     String? recordingId,
+    bool interactive = true,
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) {
@@ -117,7 +118,7 @@ class DictationService {
     // "call the plumber tomorrow" into their shopping list wants those
     // words kept, not a phone call placed.
     if (saveAsNote) {
-      await _saveAsNote(trimmed, source, recordingId);
+      await _saveAsNote(trimmed, source, recordingId, interactive);
       return;
     }
 
@@ -155,7 +156,7 @@ class DictationService {
     );
 
     if (showOnGlasses) {
-      await _show(trimmed);
+      await _show(trimmed, clearAfter: interactive);
     }
 
     await _persist(entry);
@@ -166,6 +167,7 @@ class DictationService {
     String text,
     DictationSource source, [
     String? recordingId,
+    bool interactive = true,
   ]) async {
     final note = await NotesLibrary.singleton.create(
       title: 'Note',
@@ -181,7 +183,9 @@ class DictationService {
     final where = note.pinnedSlot != null
         ? 'Noted · slot ${note.pinnedSlot}'
         : 'Noted · on the phone';
-    await _show('$where\n$text');
+    // A note fetched in the background was not asked for at this moment:
+    // closing the lens after it could end whatever the wearer is doing.
+    await _show('$where\n$text', clearAfter: interactive);
 
     await _persist(Dictation(
       text: text,
@@ -231,25 +235,38 @@ class DictationService {
 
   Future<void> _askHouse(String question, DictationSource source) =>
       _askAndShow(question, source, () async {
-        // The same agent the assistant would use: Claude when Home
-        // Assistant has it, not its built-in agent by default.
-        final result = await HomeAssistantService.singleton.converse(
-          question,
-          agentId: await AssistantService.singleton.resolvedHaAgent(),
-        );
+        // The same path the assistant takes: Claude when Home Assistant
+        // has it, and the thread kept for a follow-up.
+        final result =
+            await AssistantService.singleton.askHomeAssistant(question);
         return switch (result) {
-          HaOk(:final text) => text,
-          HaFailure(:final reason) => reason,
+          AssistantAnswer(:final text) => text,
+          AssistantFailure(:final reason) => reason,
         };
       });
 
-  /// Shows the question on the lens, waits for [answer], shows the reply.
-  ///
-  /// Shared by both assistants: which one is asked changes where the
-  /// sentence goes, not what the wearer sees happen. The failure text is
-  /// displayed like an answer on purpose — "The token was refused" on the
-  /// lens is how someone finds out their setup is wrong, where a silent
-  /// return leaves them tapping the temple again.
+  /// Bumped by every capture the wearer starts. An answer that arrives for
+  /// an older one is kept in the history but not shown: it would land in
+  /// the middle of the newer question, and its close would cut that short.
+  int _session = 0;
+
+  /// A capture is starting. Whatever close was scheduled for the previous
+  /// answer must not land in the middle of this one — asking again while an
+  /// answer is still up is the normal way to chain questions.
+  void beginSession() {
+    _session++;
+    _displayToken++;
+  }
+
+  /// The capture ended with nothing to show: nothing heard, nothing
+  /// understood, a failure already logged. The AI screen the long press
+  /// opened is still up and would stay there; close it shortly.
+  void endSession() =>
+      _scheduleClose(++_displayToken, const Duration(seconds: 2));
+
+  /// A message for the lens, during a capture, that closes once read.
+  Future<void> showOnLens(String text) => _show(text);
+
   /// Shows [text] on the lens and, unless told otherwise, closes it once
   /// there has been time to read it.
   ///
@@ -260,25 +277,28 @@ class DictationService {
   /// with status 0 (its exitAI) a few seconds after the answer; this does the
   /// same, timed to how much there is to read.
   Future<void> _show(String text, {bool clearAfter = true}) async {
-    final bluetooth = BluetoothManager.singleton;
     final token = ++_displayToken;
     try {
-      await bluetooth.sendPriorityText(text);
+      await BluetoothManager.singleton.sendPriorityText(text);
     } catch (e) {
       debugPrint('DictationService: could not display on glasses: $e');
       return;
     }
     if (!clearAfter) return;
+    _scheduleClose(
+        token, Duration(seconds: (text.length / 8).clamp(8, 20).round()));
+  }
 
-    final seconds = (text.length / 8).clamp(8, 20).round();
-    Future.delayed(Duration(seconds: seconds), () async {
-      // A newer message took the lens in the meantime: leave it be.
+  void _scheduleClose(int token, Duration after) {
+    Future.delayed(after, () async {
+      // A newer message, or a new question, took the lens meanwhile.
       if (token != _displayToken) return;
       try {
         if (!await EvenAiScreen.singleton.close()) {
           // No AI session to end, or a firmware that refused it: exit to
           // the dashboard, as the official app does when its session hangs.
-          await bluetooth.sendCommandToGlasses(ClearScreen.buildCommand());
+          await BluetoothManager.singleton
+              .sendCommandToGlasses(ClearScreen.buildCommand());
         }
       } catch (e) {
         debugPrint('DictationService: could not close the lens: $e');
@@ -286,17 +306,26 @@ class DictationService {
     });
   }
 
+  /// Shows the question on the lens, waits for [answer], shows the reply.
+  ///
+  /// Shared by both assistants: which one is asked changes where the
+  /// sentence goes, not what the wearer sees happen. The failure text is
+  /// displayed like an answer on purpose — "The token was refused" on the
+  /// lens is how someone finds out their setup is wrong, where a silent
+  /// return leaves them tapping the temple again.
   Future<void> _askAndShow(
     String question,
     DictationSource source,
     Future<String> Function() answer,
   ) async {
+    final session = _session;
+
     // The question stays up while the answer is fetched; the answer replaces
-    // it and is what gets cleared.
+    // it and is what gets closed.
     await _show('$question\n…', clearAfter: false);
 
     final text = await answer();
-    await _show(text);
+    if (session == _session) await _show(text);
 
     await _persist(Dictation(
       text: '$question\n$text',

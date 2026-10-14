@@ -157,6 +157,9 @@ class BluetoothReciever {
         );
       } else {
         debugPrint('Final transcription is empty.');
+        // Said so on the lens, and the screen closes after: left silent, the
+        // AI screen the long press opened stayed up and nothing worked.
+        await DictationService.singleton.showOnLens('Nothing understood.\nHold the temple and ask again.');
       }
     }
   }
@@ -362,6 +365,9 @@ class BluetoothReciever {
       return;
     }
     _isCapturing = true;
+    // Asking again while the last answer is still up is how questions are
+    // chained: its scheduled close must not land in this capture.
+    DictationService.singleton.beginSession();
     _captureSide = side;
 
     final bt = BluetoothManager();
@@ -425,6 +431,7 @@ class BluetoothReciever {
     final encoded = await voiceCollector.getAllDataAndReset();
     if (encoded.isEmpty) {
       debugPrint('[$side] No audio captured');
+      await DictationService.singleton.showOnLens('Nothing understood.\nHold the temple and ask again.');
       return;
     }
 
@@ -441,9 +448,8 @@ class BluetoothReciever {
 
     if (raw == null) {
       debugPrint('[$side] Live capture could not be saved');
-      try {
-        await bt.sendPriorityText('Could not save that recording.');
-      } catch (_) {}
+      await DictationService.singleton
+          .showOnLens('Could not save that recording.');
       return;
     }
 
@@ -709,6 +715,9 @@ class BluetoothReciever {
       recording: kept.recording,
       pcm: kept.pcm,
       saveAsNote: true,
+      // Fetched in the background: nothing on the lens may close whatever
+      // the wearer is doing at the time.
+      interactive: false,
     );
 
     // Recordings are fetched one at a time; ask whether more are waiting.
@@ -786,11 +795,20 @@ class BluetoothReciever {
     required Recording recording,
     required Uint8List pcm,
     required bool saveAsNote,
+    bool interactive = true,
   }) async {
     final store = VoiceRecordings.singleton;
 
+    // During a capture the wearer is waiting, on a screen the long press
+    // opened: every ending says something and then closes, or the glasses
+    // stay stuck there. A note fetched in the background stays quiet.
+    Future<void> tell(String message) async {
+      if (interactive) await DictationService.singleton.showOnLens(message);
+    }
+
     if (pcm.isEmpty) {
       // Raw LC3 was kept; there is nothing a recogniser could read.
+      await tell('Recording kept, but it could not be decoded.');
       return;
     }
 
@@ -804,6 +822,7 @@ class BluetoothReciever {
           recording.id,
           'Nothing intelligible was recognised. The audio is kept.',
         );
+        await tell('Nothing understood.\nHold the temple and ask again.');
         return;
       }
 
@@ -812,6 +831,7 @@ class BluetoothReciever {
         transcript,
         saveAsNote: saveAsNote,
         recordingId: recording.id,
+        interactive: interactive,
       );
     } on SpeechModelMissingException {
       await store.attachTranscriptError(
@@ -819,17 +839,21 @@ class BluetoothReciever {
         'No speech model installed. The audio is kept; install a model in '
         'Settings > Voice and it can be transcribed later.',
       );
-      try {
-        await BluetoothManager().sendPriorityText(
-          'Recording saved.\nNo speech model — Settings > Voice.',
-        );
-      } catch (_) {}
+      const message = 'Recording saved.\nNo speech model — Settings > Voice.';
+      if (interactive) {
+        await tell(message);
+      } else {
+        try {
+          await BluetoothManager().sendPriorityText(message);
+        } catch (_) {}
+      }
     } catch (e) {
       debugPrint('[$side] Transcription failed: $e');
       await store.attachTranscriptError(
         recording.id,
         'Transcription failed. The audio is kept.',
       );
+      await tell('Transcription failed. The recording is kept.');
     }
   }
 
