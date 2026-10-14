@@ -3,11 +3,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:g1_extended/models/g1/commands.dart';
 import 'package:g1_extended/models/g1/notification.dart';
 
-/// The protocol assigns each command an arm, and getting it wrong is silent:
-/// a notification built correctly, chunked correctly and sent to the wrong
-/// radio simply never appears. These pin the header shape the document
-/// specifies for 0x4B — the routing itself is asserted by the code that
-/// calls sendToLeft, and named here so the rule is written down.
+/// Notifications and the allowlist go to both arms — the document names
+/// 0x4B and 0x04 as left-arm commands, but that turned out to be wrong: the
+/// reference implementations send both to both temples.
+///
+/// The header these pin is the four-byte one — command, notifyId, chunk
+/// count, index — as Fahrplan and even_glasses send it to real glasses.
+/// The repo this app was forked from had lost the notifyId byte, which
+/// shifted every field the firmware reads and made it discard the whole
+/// notification silently; an earlier version of this test pinned that
+/// broken three-byte shape as though it were the specification.
 void main() {
   NCSNotification sample({String message = 'hello'}) => NCSNotification(
         msgId: 1,
@@ -30,9 +35,11 @@ void main() {
       for (var i = 0; i < chunks.length; i++) {
         expect(chunks[i][0], Commands.NOTIFICATION,
             reason: 'chunk $i does not announce itself as 0x4B');
-        expect(chunks[i][1], chunks.length,
+        expect(chunks[i][1], 1,
+            reason: 'chunk $i is missing the notifyId byte');
+        expect(chunks[i][2], chunks.length,
             reason: 'chunk $i misreports how many there are');
-        expect(chunks[i][2], i, reason: 'chunk $i is misnumbered');
+        expect(chunks[i][3], i, reason: 'chunk $i is misnumbered');
       }
     });
 
@@ -55,7 +62,7 @@ void main() {
 
       final payload = <int>[];
       for (final chunk in chunks) {
-        payload.addAll(chunk.sublist(3));
+        payload.addAll(chunk.sublist(4));
       }
       expect(String.fromCharCodes(payload), contains('w299'),
           reason: 'the tail of the message was lost in the chunking');

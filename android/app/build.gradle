@@ -84,8 +84,15 @@ android {
         // Only filters libraries the NDK builds here. Flutter's own engine and
         // prebuilt plugin libraries such as Vosk ignore it, so the ABI list
         // also has to be passed to `flutter build` (see the CI workflow).
-        ndk {
-            abiFilters 'armeabi-v7a', 'arm64-v8a'
+        //
+        // Skipped when building split APKs: Gradle refuses ndk.abiFilters
+        // and an abi split together, and rightly — the split already says
+        // which architectures exist, one per output, and a filter on top
+        // could only contradict it.
+        if (!project.hasProperty('split-per-abi')) {
+            ndk {
+                abiFilters 'armeabi-v7a', 'arm64-v8a'
+            }
         }
         
         // Inject display name as a string resource so AndroidManifest can reference it

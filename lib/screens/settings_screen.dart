@@ -5,8 +5,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:g1_extended/models/g1/battery.dart';
 import 'package:g1_extended/screens/settings/about_screen.dart';
 import 'package:g1_extended/screens/settings/assistant_screen.dart';
+import 'package:g1_extended/screens/settings/home_assistant_screen.dart';
 import 'package:g1_extended/screens/settings/clocks_screen.dart';
 import 'package:g1_extended/screens/settings/extensions_screen.dart';
+import 'package:g1_extended/screens/settings/sensors_screen.dart';
 import 'package:g1_extended/screens/settings/custom_cards_screen.dart';
 import 'package:g1_extended/screens/settings/dashboard_screen.dart';
 import 'package:g1_extended/screens/settings/notifications_screen.dart';
@@ -302,8 +304,14 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
       _SettingsEntry(
         pixels: PixelArtwork.chat,
         title: 'Assistant',
-        subtitle: 'Ask a model you host, or one you chose.',
+        subtitle: 'Claude with your own key, or your Home Assistant.',
         builder: (_) => const AssistantScreen(),
+      ),
+      _SettingsEntry(
+        pixels: PixelArtwork.grid,
+        title: 'Home Assistant',
+        subtitle: 'Speak to the house, and read it on the lens.',
+        builder: (_) => const HomeAssistantScreen(),
       ),
       _SettingsEntry(
         pixels: PixelArtwork.mic,
@@ -316,6 +324,12 @@ class _GlassesSettingsPageState extends State<GlassesSettingsPage> {
         title: 'Speed',
         subtitle: 'Live speed readout on the lens.',
         builder: (_) => const SpeedometerScreen(),
+      ),
+      _SettingsEntry(
+        pixels: PixelArtwork.bell,
+        title: 'Sensors',
+        subtitle: 'Heart rate on the lens, from a strap or a watch.',
+        builder: (_) => const SensorsScreen(),
       ),
       _SettingsEntry(
         pixels: PixelArtwork.download,

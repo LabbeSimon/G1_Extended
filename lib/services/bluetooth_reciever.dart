@@ -2,10 +2,15 @@ import 'dart:async';
 import 'package:g1_extended/models/g1/glass.dart';
 import 'package:g1_extended/models/g1/case_battery.dart';
 import 'package:g1_extended/models/g1/commands.dart';
+import 'package:g1_extended/models/g1/state_event.dart';
+import 'package:g1_extended/services/glasses_event_log.dart';
+import 'package:g1_extended/services/glasses_teleprompter.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/dictation_service.dart';
 import 'package:g1_extended/services/notification_history.dart';
+import 'package:g1_extended/models/g1/voice_note.dart';
 import 'package:g1_extended/services/speech_recognition_service.dart';
+import 'package:g1_extended/services/voice_recordings.dart';
 import 'package:g1_extended/utils/lc3.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mutex/mutex.dart';
@@ -13,14 +18,59 @@ import 'package:shared_preferences/shared_preferences.dart'; // Added import
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
+import 'package:g1_extended/services/vosk_model_manager.dart';
+
 // Command response status codes
 const int RESPONSE_SUCCESS = 0xC9;
 const int RESPONSE_FAILURE = 0xCA;
+
+/// A completer waiting on a command byte, and optionally on which
+/// sub-message of it — see [BluetoothReciever.awaitReply].
+class _PendingReply {
+  final Completer<List<int>> completer;
+  final bool Function(List<int> data)? accept;
+  final GlassSide? side;
+  _PendingReply(this.completer, this.accept, this.side);
+}
 
 class BluetoothReciever {
   static final BluetoothReciever singleton = BluetoothReciever._internal();
 
   final voiceCollector = VoiceDataCollector();
+
+  /// The voice note being fetched from the glasses' flash, if any.
+  VoiceNoteDownload? _noteDownload;
+  int? _noteDownloadCrc;
+  DateTime? _noteDownloadStarted;
+
+  /// How long a download may stay unfinished before a new list replaces it.
+  /// The official app gives a transfer ten seconds.
+  static const Duration _noteDownloadStall = Duration(seconds: 10);
+
+  /// Recordings saved during this run, by the crc the glasses list them with.
+  /// One still listed after its delete is not fetched a second time — the
+  /// official app uses the crc as a recording's identity the same way.
+  final Set<int> _savedNoteCrcs = {};
+
+  bool get _noteDownloadInFlight {
+    final started = _noteDownloadStarted;
+    return _noteDownload != null &&
+        started != null &&
+        DateTime.now().difference(started) < _noteDownloadStall;
+  }
+
+  /// Asks the right temple which recordings its flash holds (0x1E sub 0x01).
+  /// The answer carries the same list as a 0x21 announcement and goes through
+  /// the same handler, so recordings made while disconnected are fetched too.
+  Future<void> requestVoiceNoteList() async {
+    if (_isCapturing || _noteDownloadInFlight) return;
+    final right = BluetoothManager().rightGlass;
+    if (right == null) return;
+    await right.sendData(VoiceNote.buildListCommand(_noteSyncId++));
+  }
+
+  /// Rolls with each 0x1E exchange, echoed back by the firmware.
+  int _noteSyncId = 0;
 
   // Speech to text setup
   final SpeechToText _speechToText = SpeechToText();
@@ -64,12 +114,16 @@ class BluetoothReciever {
     }
     debugPrint('Starting speech recognition listener');
     _lastWords = '';
-    // TODO: Consider locale from settings? speech_to_text uses system default
+    // The chosen speech language, not the phone's system default: a French
+    // user picking French in Voice should dictate in French through either
+    // microphone, not only the glasses one.
+    final locale = (await VoskModelManager.chosen()).localeId;
     await _speechToText.listen(
       onResult: _onSpeechResult,
       listenOptions: SpeechListenOptions(
         listenFor: const Duration(seconds: 60),
         pauseFor: const Duration(seconds: 5),
+        localeId: locale,
       ),
     );
     _isListening = true; // Set listening status based on callback?
@@ -118,35 +172,44 @@ class BluetoothReciever {
     }
   }
 
-  /// Which microphone the touchpad dictates through.
-  ///
-  /// The phone microphone uses the platform recogniser: more accurate, no
-  /// model to download. The glasses microphone is hands-free but goes through
-  /// the offline Vosk model. Both stay on the device.
-  Future<bool> _useGlassesMicrophone() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('use_glasses_microphone') ?? false;
-  }
+  /// Which microphone the touchpad dictates through. See
+  /// [DictationService.usesGlassesMicrophone] for why the glasses are the
+  /// default.
+  Future<bool> _useGlassesMicrophone() =>
+      DictationService.usesGlassesMicrophone();
 
   /// Requests waiting for a reply, keyed by the command byte they sent.
   ///
   /// The G1 echoes the command id back in the first byte of its response, so
-  /// that byte is enough to match a reply to the request that asked for it.
-  final Map<int, Completer<List<int>>> _pendingReplies = {};
+  /// that byte is usually enough to match a reply to the request that asked
+  /// for it. A few commands carry several distinct sub-messages under the
+  /// same first byte — the calibration flow's 0x10 announces both "the
+  /// begin step was accepted" and, separately, "the wearer confirmed" — and
+  /// for those [_PendingReply.accept] tells the two apart.
+  final Map<int, _PendingReply> _pendingReplies = {};
 
   /// Registers interest in the next response carrying [command].
   ///
+  /// When [accept] is given, a reply that does not satisfy it is left for
+  /// ordinary dispatch and waiting continues — otherwise the first packet
+  /// with a matching command byte would end the wait, sub-message or not.
+  ///
   /// Returns null if nothing arrives within [timeout], rather than hanging:
   /// the glasses silently ignore commands they do not understand.
+  /// When [side] is given, the same command answered by the other temple is
+  /// not taken for the reply.
   Future<List<int>?> awaitReply(
     int command, {
     Duration timeout = const Duration(seconds: 3),
+    bool Function(List<int> data)? accept,
+    GlassSide? side,
   }) async {
     // A second request for the same command supersedes the first.
-    _pendingReplies.remove(command)?.complete(const []);
+    _pendingReplies.remove(command)?.completer.complete(const []);
 
     final completer = Completer<List<int>>();
-    _pendingReplies[command] = completer;
+    final pending = _PendingReply(completer, accept, side);
+    _pendingReplies[command] = pending;
 
     try {
       final reply = await completer.future.timeout(timeout);
@@ -155,16 +218,23 @@ class BluetoothReciever {
       debugPrint('No reply to command 0x${command.toRadixString(16)}');
       return null;
     } finally {
-      _pendingReplies.remove(command);
+      // Only this wait's own entry: a newer one for the same command may
+      // already have taken the slot.
+      if (identical(_pendingReplies[command], pending)) {
+        _pendingReplies.remove(command);
+      }
     }
   }
 
-  /// Hands [data] to a waiting request, if one asked for this command.
+  /// Hands [data] to a waiting request, if one asked for this command and
+  /// this packet is the sub-message it is waiting for.
   /// Returns true when the packet was consumed by a pending request.
-  bool _deliverToPendingReply(List<int> data) {
-    final completer = _pendingReplies[data[0]];
-    if (completer == null || completer.isCompleted) return false;
-    completer.complete(List<int>.unmodifiable(data));
+  bool _deliverToPendingReply(GlassSide side, List<int> data) {
+    final pending = _pendingReplies[data[0]];
+    if (pending == null || pending.completer.isCompleted) return false;
+    if (pending.side != null && pending.side != side) return false;
+    if (pending.accept != null && !pending.accept!(data)) return false;
+    pending.completer.complete(List<int>.unmodifiable(data));
     return true;
   }
 
@@ -172,7 +242,7 @@ class BluetoothReciever {
     if (data.isEmpty) return;
 
     // Settings replies are consumed by whoever asked for them.
-    if (_deliverToPendingReply(data)) return;
+    if (_deliverToPendingReply(side, data)) return;
 
     int command = data[0];
 
@@ -184,6 +254,13 @@ class BluetoothReciever {
         // changes. handleEvenAICommand only receives the subcommand, so
         // anything with a payload has to be read before dispatching or the
         // payload is simply dropped.
+        // Recorded before anything is done with it, handled or not — and
+        // before the case battery is peeled off below, which returns early
+        // and would otherwise keep its own events out of the log.
+        if (data.length >= 2) {
+          GlassesEventLog.instance.record(side.name, data[1]);
+        }
+
         final caseBattery = CaseBatteryParser.fromStateChange(data);
         if (caseBattery != null) {
           BluetoothManager.singleton.updateCaseBattery(caseBattery);
@@ -218,9 +295,11 @@ class BluetoothReciever {
         );
         break;
       case Commands.QUICK_NOTE:
+        debugPrint('[$side] 0x21 QUICK_NOTE, ${data.length} bytes');
         handleQuickNoteCommand(side, data);
         break;
       case Commands.QUICK_NOTE_ADD:
+        debugPrint('[$side] 0x1E QUICK_NOTE_ADD, ${data.length} bytes');
         handleQuickNoteAudioData(side, data);
         break;
 
@@ -240,6 +319,12 @@ class BluetoothReciever {
   /// that has no idea which temple asked, so the side is kept here from
   /// begin to finish.
   GlassSide? _captureSide;
+
+  /// Ends a held capture whose release never arrived.
+  Timer? _holdWatchdog;
+
+  /// How long the official app lets the touchpad be held for Even AI.
+  static const Duration _holdLimit = Duration(seconds: 33);
 
   /// Puts a recent notification back on the lens.
   ///
@@ -297,6 +382,19 @@ class BluetoothReciever {
       }
     }
 
+    // A hold that never reports its release would record forever. The
+    // official app gives a held touchpad 33 s and then drops the session;
+    // here the capture ends as if released, and what was said is kept and
+    // transcribed rather than thrown away. The right temple toggles, and a
+    // note may run long, so it has no such limit.
+    _holdWatchdog?.cancel();
+    if (side == GlassSide.left) {
+      _holdWatchdog = Timer(_holdLimit, () {
+        debugPrint('[$side] No release after ${_holdLimit.inSeconds} s');
+        unawaited(_finishDictation(side));
+      });
+    }
+
     // The glasses need the mic opened either way: it drives the on-screen
     // recording indicator the wearer sees.
     await bt.setMicrophone(true);
@@ -309,6 +407,8 @@ class BluetoothReciever {
       return;
     }
     _isCapturing = false;
+    _holdWatchdog?.cancel();
+    _holdWatchdog = null;
 
     final bt = BluetoothManager();
 
@@ -328,35 +428,39 @@ class BluetoothReciever {
       return;
     }
 
-    final pcm = await LC3.decodeLC3(Uint8List.fromList(encoded));
-    if (pcm.isEmpty) {
-      debugPrint('[$side] LC3 decoding produced no samples');
+    // Recorded first, transcribed after, and the raw codec bytes reach disk
+    // before any native code runs — the order the official app follows with
+    // its record.lc3. The decoder and the recogniser are the parts that
+    // fail; what someone said should depend on neither.
+    final audio = Uint8List.fromList(encoded);
+    final raw = await _keepRaw(
+      side: side,
+      encoded: audio,
+      source: RecordingSource.glassesLive,
+    );
+
+    if (raw == null) {
+      debugPrint('[$side] Live capture could not be saved');
+      try {
+        await bt.sendPriorityText('Could not save that recording.');
+      } catch (_) {}
       return;
     }
 
-    final startedAt = DateTime.now();
-    try {
-      final transcript =
-          await SpeechRecognitionService.singleton.transcribeBytes(pcm);
-      final elapsed = DateTime.now().difference(startedAt);
-      debugPrint(
-        '[$side] Transcribed ${pcm.length} bytes in ${elapsed.inMilliseconds}ms: "$transcript"',
-      );
-      await DictationService.singleton.record(
-        transcript,
-        saveAsNote: side == GlassSide.right,
-      );
-    } on SpeechModelMissingException {
-      debugPrint('[$side] Offline speech model missing');
-      await bt.sendPriorityText(
-        'Speech model not installed.\nSettings > Voice to download it.',
-      );
-    } catch (e) {
-      debugPrint('[$side] Transcription failed: $e');
-    }
+    final kept = await _decodeKept(side: side, raw: raw, encoded: audio);
+    await _transcribeKept(
+      side: side,
+      recording: kept.recording,
+      pcm: kept.pcm,
+      saveAsNote: side == GlassSide.right,
+    );
   }
 
   void handleEvenAICommand(GlassSide side, int subcmd) async {
+    // A running teleprompter takes the taps itself; switching the microphone
+    // off here would also stop it following the reader's voice.
+    if (GlassesTeleprompter.isActive && (subcmd == 0 || subcmd == 1)) return;
+
     final bt = BluetoothManager();
     switch (subcmd) {
       case 0:
@@ -391,7 +495,8 @@ class BluetoothReciever {
         // Only the left temple is hold-to-record; the right one toggles on
         // press, so its release carries no meaning.
         if (side != GlassSide.left) {
-          debugPrint('[$side] Right touchpad released, toggle handled on press');
+          debugPrint(
+              '[$side] Right touchpad released, toggle handled on press');
           break;
         }
 
@@ -417,7 +522,9 @@ class BluetoothReciever {
         break;
 
       default:
-        debugPrint('[$side] Unknown Even AI subcommand: $subcmd');
+        // Named where the community has a name for it, reported as unnamed
+        // where nobody does — rather than "unknown" for both.
+        debugPrint('[$side] ${StateEvent.describe(subcmd)}, not acted on');
     }
   }
 
@@ -443,19 +550,13 @@ class BluetoothReciever {
       '[$side] Received voice data chunk: seq=$seq, length=${voiceData.length}',
     );
 
-    final usingGlassesMic = await _useGlassesMicrophone();
-    final isRecording = voiceCollector.isRecording;
-    debugPrint(
-        '[$side] Voice data: usingGlassesMic=$usingGlassesMic, isRecording=$isRecording');
-
-    // Only buffer when the glasses microphone is the active source.
-    if (usingGlassesMic && isRecording) {
-      debugPrint('[$side] Adding voice chunk to collector');
+    // Buffered for whoever opened the stream: glasses-microphone dictation,
+    // the teleprompter's voice mode, live captions. Checking the dictation
+    // microphone setting here as well used to starve the last two whenever
+    // dictation was set to the phone — which never sets isRecording, so it
+    // is unaffected either way.
+    if (voiceCollector.isRecording) {
       voiceCollector.addChunk(seq, voiceData);
-    } else if (!usingGlassesMic) {
-      // The phone microphone feeds the platform recogniser directly, so the
-      // glasses stream is not buffered at all in that mode.
-      debugPrint('[$side] Phone microphone in use, not buffering');
     } else {
       debugPrint('[$side] Not recording, discarding voice data');
     }
@@ -467,18 +568,269 @@ class BluetoothReciever {
     // }
   }
 
+  /// A 0x21 from the firmware: its flash holds recorded voice notes.
+  ///
+  /// The firmware records a quicknote on its own when the right touchbar is
+  /// held; this used to be discarded entirely, so those recordings piled up
+  /// in the glasses unheard. Now the newest is fetched, as Fahrplan does —
+  /// the announcement is a list, not a touchpad event, so acting on it
+  /// cannot double-toggle the dictation flow.
   void handleQuickNoteCommand(GlassSide side, List<int> data) {
-    // Quick note events from the glasses firmware are ignored because
-    // the right touchpad press is already handled by handleEvenAICommand
-    // (0xF5 subcmd 23/24). Processing both would cause a double-toggle,
-    // immediately starting and stopping the conversation recording.
-    debugPrint('[$side] Quick note event received, ignoring (handled by EvenAI command)');
+    // Mid-capture the firmware is announcing the very speech the running
+    // dictation is already streaming; fetching it too would save it twice.
+    if (_isCapturing) {
+      debugPrint('[$side] Voice note announced during capture, deferred');
+      return;
+    }
+
+    // One transfer at a time: a list arriving mid-download would restart it
+    // and throw away the chunks already in.
+    if (_noteDownloadInFlight) {
+      debugPrint('[$side] Voice note list during a download, deferred');
+      return;
+    }
+
+    try {
+      final notif = VoiceNoteNotification(Uint8List.fromList(data));
+      debugPrint('[$side] Voice notes on glasses: ${notif.entries.length}');
+      if (notif.entries.isEmpty) return;
+
+      final right = BluetoothManager().rightGlass;
+      if (right == null) {
+        debugPrint('[$side] Right temple missing, cannot fetch voice notes');
+        return;
+      }
+
+      VoiceNote? next;
+      for (final entry in notif.entries) {
+        if (entry.crc != null && _savedNoteCrcs.contains(entry.crc)) {
+          // Already on the phone; its delete did not take. Ask again.
+          right.sendData(entry.buildDeleteCommand(_noteSyncId++));
+        } else {
+          next ??= entry;
+        }
+      }
+      if (next == null) return;
+
+      _noteDownload = VoiceNoteDownload(next.index);
+      _noteDownloadCrc = next.crc;
+      _noteDownloadStarted = DateTime.now();
+      debugPrint(
+          '[$side] Fetching voice note #${next.index} from glasses flash');
+      right.sendData(next.buildFetchCommand(_noteSyncId++));
+    } catch (e) {
+      debugPrint('[$side] Could not parse the voice note list: $e');
+    }
   }
 
+  /// One 0x1E audio chunk of the voice note being fetched.
+  ///
+  /// Layout read in the official Even app 1.6.5 (see docs/PROTOCOL_NOTES.md):
+  /// `1E len len ? 02 total(LE16) index(LE16) id payload`. The transfer is
+  /// done once as many packets as `total` have been counted, not when a
+  /// particular index shows up — the firmware does not flag the last one.
   void handleQuickNoteAudioData(GlassSide side, List<int> data) async {
-    // Quick note audio data is no longer fetched — the right-side touchpad
-    // now triggers conversation recording instead. Discard any stale packets.
-    debugPrint('[$side] Discarding quick note audio data (conversation mode active)');
+    if (data.length > 4 && data[4] == NoteSubCommands.REQUEST_AUDIO_INFO) {
+      handleQuickNoteCommand(side, data); // The answer to a list request.
+      return;
+    }
+    if (data.length > 4 && data[4] != NoteSubCommands.REQUEST_AUDIO_DATA) {
+      debugPrint(
+          '[$side] 0x1E subcmd 0x${data[4].toRadixString(16)}, not audio, ignored');
+      return; // A text-note acknowledgement, not audio.
+    }
+
+    final download = _noteDownload;
+    if (download == null) {
+      debugPrint('[$side] Voice note audio with nothing being fetched');
+      return;
+    }
+    if (!download.add(data)) {
+      debugPrint('[$side] Voice note packet not for this download, ignored');
+      return;
+    }
+    debugPrint(
+        '[$side] Voice note chunk ${download.received}/${download.total}, '
+        '${data.length - 10} audio bytes');
+
+    if (!download.isComplete) return;
+
+    debugPrint('[$side] Voice note complete: ${download.total} packets');
+    final index = download.id;
+    final crc = _noteDownloadCrc;
+    final encoded = download.audio;
+    _noteDownload = null;
+    _noteDownloadCrc = null;
+    _noteDownloadStarted = null;
+
+    if (encoded.isEmpty) {
+      debugPrint('[$side] Voice note carried no audio; glasses copy kept');
+      return;
+    }
+
+    // The audio goes to disk before anything else happens to it, raw, as it
+    // arrived. What follows — freeing the flash slot, decoding,
+    // transcribing — are all things that used to be able to destroy a
+    // recording, and none runs until the phone holds its own copy.
+    final raw = await _keepRaw(
+      side: side,
+      encoded: encoded,
+      source: RecordingSource.glassesNote,
+    );
+
+    final bt = BluetoothManager();
+
+    if (raw == null) {
+      // Nothing reached disk, so the glasses hold the only copy and it
+      // stays there. Deleting it now is precisely how a recording is lost
+      // for good; a full flash is the lesser problem and it is recoverable.
+      debugPrint(
+          '[$side] Voice note could not be saved; leaving it on the glasses');
+      try {
+        await bt.sendPriorityText(
+          'Could not save that recording.\nIt is still on the glasses.',
+        );
+      } catch (_) {}
+      return;
+    }
+
+    // Only now. The phone has it, so the slot can be freed — before the
+    // decoder runs, so that a decoder taking the app down cannot leave the
+    // same recording on the glasses to be fetched, and fail, at every
+    // connection. The id to delete is the one the list gave, which is what
+    // the download echoed back.
+    if (crc != null) _savedNoteCrcs.add(crc);
+    await bt.rightGlass
+        ?.sendData(VoiceNote(index: index).buildDeleteCommand(_noteSyncId++));
+
+    final kept = await _decodeKept(side: side, raw: raw, encoded: encoded);
+    await _transcribeKept(
+      side: side,
+      recording: kept.recording,
+      pcm: kept.pcm,
+      saveAsNote: true,
+    );
+
+    // Recordings are fetched one at a time; ask whether more are waiting.
+    await requestVoiceNoteList();
+  }
+
+  /// Writes captured audio to disk exactly as it arrived, before anything
+  /// decodes it. Null only if nothing could be written: the caller is about
+  /// to decide whether to delete the other copy.
+  Future<Recording?> _keepRaw({
+    required GlassSide side,
+    required Uint8List encoded,
+    required RecordingSource source,
+  }) async {
+    try {
+      return await VoiceRecordings.singleton
+          .saveRawLc3(encoded, source: source);
+    } catch (e) {
+      debugPrint('[$side] Could not write the recording to disk: $e');
+      return null;
+    }
+  }
+
+  /// Decodes a recording already on disk, and lets a playable WAV take the
+  /// raw file's place.
+  ///
+  /// A failed decode loses nothing: the raw codec bytes stay, marked, so a
+  /// working decoder can be pointed at them later.
+  Future<({Recording recording, Uint8List pcm})> _decodeKept({
+    required GlassSide side,
+    required Recording raw,
+    required Uint8List encoded,
+  }) async {
+    final store = VoiceRecordings.singleton;
+
+    Uint8List pcm = Uint8List(0);
+    try {
+      pcm = await LC3.decodeLC3(encoded);
+    } catch (e) {
+      debugPrint('[$side] LC3 decoding failed: $e');
+    }
+
+    if (pcm.isEmpty) {
+      debugPrint('[$side] LC3 gave no samples; keeping the raw codec bytes');
+      await store.attachTranscriptError(
+        raw.id,
+        'Audio could not be decoded; kept as raw LC3.',
+      );
+      return (recording: raw, pcm: pcm);
+    }
+
+    try {
+      final playable = await store.savePcm(
+        pcm,
+        source: raw.source,
+        capturedAt: raw.capturedAt,
+      );
+      await store.remove(raw.id);
+      return (recording: playable, pcm: pcm);
+    } catch (e) {
+      // The raw file is still there and the decoded audio is in hand: the
+      // transcript need not wait for a second write to succeed.
+      debugPrint('[$side] Could not store the decoded audio: $e');
+      return (recording: raw, pcm: pcm);
+    }
+  }
+
+  /// Runs speech recognition over audio that is already saved.
+  ///
+  /// Every failure here is annotated onto the stored recording rather than
+  /// thrown away, because by this point the recording exists and none of
+  /// these outcomes are a reason to pretend it does not.
+  Future<void> _transcribeKept({
+    required GlassSide side,
+    required Recording recording,
+    required Uint8List pcm,
+    required bool saveAsNote,
+  }) async {
+    final store = VoiceRecordings.singleton;
+
+    if (pcm.isEmpty) {
+      // Raw LC3 was kept; there is nothing a recogniser could read.
+      return;
+    }
+
+    try {
+      final transcript =
+          await SpeechRecognitionService.singleton.transcribeBytes(pcm);
+      debugPrint('[$side] Transcribed: "$transcript"');
+
+      if (transcript.trim().isEmpty) {
+        await store.attachTranscriptError(
+          recording.id,
+          'Nothing intelligible was recognised. The audio is kept.',
+        );
+        return;
+      }
+
+      await store.attachTranscript(recording.id, transcript);
+      await DictationService.singleton.record(
+        transcript,
+        saveAsNote: saveAsNote,
+        recordingId: recording.id,
+      );
+    } on SpeechModelMissingException {
+      await store.attachTranscriptError(
+        recording.id,
+        'No speech model installed. The audio is kept; install a model in '
+        'Settings > Voice and it can be transcribed later.',
+      );
+      try {
+        await BluetoothManager().sendPriorityText(
+          'Recording saved.\nNo speech model — Settings > Voice.',
+        );
+      } catch (_) {}
+    } catch (e) {
+      debugPrint('[$side] Transcription failed: $e');
+      await store.attachTranscriptError(
+        recording.id,
+        'Transcription failed. The audio is kept.',
+      );
+    }
   }
 
   /// Dispose of all resources to prevent memory leaks

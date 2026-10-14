@@ -34,9 +34,18 @@ too coarse to identify a building. No device identifier, no account, no
 timestamped history. Open-Meteo's policy: <https://open-meteo.com/en/terms>.
 
 **`alphacephei.com`** — a one-off download of the offline speech recognition
-model, only if you turn on glasses-microphone dictation or the wake word. A
+model, when dictation or the assistant first needs it through the glasses
+microphone (the default), or for the wake word. A
 plain file download; no audio and nothing about you is sent, then or ever.
 After it, speech recognition runs entirely on your phone.
+
+**Google's servers** — the language models for live translation, only if you
+turn on translation in Live captions and press the download button
+(roughly 30 MB per language, fetched by Google's ML Kit library). Translation
+itself then runs on the phone and the text never leaves it. Google sees the
+connecting IP, as with any download; what its library sends along is governed
+by Google's ML Kit terms, which this project does not control. This applies to
+the beta channel only.
 
 **`api.github.com`** — the update check, at most once every 12 hours, only
 while "Check for updates" is on in Settings > About. An unauthenticated GET
@@ -49,6 +58,28 @@ instead. Switch off, and the request is never made.
 **`raw.githubusercontent.com`** — the extension catalogue, fetched only when
 you press "Fetch the catalogue" on the Extensions screen. Never polled in
 the background.
+
+**`api.anthropic.com`** — Claude, the assistant, only if you turn the
+assistant on, leave it on Claude, and paste an Anthropic API key. Off and
+blank by default; nothing is contacted until you add a key. There is no
+account or sign-in — only the key you obtained from Anthropic and pasted,
+kept in the Android keystore. When you ask the assistant something, the
+question and the brevity prompt are sent to Anthropic with your key, and the
+answer comes back to the lens. The audio never travels: speech is turned into
+text on the phone first. Anthropic sees the request under your own key and
+handles it under their terms, which this project does not control:
+<https://www.anthropic.com/legal/privacy>. Choose Home Assistant as the
+assistant instead to keep everything on a machine you own.
+
+**The Home Assistant address you type** — only if you switch on Home
+Assistant in Settings and enter your own instance's address and access
+token. Off by default and blank by default; nothing is contacted until you
+fill both in. It is your server, on your network, chosen by you. Two things
+reach it: a sentence you spoke, when it begins with something addressed to
+the house, and a read of the handful of entities you picked for the lens,
+performed when the dashboard is built rather than on a timer. Plain `http`
+works on a local network; `https` additionally keeps your access token off
+the wire, which is worth doing.
 
 **Addresses inside cards you install or write** — a custom card, yours or an
 extension's, may read a value from an https URL. The exact URLs are visible
@@ -67,10 +98,38 @@ locked — otherwise the readout would freeze the moment you pocket the phone.
 
 ## Audio
 
-Speech is recognised on your device. Recordings are transcribed and then
-discarded; the audio itself is never written to permanent storage and never
-uploaded. Transcripts are kept locally in the dictation history, capped at the
-200 most recent entries, and you can clear them at any time from that screen.
+Speech is recognised on your device, and **the audio is now kept on your
+phone** — this changed, and it changed deliberately.
+
+It used to be discarded the moment a transcript existed. That sounded
+protective and was in fact destructive: every failure downstream — no speech
+model installed, a word the recogniser did not know, an exception — silently
+destroyed something you had said out loud and could not say again. Worse, a
+note recorded by the glasses was deleted from their flash *before* any of
+that ran, so nothing was left to retry from.
+
+So the order is now the other way round. The audio is written to your phone
+first, and only then is it transcribed. That is the glasses microphone, the
+default. Choose the phone microphone in the Voice settings instead and
+Android's own recogniser listens live: nothing is recorded, and that
+recogniser is Android's, which may use the network. Concretely:
+
+- Recordings live in the app's own private storage, in
+  `voice_recordings/`, readable by no other app.
+- **Nothing is uploaded, ever.** No recording leaves the phone unless you
+  send it yourself with the export button, which hands the file to Android's
+  share sheet and lets you choose where it goes. We operate no server and
+  there is nowhere for it to go on its own.
+- They are listed on the Recordings screen, where you can play, export or
+  delete any of them, individually.
+- The folder is capped at 512 MB; past that, the oldest are dropped, and the
+  log says which.
+
+Transcripts are kept separately in the dictation history, capped at the 200
+most recent entries, and you can clear them at any time from that screen.
+Deleting a transcript does not delete its recording, and deleting a
+recording does not delete its transcript — they are two records of the same
+moment and you may want to keep either one.
 
 ## Diagnostics
 
@@ -96,6 +155,18 @@ entirely your decision.
 
 No location, no contacts, no audio, ever. Recording protocol frames is off by
 default and only records while you leave it on.
+
+### The action journal
+
+Behind developer mode, then ten taps on the protocol bench's title, sits a
+journal that records the app's own actions — each Bluetooth write's command
+byte and length, heartbeats, syncs, connection events with their reasons.
+It exists to chase connection bugs, and three properties keep it honest:
+it never records content (that a notification was sent, never what it
+said); it never leaves the device unless you copy it out yourself; and it
+switches itself off 24 hours after being enabled, so a journal forgotten
+on cannot quietly record a stranger's week — the stranger being future
+you.
 
 ## Where your data lives
 

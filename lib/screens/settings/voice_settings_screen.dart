@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:g1_extended/models/speech_model.dart';
+import 'package:g1_extended/services/dictation_service.dart';
 import 'package:g1_extended/services/vosk_model_manager.dart';
 import 'package:g1_extended/services/wake_word_vocabulary.dart';
 import 'package:g1_extended/services/voice_input_service.dart';
@@ -25,7 +26,7 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
   bool _wakeWordEnabled = false;
   double _sensitivity = 0.5;
   String _wakeWordValue = 'computer';
-  bool _useGlassesMic = false;
+  bool _useGlassesMic = true;
   bool _modelInstalled = false;
   int _modelBytes = 0;
   double _downloadProgress = 0;
@@ -46,7 +47,7 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
     await _wakeWord.initialize();
     await _voiceInput.initialize();
 
-    final prefs = await SharedPreferences.getInstance();
+    final glassesMic = await DictationService.usesGlassesMicrophone();
     final installed = await _models.isModelInstalled();
     final size = installed ? await _wakeWord.getModelSize() : 0;
 
@@ -56,7 +57,7 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
       _wakeWordEnabled = _wakeWord.isEnabled;
       _sensitivity = _wakeWord.sensitivity;
       _wakeWordValue = _wakeWord.wakeWord;
-      _useGlassesMic = prefs.getBool('use_glasses_microphone') ?? false;
+      _useGlassesMic = glassesMic;
       _modelInstalled = installed;
       _modelBytes = size;
       _loading = false;
@@ -91,7 +92,7 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
 
   Future<void> _setUseGlassesMic(bool value) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('use_glasses_microphone', value);
+    await prefs.setBool(DictationService.glassesMicrophoneKey, value);
     if (mounted) setState(() => _useGlassesMic = value);
   }
 
@@ -143,32 +144,35 @@ class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Text(
-              'The phone microphone needs nothing downloaded: Android has its '
-              'own recogniser and it is the more accurate of the two. The '
-              'offline model below exists only because that recogniser will '
-              'not accept recorded audio, which is all the glasses can give '
-              'it — so it is needed for the glasses microphone, and for '
-              'nothing else.',
+              'With the glasses microphone, what you say is recorded first, '
+              'then turned into text on the phone by the offline model below '
+              'once you let go of the touchpad. The recording is kept and '
+              'the audio never leaves the phone. The phone microphone uses '
+              'Android\'s own recogniser instead: live, nothing recorded, '
+              'sometimes more accurate, and it may use the network.',
               style: TextStyle(fontSize: 12),
             ),
           ),
           RadioGroup<bool>(
             groupValue: _useGlassesMic,
-            onChanged: (value) => _setUseGlassesMic(value ?? false),
+            onChanged: (value) => _setUseGlassesMic(value ?? true),
             child: const Column(
               children: [
+                RadioListTile<bool>(
+                  value: true,
+                  title: Text('Glasses microphone'),
+                  subtitle: Text(
+                    'Recorded, then transcribed once you let go. Hands free; '
+                    'needs the offline model below.',
+                  ),
+                ),
                 RadioListTile<bool>(
                   value: false,
                   title: Text('Phone microphone'),
                   subtitle: Text(
-                    'Uses the system recogniser. More accurate, nothing to '
-                    'download.',
+                    'Android\'s recogniser, live. Nothing recorded, nothing '
+                    'to download.',
                   ),
-                ),
-                RadioListTile<bool>(
-                  value: true,
-                  title: Text('Glasses microphone'),
-                  subtitle: Text('Hands free. Needs the offline model below.'),
                 ),
               ],
             ),

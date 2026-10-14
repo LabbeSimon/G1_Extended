@@ -42,7 +42,9 @@ class G1BatteryInfo {
     // Ensure percentage is within valid range and accurate
     final percentage = rawPercentage.clamp(0, 100);
 
-    final voltage = data.length > 3 ? data[3] : 0;
+    // Millivolts: byte 4 is (volts * 100) - 200, as the official app decodes
+    // it. Byte 3 is a second percentage-like value, not the voltage.
+    final voltage = data.length > 4 ? (data[4] + 200) * 10 : 0;
 
     return G1BatteryInfo(
       percentage: percentage,

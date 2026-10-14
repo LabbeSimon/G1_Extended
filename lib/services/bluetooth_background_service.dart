@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:g1_extended/main.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/update_service.dart';
 import 'package:g1_extended/services/speedometer_service.dart';
 import 'package:g1_extended/services/bluetooth_reciever.dart';
 import 'package:g1_extended/utils/battery_optimization_helper.dart';
@@ -242,6 +243,37 @@ class BluetoothBackgroundService {
     }
 
     _isRunning = true;
+
+    // Says so when an update exists, without waiting to be opened. The
+    // banner is only seen from inside the app; this service runs anyway,
+    // checks a few times a day, and posts one ordinary notification whose
+    // tap opens the app — the banner does the rest. Same id every time, so
+    // a second check updates rather than stacks.
+    Timer.periodic(const Duration(hours: 6), (_) async {
+      try {
+        final update = await UpdateService.singleton.check();
+        if (update == null) return;
+        await FlutterLocalNotificationsPlugin().show(
+          43,
+          'G1 Extended ${update.version}',
+          'Une mise à jour est prête — ouvrez l\'application pour '
+              'l\'installer en un geste.',
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'updates',
+              'Updates',
+              channelDescription:
+                  'Says when a new version is ready to install.',
+              importance: Importance.defaultImportance,
+              priority: Priority.defaultPriority,
+              playSound: false,
+            ),
+          ),
+        );
+      } catch (e) {
+        debugPrint('BluetoothBackgroundService: update check failed: $e');
+      }
+    });
 
     // Storage first, and in this isolate specifically.
     //

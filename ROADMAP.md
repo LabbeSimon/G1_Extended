@@ -9,6 +9,16 @@ Contributions go through pull requests onto `beta` — see
 Code complete, verified as far as tests reach, but only a face wearing the
 hardware can confirm them:
 
+- [ ] **The glasses' own teleprompter** — command `0x09` as the official app
+      1.6.5 sends it ([docs/protocol/teleprompter.md](docs/protocol/teleprompter.md)):
+      five lines that scroll on the lens with a progress bar, one-row
+      animation, a tap on a temple to turn the page, a heartbeat every two
+      seconds. On by default in the teleprompter screen; switching it off
+      brings back the text pages
+- [ ] **Every recording fetched, not only the newest** — the download is
+      now parsed as the official app parses it (it worked by accident
+      before), and the list is asked for on connection and after each saved
+      recording, so notes made while the phone was away come in one by one
 - [ ] Wake word « souffleur » — the recognizer used to keep its old grammar
       and its old model across changes; both fixed, settings now display
       what is genuinely armed (`lib/services/wake_word_service.dart`)
@@ -22,6 +32,26 @@ hardware can confirm them:
 
 - [ ] The in-app update button, whole loop, at the next release
 
+- [ ] **Which screen-status byte the text command wants** — this app sends
+      0x30, openg1-sdk and g1bridge both compose 0x31 (mode in the high
+      nibble, action in the low), and plain text would be 0x71. Nothing is
+      changed in code: Settings → Debug sends the same sentence with all
+      three, and the lens decides
+
+- [ ] **Lines cut at forty characters instead of twenty** — the fork this
+      app came from wrapped at half the panel. Two independent
+      implementations measure forty for the 488 pixel text column at font
+      size 21; the lens mirror shows the difference, a face confirms it
+
+- [ ] **The dashboard's second pane** — news cards (source, body, four
+      slots) and the walking map (a 376x136 image in dual mode, 296x136 in
+      full, with a movable 32x32 cursor), under sub-commands 0x05 and 0x07
+      of the layout command. Protocol established by Egor Koleda
+      (radioegor146) in `even-utils` and reimplemented here; the framing
+      reproduces our own layout packet byte for byte, everything past that
+      is untested. Settings → Debug sends a news card and a calibration
+      chart
+
 ## In beta, not yet in a stable release
 
 Built and passing their tests, held back from stable until they have run
@@ -33,6 +63,10 @@ in Settings → About to get them.
       other reason it waits.
 - [ ] **Heart rate** from a chest strap or a watch in broadcast mode, as
       `{hr}` in any card
+- [ ] **Claude as the assistant** — with an Anthropic API key the user
+      pastes; nothing is sent until there is one, and the self-hosted
+      endpoint is still one tap away. Can be checked without glasses with
+      the Test button
 
 ## Blocked on information
 
@@ -65,16 +99,26 @@ Self-contained, and none needs the glasses' protocol knowledge to start:
 - [ ] **Translations of the app itself** — the interface is English-only;
       an l10n pass is welcome groundwork
 
+## Planned
+
+- [ ] **The phone's own AI on the glasses** — hand a spoken request to the AI
+      that already lives on the phone and write its answer on the lens.
+      Planned, not started. Whatever is chosen keeps the rule in
+      [AI-POLICY.md](AI-POLICY.md): on the device, or on a server the user
+      named themselves
+
 ## Decisions pending
 
-- [ ] Split APKs per ABI — the translation engine pushed the universal APK
-      from 59 to 83 MB; per-ABI halves the download
 - [ ] What the left-temple hold should do when an assistant is configured
       (today: dictation; candidate: trigger the assistant)
 
 ## Done, for the record
 
-Crash reports with reconnect · notes library with pinning and markup ·
+Split APKs per ABI — the universal build had reached 83 MB after the
+translation engine landed; releases now carry 47 MB for arm64 and 40 MB for
+armeabi-v7a · lens mirror in pixels, 576x136 at one bit, decoded from the bytes actually
+written and reporting overflow, spill and ink · crash reports with reconnect ·
+notes library with pinning and markup ·
 notification history with temple-walk · home screen widget with options ·
 world clocks (IANA, DST-proof) · speedometer resilience, decimal comma,
 clock · lens mirror banner with mode chips · brightness drag tile ·

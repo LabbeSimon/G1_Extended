@@ -1,0 +1,30 @@
+An independent, open-source Android client for the Even Realities G1 smart
+glasses. Not made by, affiliated with, or endorsed by Even Realities.
+
+It removes the telemetry and the account the original client came with, and
+gives back a device that works on its own. Working from a reverse-engineered
+BLE protocol — two Nordic UART radios, one per temple — it drives the lens
+directly, exposes layouts the official app keeps to itself, and reads
+hardware events it discards.
+
+Glasses
+* Pairs with both temples over Bluetooth and reconnects on its own
+* Battery level for each side, and for the charging case
+* Brightness, silent mode, head-up angle, dashboard position
+* Keeps the connection alive from a background service
+
+On the display
+* A dashboard with the time, weather, your agenda, checklists and reminders
+* Phone notifications forwarded in real time, filtered per app
+* Turn-by-turn directions, read from whatever navigation app you use
+* Notes, teleprompter, speedometer, world clocks
+* Live translation and captions, recognised on the device
+
+Your data
+* No account, no sign-in, no telemetry, no analytics
+* Speech recognition runs offline, on the phone
+* The only network requests are an optional weather forecast and a one-off
+  download of the speech model you choose
+
+The app is free, and everything about it — including its extension
+catalogue — is forbidden to be sold.

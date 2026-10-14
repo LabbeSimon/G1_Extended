@@ -5,6 +5,7 @@ import 'package:g1_extended/models/dashboard/stop.dart';
 import 'package:g1_extended/models/dashboard/dashboard_widget.dart';
 import 'package:g1_extended/models/g1/note.dart';
 import 'package:g1_extended/services/custom_cards_service.dart';
+import 'package:g1_extended/services/home_assistant_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -39,6 +40,9 @@ class GlassesDashboard {
   /// cards are what the wearer writes themselves, so they come first.
   List<DashboardWidget> installedWidgets = [
     CustomCardsService.singleton,
+    // Off unless someone connected a house, and silent when they have not:
+    // it returns nothing at all rather than a card that says "--".
+    HomeAssistantService.singleton,
   ];
 
   bool _initialized = false;

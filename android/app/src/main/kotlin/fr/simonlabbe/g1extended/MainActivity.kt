@@ -36,6 +36,7 @@ class MainActivity : FlutterActivity() {
         const val CHANNEL_BATTERY = "$PACKAGE/battery_optimization"
         const val CHANNEL_INSTALL = "$PACKAGE/apk_install"
         const val CHANNEL_MEMORY = "$PACKAGE/memory"
+        const val CHANNEL_CRASH_TRAIL = "$PACKAGE/crash_trail"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -72,10 +73,37 @@ class MainActivity : FlutterActivity() {
                 if (data == null) {
                     result.error("INVALID_ARGUMENT", "Data is null", null)
                 } else {
-                    result.success(Cpp.decodeLC3(data))
+                    // Throwable, not Exception. A native library that fails
+                    // to bind throws UnsatisfiedLinkError, an Error, which
+                    // Flutter hands to the thread's uncaught handler: the
+                    // process dies and Dart never hears of it. Answered as an
+                    // error instead, the recording is kept undecoded.
+                    try {
+                        result.success(Cpp.decodeLC3(data))
+                    } catch (e: Throwable) {
+                        Log.e(TAG, "LC3 decoding failed", e)
+                        result.error("LC3_FAILED", e.toString(), null)
+                    }
                 }
             } else {
                 result.notImplemented()
+            }
+        }
+
+        // Asked once, on the launch after the app died: what Dart could not
+        // see. See CrashTrail.
+        MethodChannel(messenger, CHANNEL_CRASH_TRAIL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "takeJavaCrash" -> result.success(CrashTrail.takeJavaCrash(this))
+                "lastExit" -> result.success(
+                    try {
+                        CrashTrail.lastExit(this)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Exit history unavailable", e)
+                        null
+                    }
+                )
+                else -> result.notImplemented()
             }
         }
 
@@ -105,7 +133,11 @@ class MainActivity : FlutterActivity() {
         // What the system will let this process have — asked before the
         // speech model meets a native loader that cannot fail politely.
         MethodChannel(messenger, CHANNEL_MEMORY).setMethodCallHandler { call, result ->
-            if (call.method == "state") {
+            if (call.method == "abis") {
+                // Most preferred first, which is the order Android itself
+                // uses when choosing which native libraries to load.
+                result.success(android.os.Build.SUPPORTED_ABIS.toList())
+            } else if (call.method == "state") {
                 val am = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
                 val info = android.app.ActivityManager.MemoryInfo()
                 am.getMemoryInfo(info)

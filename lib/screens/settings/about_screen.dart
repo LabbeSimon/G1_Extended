@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:g1_extended/services/settings_backup.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -105,6 +107,55 @@ class _AboutScreenState extends State<AboutScreen> {
   Future<void> _disableDeveloper() async {
     await DeveloperMode.singleton.setEnabled(false);
     if (mounted) setState(() => _developer = false);
+  }
+
+  Future<void> _restoreFromClipboard(BuildContext context) async {
+    final clip = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = clip?.text ?? '';
+    if (!context.mounted) return;
+
+    if (text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('The clipboard is empty. Copy your backup first.'),
+      ));
+      return;
+    }
+
+    // Restoring overwrites; that deserves one plain question.
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: const Text('Restore over current settings?'),
+        content: const Text(
+          'What is in the backup replaces what is on the phone where the '
+          'two disagree. Nothing is deleted that the backup does not name.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialog).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialog).pop(true),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+    if (go != true || !context.mounted) return;
+
+    try {
+      final summary = await SettingsBackup.restore(text);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(summary)));
+      }
+    } on FormatException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
   }
 
   @override
@@ -248,6 +299,31 @@ class _AboutScreenState extends State<AboutScreen> {
                 context,
                 MaterialPageRoute(builder: (_) => const DebugPage()),
               ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.save_outlined),
+              title: const Text('Export my settings'),
+              subtitle: const Text(
+                'Everything to the clipboard as JSON — notes, cards, '
+                'preferences. Paste it somewhere safe.',
+              ),
+              onTap: () async {
+                final backup = await SettingsBackup.export();
+                await Clipboard.setData(ClipboardData(text: backup));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Backup copied. Paste it somewhere safe — '
+                        'a note, a file, an email to yourself.'),
+                  ));
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.restore_outlined),
+              title: const Text('Restore my settings'),
+              subtitle:
+                  const Text('From a backup copied to the clipboard.'),
+              onTap: () => _restoreFromClipboard(context),
             ),
             ListTile(
               leading: const Icon(Icons.lock_outline),

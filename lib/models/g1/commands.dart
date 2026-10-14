@@ -10,6 +10,14 @@ class Commands {
   static const int QUICK_NOTE_ADD = 0x1E;
   static const int DASHBOARD = 0x22;
   static const int NOTIFICATION = 0x4B;
+
+  /// Dismisses the banner 0x4B put on the lens.
+  ///
+  /// No payload. Seen in traffic by the community rather than documented,
+  /// and never tried here — the app has always waited the banner out. Sent
+  /// to both temples, like 0x4B: the spec calls both left-arm commands, and
+  /// routing the notification that way is what made it never appear.
+  static const int CLEAR_NOTIFICATION = 0x4C;
   static const int SILENT_MODE = 0x03;
   static const int BRIGHTNESS = 0x01;
   static const int DASBOARD_POSITION = 0x26;

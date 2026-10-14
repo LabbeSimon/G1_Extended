@@ -20,6 +20,13 @@ class SpeechModel {
   /// ISO 639-1 code, used to pick the matching wake-word vocabulary.
   final String language;
 
+  /// The locale handed to the phone's own recogniser, so the chosen language
+  /// drives phone-microphone dictation as well as the offline Vosk model.
+  String get localeId => switch (language) {
+        'fr' => 'fr_FR',
+        _ => 'en_US',
+      };
+
   /// Shown in the interface.
   final String languageLabel;
 
@@ -51,6 +58,13 @@ class SpeechModel {
 
   static SpeechModel byId(String id) =>
       all.firstWhere((m) => m.id == id, orElse: () => english);
+
+  /// The model for a phone language such as `fr_FR`; English when there is
+  /// none for it.
+  static SpeechModel forLocale(String locale) {
+    final language = locale.split(RegExp('[_-]')).first.toLowerCase();
+    return all.firstWhere((m) => m.language == language, orElse: () => english);
+  }
 
   @override
   String toString() => '$id ($language)';

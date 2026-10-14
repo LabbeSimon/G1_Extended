@@ -30,7 +30,7 @@ class G1Notification {
     ncsNotification.subtitle = Emoji.emojiToAscii(ncsNotification.subtitle);
     Uint8List jsonBytes = toBytes();
 
-    int maxChunkSize = 180 - 3; // Subtract 3 bytes for header
+    int maxChunkSize = 180 - 4; // Subtract 4 bytes for header
     List<Uint8List> chunks = [];
 
     for (int i = 0; i < jsonBytes.length; i += maxChunkSize) {
@@ -43,7 +43,15 @@ class G1Notification {
     int totalChunks = chunks.length;
     List<Uint8List> encodedChunks = [];
     for (int index = 0; index < chunks.length; index++) {
-      List<int> header = [0x4B, totalChunks, index];
+      // Four header bytes, notifyId included. The repo this app was forked
+      // from dropped the notifyId byte somewhere along the way; with three
+      // bytes the firmware reads the chunk count as the id, the index as
+      // the count, and the JSON's first byte as the index — and discards
+      // the lot without a sound. Fahrplan, which this code originally comes
+      // from, and even_glasses both send four, and both display on real
+      // glasses.
+      int notifyId = 1;
+      List<int> header = [0x4B, notifyId, totalChunks, index];
       Uint8List encodedChunk = Uint8List.fromList(header + chunks[index]);
       encodedChunks.add(encodedChunk);
     }

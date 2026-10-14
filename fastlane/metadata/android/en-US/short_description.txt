@@ -1,0 +1,1 @@
+Offline client for Even Realities G1 glasses. No account, no telemetry.

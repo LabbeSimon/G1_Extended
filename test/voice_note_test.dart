@@ -40,6 +40,32 @@ void main() {
     });
   });
 
+  group('Asking for the list', () {
+    test('is 0x1E sub 0x01 with a constant 0x01, as the official app sends',
+        () {
+      expect(VoiceNote.buildListCommand(5), [0x1E, 0x06, 0x00, 5, 0x01, 0x01]);
+    });
+
+    test('wraps its sequence at 255', () {
+      expect(VoiceNote.buildListCommand(255)[3], 0);
+    });
+
+    test('the answer under 0x1E parses like a 0x21 announcement', () {
+      final reply = Uint8List.fromList([
+        0x1E, 0x0F, 0x00, 0x03, 0x01, 0x01, // header, one recording
+        0x02, 0x9a, 0xa1, 0x7a, 0x67, 0x77, 0x0a, 0x84, 0xbb,
+      ]);
+      final list = VoiceNoteNotification(reply);
+      expect(list.entries.single.index, 2);
+      expect(list.entries.single.timestamp, 1736090010);
+    });
+
+    test('an empty flash answers with no entries', () {
+      final reply = Uint8List.fromList([0x1E, 0x06, 0x00, 0x03, 0x01, 0x00]);
+      expect(VoiceNoteNotification(reply).entries, isEmpty);
+    });
+  });
+
   group('VoiceNoteNotification', () {
     test('parses data correctly', () {
       final data = Uint8List.fromList([

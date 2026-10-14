@@ -67,10 +67,12 @@ class G1Setup {
 
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};
+    // Lower-case keys, in this order, as the official app 1.6.5 writes them.
+    // The capitalised ones inherited from the fork were not the firmware's.
     data['calendar_enable'] = calendarEnable;
-    data['Call_enable'] = callEnable;
-    data['Msg_enable'] = msgEnable;
-    data['Ios_mail_enable'] = iosMailEnable;
+    data['call_enable'] = callEnable;
+    data['msg_enable'] = msgEnable;
+    data['ios_mail_enable'] = iosMailEnable;
     data['app'] = app.toJson();
     return data;
   }
@@ -122,7 +124,7 @@ class App {
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};
     if (list != null) {
-      data['List'] = list!.map((v) => v.toJson()).toList();
+      data['list'] = list!.map((v) => v.toJson()).toList();
     }
     data['enable'] = enable;
     return data;

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'bluetooth_manager.dart';
 import 'open_meteo_weather_service.dart';
@@ -81,12 +83,13 @@ class TimeSync {
     // Increment and manage sequence number
     _sequenceNumber = (_sequenceNumber + 1) % 256;
 
-    // Create byte buffer for the packet (21 bytes total)
-    final buffer = ByteData(21);
+    // 22 bytes, as the official app 1.6.5 sends it: the older 21-byte layout
+    // plus the date format at the end.
+    final buffer = ByteData(22);
 
     // Header
     buffer.setUint8(0, 0x06); // Command: Set Dashboard Settings
-    buffer.setUint8(1, 21); // Length: total packet length
+    buffer.setUint8(1, 22); // Length: total packet length
     buffer.setUint8(2, 0x00); // Pad
     buffer.setUint8(3, _sequenceNumber); // Sequence number
 
@@ -101,8 +104,12 @@ class TimeSync {
 
     // Weather settings (using real weather data from Open-Meteo API)
     buffer.setUint8(17, weatherIconId); // Weather Icon ID
-    buffer.setUint8(
-        18, temperature); // Temperature in Celsius (protocol requirement)
+    // setUint8 refuses negatives outright, so the whole dashboard sync used
+    // to throw the moment the outside temperature dropped below 0 °C. The
+    // field is one signed byte on the wire; setInt8 produces the same
+    // two's-complement byte the firmware expects, and the clamp keeps a
+    // stray sensor reading from tripping the range check.
+    buffer.setInt8(18, temperature.clamp(-128, 127));
     buffer.setUint8(
         19, temperatureUnit); // C/F display flag: 0=Celsius, 1=Fahrenheit
 
@@ -111,6 +118,7 @@ class TimeSync {
     final is24HourFormat =
         UiPerfs.singleton.timeFormat == TimeFormat.TWENTY_FOUR_HOUR;
     buffer.setUint8(20, is24HourFormat ? 0x00 : 0x01); // 24H/12H format
+    buffer.setUint8(21, dateFormatFor(_country()));
 
     // Convert to List<int> for sendCommandToGlasses
     final packet = buffer.buffer.asUint8List().toList();
@@ -125,6 +133,22 @@ class TimeSync {
   }
 
   /// Get weather icon based on time of day
+  /// The day and month order the official app announces for a country:
+  /// 0 for the United States and a few others, 1 for the Nordic countries and
+  /// Poland, 2 everywhere else.
+  @visibleForTesting
+  static int dateFormatFor(String? country) => switch (country?.toUpperCase()) {
+        'US' || 'PH' || 'CA' || 'BE' || 'CN' || 'JP' || 'KR' => 0,
+        'SE' || 'NO' || 'FI' || 'PL' => 1,
+        _ => 2,
+      };
+
+  /// The phone's country, from a locale name such as `fr_FR`.
+  static String? _country() {
+    final parts = Platform.localeName.split(RegExp(r'[_\-.@]'));
+    return parts.length > 1 && parts[1].length == 2 ? parts[1] : null;
+  }
+
   static int _getWeatherIconForTime(DateTime time) {
     final hour = time.hour;
     final isDay = hour >= 6 && hour < 20;

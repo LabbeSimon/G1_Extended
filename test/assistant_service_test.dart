@@ -1,68 +1,45 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:g1_extended/services/assistant_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  group('Working out the endpoint', () {
-    test('accepts a bare host and port', () {
-      expect(
-        AssistantService.endpointFor('http://192.168.1.20:11434').toString(),
-        'http://192.168.1.20:11434/v1/chat/completions',
-      );
-    });
-
-    test('assumes http when no scheme is typed', () {
-      // People type an address, not a URL.
-      expect(
-        AssistantService.endpointFor('192.168.1.20:11434').toString(),
-        'http://192.168.1.20:11434/v1/chat/completions',
-      );
-    });
-
-    test('does not double up when /v1 is already there', () {
-      expect(
-        AssistantService.endpointFor('https://api.example.com/v1').toString(),
-        'https://api.example.com/v1/chat/completions',
-      );
-    });
-
-    test('leaves a full path alone', () {
-      const full = 'https://api.example.com/v1/chat/completions';
-      expect(AssistantService.endpointFor(full).toString(), full);
-    });
-
-    test('forgives trailing slashes', () {
-      expect(
-        AssistantService.endpointFor('http://host:11434///').toString(),
-        'http://host:11434/v1/chat/completions',
-      );
-    });
-
-    test('gives nothing for an empty field', () {
-      expect(AssistantService.endpointFor(''), isNull);
-      expect(AssistantService.endpointFor('   '), isNull);
-    });
-  });
-
-  group('Reading the answer', () {
-    test('pulls the content out of a chat completion', () {
+  group('Reading a Claude reply', () {
+    test('takes the first text block', () {
       final body = {
-        'choices': [
-          {
-            'message': {'role': 'assistant', 'content': 'It is 21 degrees.'},
-          },
+        'content': [
+          {'type': 'text', 'text': 'It is 21 degrees.'},
         ],
       };
-      expect(AssistantService.answerFrom(body), 'It is 21 degrees.');
+      expect(AssistantService.claudeAnswerFrom(body), 'It is 21 degrees.');
     });
 
-    test('survives a reply shaped differently than expected', () {
-      expect(AssistantService.answerFrom({}), isNull);
-      expect(AssistantService.answerFrom({'choices': []}), isNull);
-      expect(AssistantService.answerFrom({'choices': [{}]}), isNull);
+    test('skips a thinking block and finds the text', () {
+      final body = {
+        'content': [
+          {'type': 'thinking', 'thinking': 'the user asked about weather'},
+          {'type': 'text', 'text': 'Sunny and mild.'},
+        ],
+      };
+      expect(AssistantService.claudeAnswerFrom(body), 'Sunny and mild.');
+    });
+
+    test('shortens a long answer like any other', () {
+      final body = {
+        'content': [
+          {'type': 'text', 'text': '**Yes**, the `answer` is _42_.'},
+        ],
+      };
+      expect(AssistantService.claudeAnswerFrom(body), 'Yes, the answer is 42.');
+    });
+
+    test('is null when there is no usable text', () {
+      expect(AssistantService.claudeAnswerFrom({}), isNull);
+      expect(AssistantService.claudeAnswerFrom({'content': []}), isNull);
       expect(
-        AssistantService.answerFrom({
-          'choices': [
-            {'message': {'content': 42}},
+        AssistantService.claudeAnswerFrom({
+          'content': [
+            {'type': 'tool_use', 'name': 'x'},
           ],
         }),
         isNull,
@@ -101,6 +78,49 @@ void main() {
       final short = AssistantService.shorten(long);
       expect(short.length, lessThanOrEqualTo(AssistantService.maxAnswerLength));
       expect(short.endsWith('…'), isTrue);
+    });
+  });
+
+  group('What counts as set up', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      FlutterSecureStorage.setMockInitialValues({});
+    });
+
+    test('a pasted Claude key is enough, switched on or not', () async {
+      final assistant = AssistantService.singleton;
+      expect(await assistant.hasCredentials(), isFalse);
+
+      await assistant.setApiKey('sk-ant-test');
+      expect(await assistant.hasCredentials(), isTrue);
+      expect(await assistant.isConfigured(), isFalse, reason: 'still off');
+
+      await assistant.setEnabled(true);
+      expect(await assistant.isConfigured(), isTrue);
+    });
+
+    test('Home Assistant counts once the house is connected', () async {
+      final assistant = AssistantService.singleton;
+      await assistant.setProvider(AssistantProvider.homeAssistant);
+      expect(await assistant.hasCredentials(), isFalse);
+
+      SharedPreferences.setMockInitialValues({
+        'assistant_provider': 'ha',
+        'home_assistant_enabled': true,
+        'home_assistant_base_url': 'http://192.168.1.20:8123',
+      });
+      FlutterSecureStorage.setMockInitialValues({
+        'home_assistant_token': 'a-long-lived-token',
+      });
+      expect(await assistant.hasCredentials(), isTrue);
+    });
+
+    test('the old self-hosted setting falls back to Claude', () async {
+      SharedPreferences.setMockInitialValues({'assistant_provider': 'openai'});
+      expect(
+        await AssistantService.singleton.provider(),
+        AssistantProvider.claude,
+      );
     });
   });
 }

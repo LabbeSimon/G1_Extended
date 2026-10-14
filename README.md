@@ -9,7 +9,7 @@
 [![Build](https://github.com/LabbeSimon/G1_Extended/actions/workflows/build_apk.yml/badge.svg)](https://github.com/LabbeSimon/G1_Extended/actions/workflows/build_apk.yml)
 [![Release](https://img.shields.io/github/v/release/LabbeSimon/G1_Extended?label=release)](https://github.com/LabbeSimon/G1_Extended/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/LabbeSimon/G1_Extended/total?label=downloads)](https://github.com/LabbeSimon/G1_Extended/releases)
-[![Licence](https://img.shields.io/badge/licence-BSD--2--Clause-blue)](LICENSE)
+[![Licence](https://img.shields.io/badge/licence-EUPL--1.2-blue)](LICENSE)
 [![Android](https://img.shields.io/badge/android-7.0%2B-brightgreen)](#build)
 [![Telemetry](https://img.shields.io/badge/telemetry-none-brightgreen)](PRIVACY.md)
 
@@ -67,14 +67,24 @@ still an independent project, not made or endorsed by Even Realities.
 - Live captions from the glasses microphone
 - A teleprompter that follows your voice, or a set pace, or your thumb
 - Your own lines on the lens, built from live values or a URL you choose
-- Optionally, questions answered by a model you host or chose — never a
-  bundled one, and only ever the transcribed text, never the audio
+- Optionally, an assistant: hold the left temple, ask, and read the answer
+  on the lens. Claude with your own API key, or your own Home Assistant and
+  whichever agent it runs (a model you host included); never a bundled one,
+  and only ever the transcribed text, never the audio
 - Dictation: hold a temple touchpad, speak, see the text on the lens
+- Optionally, your house: speak to Home Assistant and read a few of its
+  values on the lens
 
 **Voice**
-- Speech recognition runs on the device, through Vosk or the platform recogniser
+- Recorded first, transcribed after: hold the touchpad, speak, let go, and the
+  recording is turned into text on the phone by the offline Vosk model. The
+  phone-microphone option uses Android's live recogniser instead
 - Optional wake word
-- No audio is ever uploaded
+- **The audio is kept.** A recording reaches your phone's storage before it is
+  transcribed, so a missing speech model or a word the recogniser did not know
+  costs you a transcript, never the recording. Play, export or delete any of
+  them on the Recordings screen
+- This app never uploads audio
 
 ## Running in the background
 
@@ -95,7 +105,8 @@ What that costs, and what it does not:
 - **No location polling.** Location is read once when weather is refreshed,
   and continuously only while the speedometer card is on screen.
 - **No background network activity.** Nothing is synced, uploaded or
-  reported. See [PRIVACY.md](PRIVACY.md).
+  reported — including your recordings, which never leave the phone unless
+  you export one yourself. See [PRIVACY.md](PRIVACY.md).
 
 ### Doze, App Standby and OEM battery managers
 
@@ -131,17 +142,22 @@ that was not about the glasses taken out:
 | Android digital assistant | Existed only to launch the AI |
 | Discord build webhook | Sent commit messages and usernames to a third-party chat |
 
-Android permissions went from 33 to 18. The app makes three network requests, all
+Android permissions went from 33 to 18. Every network request the app makes is
 optional:
 
 - `api.open-meteo.com` for the weather widget, if you enable it
 - `alphacephei.com` once, to download the offline speech model
 - `api.github.com` to check for a newer release, if you leave that on
+- `raw.githubusercontent.com` for the extension catalogue, when you ask for it
+- `api.anthropic.com` for Claude, the assistant, once you paste your own API key
+- your own Home Assistant, if you connected one
 
 ## Privacy
 
-No account, no telemetry, three optional network requests. The full statement is
-in [PRIVACY.md](PRIVACY.md).
+No account, no telemetry, and every network request optional — including the
+two that go to servers you chose yourself. Recordings stay in the app's own
+private storage and are uploaded nowhere. The full statement is in
+[PRIVACY.md](PRIVACY.md).
 
 ## By the numbers
 
@@ -149,14 +165,14 @@ Counted from the working tree, not estimated.
 
 | | |
 |---|---|
-| Dart | 18 800 lines across 100 files |
+| Dart | 27 900 lines across 135 files |
 | Native C and C++ | 26 300 lines — the LC3 decoder and noise suppression, inherited |
-| Tests | 215, in 26 files |
+| Tests | 474, in 54 files |
 | Static analysis | 0 issues; CI fails on a single info-level hint |
 | Android permissions | 18, down from 33 |
 | Dependencies | 29, down from 43 |
-| Network requests | 3, every one optional and switchable off |
-| APK | 56 MB, arm64 and armeabi-v7a |
+| Network requests | 6, every one optional and switchable off |
+| APK | 47 MB for arm64, 40 MB for armeabi-v7a — one file per architecture, not a universal build |
 
 Roughly 12 000 of the surviving Dart lines are inherited from
 [AGiXT/mobile](https://github.com/AGiXT/mobile), mostly the Bluetooth layer.
@@ -165,7 +181,7 @@ features listed above.
 
 The badges above are rendered by GitHub when you read this page. They are not
 part of the app and the app never contacts those hosts — see
-[PRIVACY.md](PRIVACY.md) for the three it does contact.
+[PRIVACY.md](PRIVACY.md) for the ones it does contact.
 
 ## Roadmap
 
@@ -232,7 +248,12 @@ For CI, add two repository secrets: `KEYSTORE_BASE64`, the keystore as
 
 ## Protocol
 
-`Even Realities G1 BLE Protocol.txt` documents the BLE commands this app uses.
+`Even Realities G1 BLE Protocol.txt` documents the BLE commands this app uses,
+and [docs/PROTOCOL_NOTES.md](docs/PROTOCOL_NOTES.md) sorts what the app
+actually does by how well it is established: confirmed on real glasses,
+inherited and working but unexamined, or reimplemented from another project
+and never seen working. A byte that displays on a lens and a byte that looks
+right in a capture are not the same kind of fact.
 
 Hardware figures that shape the code, from the manufacturer's own
 specifications:
@@ -246,8 +267,26 @@ specifications:
 | Microphones | Two |
 
 The bitmap helper works on a 576 × 136 canvas, which is not the display
-resolution above. Whether that is an inherited mistake or the image command
-addressing a sub-region is untested.
+resolution above. It is not an inherited mistake: two independent
+implementations treat 576 × 136 as the surface the BLE commands actually
+drive, with text composed inside a 488 pixel column at font size 21, five
+lines to a screen. The 640 × 200 figure is the optics; 576 × 136 is what
+arrives over the air. The lens mirror in Settings > Debug draws that canvas
+from the bytes the app writes, so a layout can be checked without wearing
+anything.
+
+### Other implementations
+
+Nobody has the manufacturer's documentation, so the protocol is what several
+projects have independently worked out. Where they disagree, glasses decide.
+
+| | |
+|---|---|
+| [even_glasses](https://github.com/emingenc/even_glasses) | Python, the oldest reference that still runs |
+| [fahrplan](https://github.com/meyskens/fahrplan) | Flutter, the ancestor of this codebase's Bluetooth layer |
+| [openg1-sdk](https://github.com/gabrielevierti/openg1-sdk) | Python, a protocol specification with confidence levels and 83 conformance vectors, plus a simulator |
+| [g1bridge](https://github.com/Artem1bar/g1bridge) | Python, verified on hardware in September 2026 |
+| [even-utils](https://github.com/radioegor146/even-utils) | Java, the only project to have worked out the dashboard's second pane |
 
 ## Third-party code
 
@@ -257,8 +296,19 @@ Settings > About > Licence.
 
 ## Licence and provenance
 
-BSD 2-Clause. See [LICENSE](LICENSE), whose copyright notice must travel with
-any copy of this code or of a binary built from it.
+Copyright (c) 2026 Simon Labbé. Licensed under the
+[EUPL v. 1.2](LICENSE) — the European Union Public Licence, a copyleft
+licence: you may use, modify and redistribute the code, including
+commercially, and what you distribute you must distribute under the EUPL or a
+compatible licence (its appendix lists the GPL, AGPL, LGPL, MPL 2, EPL, OSL and
+CeCILL families).
+
+The code this project inherited was published under the BSD 2-Clause licence
+and stays under it: the original notice is kept in
+[LICENSES/BSD-2-Clause-even-realities.txt](LICENSES/BSD-2-Clause-even-realities.txt)
+and shown in the app under Settings > About > Licence, and it must travel with
+any copy of that code or of a binary built from it. New contributions are
+accepted under the EUPL.
 
 The lineage, since this repository is no longer marked as a fork and nothing
 else records it:

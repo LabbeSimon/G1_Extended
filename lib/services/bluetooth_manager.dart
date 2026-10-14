@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:g1_extended/services/lens_emulator.dart';
+import 'package:g1_extended/services/lens_text_width.dart';
 import 'package:g1_extended/services/bluetooth_background_service.dart';
+import 'package:g1_extended/services/bluetooth_reciever.dart';
 import 'package:android_package_manager/android_package_manager.dart';
 import 'package:g1_extended/models/dashboard/dashboard.dart';
 import 'package:g1_extended/models/g1/bmp.dart';
@@ -21,6 +24,7 @@ import 'package:g1_extended/services/world_clocks.dart';
 import 'package:g1_extended/models/g1/notification.dart';
 import 'package:g1_extended/models/g1/text.dart';
 import 'package:g1_extended/services/navigation_service.dart';
+import 'package:g1_extended/services/now_playing_service.dart';
 import 'package:g1_extended/services/notification_history.dart';
 import 'package:g1_extended/services/voice_command_runner.dart';
 import 'package:g1_extended/services/notifications_listener.dart';
@@ -34,6 +38,7 @@ import 'package:hive/hive.dart';
 import 'package:notification_listener_service/notification_event.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/constants.dart';
+import '../utils/flow_gate.dart';
 import '../models/g1/glass.dart';
 import 'time_sync.dart';
 import 'permission_manager.dart';
@@ -368,8 +373,10 @@ class BluetoothManager {
     // Stop scanning
     stopScanning();
 
-    // Disconnect and clean up glasses
-    await disconnectFromGlasses();
+    // Disconnect and clean up glasses. Directly, not through the gate: the
+    // manager is going away and must not wait behind queued flows whose
+    // callbacks would land on the controllers just closed above.
+    await _disconnectFromGlassesNow();
 
     // Note: NotificationListener doesn't have a dispose method
     // The stream is handled automatically
@@ -399,40 +406,78 @@ class BluetoothManager {
     }
   }
 
-  Future<void> attemptReconnectFromStorage() async {
+  /// The manager's connection flows, one at a time.
+  ///
+  /// Reconnect-from-storage alone has five triggers — app startup, the crash
+  /// dialog, the background service's init, its connection monitor, the home
+  /// widget — plus the interface's Connect and Disconnect buttons, all of
+  /// which reach the same two Glass fields. Unserialized, one flow's opening
+  /// disconnectFromGlasses() is another flow's temple dying mid-setup:
+  /// "PlatformException(setNotifyValue, device is disconnected)".
+  final FlowGate _connectionFlows = FlowGate();
+
+  Future<void> attemptReconnectFromStorage() {
+    // Coalesced: several triggers firing together mean "please be
+    // connected", not "reconnect that many times" — and a queued duplicate
+    // would begin by tearing down the connection the first one just made.
+    return _connectionFlows.coalesced(_reconnectFromStorage);
+  }
+
+  Future<void> _reconnectFromStorage() async {
     await initialize();
 
     final leftUid = await _getLastG1UsedUid(GlassSide.left);
     final rightUid = await _getLastG1UsedUid(GlassSide.right);
 
-    if (leftUid != null) {
+    // Each temple is reconnected in isolation: one temple failing used to
+    // throw out of the whole method, which meant the crash dialog's Reconnect
+    // button could bring back the left branch, hit a mid-setup drop on the
+    // right, and surface a PlatformException to the crash reporter — which
+    // showed a fresh crash dialog on top of the one just dismissed.
+    //
+    // A side that is already connected is left alone, and a stale instance
+    // is disconnected before being replaced: an abandoned Glass keeps its
+    // notification subscription and reconnect loop alive, so every packet
+    // was handled once per abandoned instance.
+    if (leftUid != null && leftGlass?.isConnected != true) {
+      await leftGlass?.disconnect();
       leftGlass = Glass(
         name: await _getLastG1UsedName(GlassSide.left) ?? 'Left Glass',
         device: BluetoothDevice(remoteId: DeviceIdentifier(leftUid)),
         side: GlassSide.left,
       );
       leftGlass!.onConnectionStateChanged = _notifyConnectionStatusChanged;
-      await leftGlass!.connect();
-      _setReconnect(leftGlass!);
-      _setupImmediateBatteryMonitoring(leftGlass!);
+      try {
+        await leftGlass!.connect();
+        _setReconnect(leftGlass!);
+        _setupImmediateBatteryMonitoring(leftGlass!);
+      } catch (e) {
+        debugPrint('BluetoothManager: left temple reconnect failed: $e');
+      }
     }
 
-    if (rightUid != null) {
+    if (rightUid != null && rightGlass?.isConnected != true) {
+      await rightGlass?.disconnect();
       rightGlass = Glass(
         name: await _getLastG1UsedName(GlassSide.right) ?? 'Right Glass',
         device: BluetoothDevice(remoteId: DeviceIdentifier(rightUid)),
         side: GlassSide.right,
       );
       rightGlass!.onConnectionStateChanged = _notifyConnectionStatusChanged;
-      await rightGlass!.connect();
-      _setReconnect(rightGlass!);
-      _setupImmediateBatteryMonitoring(rightGlass!);
+      try {
+        await rightGlass!.connect();
+        _setReconnect(rightGlass!);
+        _setupImmediateBatteryMonitoring(rightGlass!);
+      } catch (e) {
+        debugPrint('BluetoothManager: right temple reconnect failed: $e');
+      }
     }
 
     // Sync settings if both glasses are connected
     if (leftGlass?.isConnected == true && rightGlass?.isConnected == true) {
       _notifyConnectionStatusChanged();
       await _sync();
+      _fetchVoiceNotesSoon();
     }
   }
 
@@ -444,6 +489,13 @@ class BluetoothManager {
       return;
     }
 
+    // Exclusive rather than coalesced: the user asked for a fresh scan and
+    // gets one — but only after any in-flight reconnect has settled, instead
+    // of tearing its half-built connections down from under it.
+    return _connectionFlows.exclusive(() => _scanAndConnectFlow(onUpdate));
+  }
+
+  Future<void> _scanAndConnectFlow(OnUpdate onUpdate) async {
     try {
       // Request permissions but don't fail if denied
       await _requestPermissions();
@@ -470,8 +522,9 @@ class BluetoothManager {
     // Stop any existing scan
     await FlutterBluePlus.stopScan();
 
-    // Make sure old connections are properly cleaned up
-    await disconnectFromGlasses();
+    // Make sure old connections are properly cleaned up. The internal
+    // variant: this flow already holds the gate the public one waits on.
+    await _disconnectFromGlassesNow();
 
     // Reset state
     _isScanning = true;
@@ -614,6 +667,7 @@ class BluetoothManager {
             ); // Increased delay for stability
             _notifyConnectionStatusChanged();
             await _sync();
+            _fetchVoiceNotesSoon();
           }
         }
       } catch (e) {
@@ -747,7 +801,10 @@ class BluetoothManager {
   /// their allowlist (0x04) are documented left-arm commands, and
   /// broadcasting them to the pair is how a notification could be built
   /// correctly, chunked correctly, sent — and never appear.
-  Future<bool> sendToLeft(List<int> command) => _writeTo(leftGlass, command);
+  Future<bool> sendToLeft(List<int> command) {
+    LensEmulator.mirror.consume(command);
+    return _writeTo(leftGlass, command);
+  }
 
   /// True when a write reached one temple and not the other.
   ///
@@ -768,6 +825,11 @@ class BluetoothManager {
   ///
   /// Returns true only when both sides took it.
   Future<bool> sendCommandToGlasses(List<int> command) async {
+    // The mirror is fed here rather than inside _writeTo: this is the one
+    // place a command passes exactly once, and a mirror that saw the same
+    // bytes twice would reassemble every chunked transfer wrong.
+    LensEmulator.mirror.consume(command);
+
     final left = await _writeTo(leftGlass, command);
     final right = await _writeTo(rightGlass, command);
 
@@ -833,7 +895,10 @@ class BluetoothManager {
     // The display has no glyphs for Cyrillic, Arabic and several other
     // scripts. Sending them anyway draws blank boxes, which reads as a broken
     // app rather than a hardware limit.
-    final textMsg = TextMessage(GlassesText.prepare(text));
+    final textMsg = TextMessage(
+      GlassesText.prepare(text),
+      charactersPerLine: LensTextWidth.current,
+    );
     List<List<int>> packets = textMsg.constructSendText();
 
     for (int i = 0; i < packets.length; i++) {
@@ -862,7 +927,10 @@ class BluetoothManager {
 
     if (streaming) {
       // Streaming mode: send only the last page for instant feedback
-      final textMsg = TextMessage(text);
+      final textMsg = TextMessage(
+        text,
+        charactersPerLine: LensTextWidth.current,
+      );
       final packet = textMsg.constructStreamingText();
       await sendCommandToGlasses(packet);
     } else {
@@ -953,9 +1021,18 @@ class BluetoothManager {
     G1Notification notif = G1Notification(ncsNotification: notification);
     List<Uint8List> notificationChunks = await notif.constructNotification();
 
-    // Left arm only, as the protocol specifies for 0x4B.
+    // Both arms, as the reference implementation sends it — not left-arm
+    // only.
+    //
+    // The protocol document names 0x4B a left-arm command, with a question
+    // mark on the byte range that suggests the writer was not certain
+    // either. Routing it to the left arm alone, on the strength of that
+    // document, is what actually broke delivery: notifications stopped
+    // reaching the lens entirely. The upstream app this was forked from
+    // sends every notification to both temples and is the one known-working
+    // reference here; the document loses to it.
     for (Uint8List chunk in notificationChunks) {
-      await sendToLeft(chunk);
+      await sendCommandToGlasses(chunk);
       await Future.delayed(
         Duration(milliseconds: 50),
       ); // Small delay between chunks
@@ -980,6 +1057,14 @@ class BluetoothManager {
     // Turn-by-turn directions take a different path: they are rewritten
     // several times a second and must not be treated as ordinary alerts.
     if (isConnected && await NavigationService.singleton.handle(notification)) {
+      return;
+    }
+
+    // A player's notification is rewritten as the position advances, so it
+    // is not an alert either: left on the ordinary path, one song flashes
+    // the lens over and over. NowPlayingService announces a track change
+    // and swallows the rest.
+    if (isConnected && await NowPlayingService.singleton.handle(notification)) {
       return;
     }
 
@@ -1010,7 +1095,9 @@ class BluetoothManager {
     if (await NotificationApps.singleton.remember(packageName, appName)) {
       debugPrint('BluetoothManager: first notification from $packageName, '
           'refreshing the glasses allowlist');
-      unawaited(sendSetup());
+      // Awaited: with the list now read by the firmware, a notification sent
+      // before its application is on it would be filtered out.
+      await sendSetup();
     }
 
     // Into the history whether or not the glasses are reachable. It used to
@@ -1021,15 +1108,28 @@ class BluetoothManager {
     // case was never recorded anywhere. The history's whole purpose is what
     // you missed; what you missed is precisely what arrives disconnected.
     NotificationHistory.singleton.remember(notification, appName);
+    // A note slot is a channel this app already knows works; keep it fresh
+    // in parallel with the 0x4B send below rather than waiting for the next
+    // periodic sync, up to a minute away.
+    unawaited(writeNoteSlots());
 
     if (!isConnected) return;
 
+    // A blank title, not just a falls back to the app's name.
+    //
+    // notification.title is often genuinely empty — a follow-up message in
+    // a conversation already open, a summary line — and an empty header is
+    // what every phone's own notification shade fills with the app's name
+    // rather than showing nothing. The glasses have no such fallback of
+    // their own; sending an empty title field is what an empty pane on the
+    // lens looked like.
+    final title = notification.title?.trim();
     NCSNotification ncsNotification = NCSNotification(
       msgId: (notification.id ?? 1) + DateTime.now().millisecondsSinceEpoch,
       action: 0,
       type: 0,
       appIdentifier: packageName,
-      title: notification.title ?? '',
+      title: (title == null || title.isEmpty) ? appName : title,
       subtitle: '',
       message: notification.content ?? '',
       displayName: appName,
@@ -1112,6 +1212,15 @@ class BluetoothManager {
     await _sync();
   }
 
+  /// Fetches the recordings the glasses made while the phone was away. Asked
+  /// a few seconds after the pair is up, as the official app does, once the
+  /// first burst of setup traffic has gone through.
+  void _fetchVoiceNotesSoon() {
+    Future.delayed(const Duration(seconds: 3), () {
+      if (isConnected) BluetoothReciever().requestVoiceNoteList();
+    });
+  }
+
   /// Fills the glasses' four note slots from a single plan.
   ///
   /// This used to write the dashboard's items into slots one upward and then
@@ -1132,10 +1241,11 @@ class BluetoothManager {
   Future<void> sendSetup() async {
     if (!isConnected) return;
     try {
-      // 0x04 is a left-arm command too.
+      // Both arms — see sendNotification for why the document's left-arm
+      // claim is not trusted here.
       final setup = await (await G1Setup.generateSetup()).constructSetup();
       for (final command in setup) {
-        await sendToLeft(command);
+        await sendCommandToGlasses(command);
       }
     } catch (e) {
       debugPrint('BluetoothManager: could not send the allowlist: $e');
@@ -1145,6 +1255,51 @@ class BluetoothManager {
   /// Public so that editing or pinning a note reaches the glasses at once
   /// rather than at the next sync, up to a minute later.
   Future<void> writeNoteSlots() => _writeNoteSlots();
+
+  /// Whether the latest notification also takes a note slot.
+  ///
+  /// Born as the workaround while the 0x4B banner was broken; now that the
+  /// banner works it is a preference — some wearers like the last message
+  /// staying readable on the dashboard, others want their slots back.
+  static const String noteSlotNotificationKey = 'notification_note_slot';
+
+  Future<bool> isNotificationNoteSlotEnabled() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(noteSlotNotificationKey) ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<void> setNotificationNoteSlotEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(noteSlotNotificationKey, enabled);
+    // Immediately: turning it off should clear the slot, not leave the last
+    // notification stranded there until something else rewrites it.
+    unawaited(writeNoteSlots());
+  }
+
+  /// The most recent notification, shaped for a note slot's name/text split.
+  ///
+  /// A note is one unchunked packet with single-byte length fields, unlike
+  /// the multi-chunk 0x4B notification — so both parts are cut hard rather
+  /// than risk a payload the firmware refuses.
+  SlotContent? _latestNotificationSlot() {
+    final items = NotificationHistory.singleton.items;
+    if (items.isEmpty) return null;
+    final latest = items.first;
+
+    final body = latest.body.isEmpty
+        ? latest.title
+        : (latest.title.isEmpty ? latest.body : '${latest.title}\n${latest.body}');
+    if (body.isEmpty) return null;
+
+    String cut(String s, int max) =>
+        s.length <= max ? s : '${s.substring(0, max - 1)}…';
+
+    return SlotContent(name: cut(latest.app, 20), text: cut(body, 120));
+  }
 
   /// The slot plan as it would be written right now.
   ///
@@ -1159,11 +1314,19 @@ class BluetoothManager {
     // dashboard's own items: pinned notes always outrank both.
     final clocks = await WorldClocksService.singleton.slotContent();
 
+    // Whatever arrived last, in a slot — when the wearer wants it there.
+    // Below the dashboard's own items since those are curated by the
+    // wearer, above the clock since news is more urgent than the time.
+    final notification = await isNotificationNoteSlotEnabled()
+        ? _latestNotificationSlot()
+        : null;
+
     return NoteSlots.plan(
       userNotes: await library.pinnedSlots(),
       generated: [
         for (final note in generated)
           SlotContent(name: note.name, text: note.text),
+        if (notification != null) notification,
         if (clocks != null) clocks,
       ],
       // Replaces the firmware's own "Hold right touchbar to add quicknote"
@@ -1246,7 +1409,15 @@ class BluetoothManager {
     await rightGlass!.sendData([Commands.OPEN_MIC, subCommand]);
   }
 
-  Future<void> disconnectFromGlasses() async {
+  Future<void> disconnectFromGlasses() {
+    // Behind the gate: disconnecting in the middle of another flow's setup
+    // is exactly the "device is disconnected" mid-discoverServices crash.
+    // The user's intent still wins — it runs as soon as the flow settles,
+    // and the end state is disconnected.
+    return _connectionFlows.exclusive(_disconnectFromGlassesNow);
+  }
+
+  Future<void> _disconnectFromGlassesNow() async {
     debugPrint('Disconnecting from glasses');
 
     try {

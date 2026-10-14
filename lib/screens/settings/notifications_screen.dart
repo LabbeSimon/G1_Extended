@@ -2,7 +2,9 @@ import 'package:android_package_manager/android_package_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
+import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/navigation_service.dart';
+import 'package:g1_extended/services/now_playing_service.dart';
 import 'package:g1_extended/theme/app_theme.dart';
 
 /// Which apps may put a notification on the glasses.
@@ -26,6 +28,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   String _query = '';
   bool _loading = true;
   bool _navigation = true;
+  bool _nowPlaying = true;
+  bool _noteSlot = true;
 
   @override
   void initState() {
@@ -36,6 +40,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   Future<void> _load() async {
     _blocklist = Hive.box('notificationBlocklist');
     _navigation = await NavigationService.singleton.isEnabled();
+    _nowPlaying = await NowPlayingService.singleton.isEnabled();
+    _noteSlot = await BluetoothManager().isNotificationNoteSlotEnabled();
 
     try {
       final manager = AndroidPackageManager();
@@ -124,6 +130,32 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                   onChanged: (value) async {
                     await NavigationService.singleton.setEnabled(value);
                     if (mounted) setState(() => _navigation = value);
+                  },
+                ),
+                SwitchListTile(
+                  value: _nowPlaying,
+                  title: const Text('Now playing'),
+                  subtitle: const Text(
+                    'Shows the track when it changes, instead of letting a '
+                    'player redraw the lens as the song advances. Spotify, '
+                    'YouTube Music, Deezer, podcast apps and more.',
+                  ),
+                  onChanged: (value) async {
+                    await NowPlayingService.singleton.setEnabled(value);
+                    if (mounted) setState(() => _nowPlaying = value);
+                  },
+                ),
+                SwitchListTile(
+                  value: _noteSlot,
+                  title: const Text('Last notification as a note'),
+                  subtitle: const Text(
+                    'Keeps the most recent notification readable in a '
+                    'dashboard note slot, in addition to the banner.',
+                  ),
+                  onChanged: (value) async {
+                    await BluetoothManager()
+                        .setNotificationNoteSlotEnabled(value);
+                    if (mounted) setState(() => _noteSlot = value);
                   },
                 ),
                 const Divider(),
