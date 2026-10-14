@@ -145,7 +145,8 @@ optional:
 - `alphacephei.com` once, to download the offline speech model
 - `api.github.com` to check for a newer release, if you leave that on
 - `raw.githubusercontent.com` for the extension catalogue, when you ask for it
-- an assistant endpoint you chose, if you configured one
+- `api.anthropic.com` for Claude, the assistant, once you paste your own API key
+- or an assistant endpoint you chose instead, if you configured one
 - your own Home Assistant, if you connected one
 
 ## Privacy

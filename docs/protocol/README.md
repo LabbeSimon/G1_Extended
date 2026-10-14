@@ -46,7 +46,7 @@ in an app is evidence, a byte that works on a face is proof.
 | Topic | Official app 1.6.5 | This app |
 |---|---|---|
 | Recordings (`0x1E` sub `0x02`) | total at bytes 5–6, packet index at 7–8, done when the count reaches total, first 400 bytes dropped; list requested on connection and after each download | **Fixed** to match: `VoiceNoteDownload`, list requested on connection and after each saved recording |
-| Teleprompter | Its own `0x09` mode: five lines, a progress bar, one-row scroll animation, a heartbeat every 2 s | **Added** as "Glasses teleprompter" (beta, waits for real glasses); text pages remain as the fallback |
+| Teleprompter | Its own `0x09` mode: five lines, a progress bar, one-row scroll animation, a heartbeat every 2 s | **Added** as "Glasses teleprompter" (beta, waits for real glasses); voice mode starts in the AI mode (`0x82`), the only one in which the official app opens the microphone, without the highlight dot; text pages remain as the fallback |
 | Assistant | Even AI, through Even's servers | **Added** Claude with the user's own API key, off until a key is pasted; self-hosted endpoint unchanged |
 | `0x4B` notification | Left temple only, byte 1 is `0x00`, each packet acknowledged, six attempts | Both temples, byte 1 is `0x01`. Confirmed working on glasses (see PROTOCOL_NOTES.md), left unchanged |
 | `0x4C` dismiss | Five bytes: `4C` + message id (u32 big-endian), left temple | A bare `4C` to both temples, never tried |
