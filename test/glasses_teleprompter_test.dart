@@ -83,6 +83,16 @@ void main() {
     expect(GlassesTeleprompter.isActive, isFalse);
   });
 
+  test('the sequence restarts at zero once the first screen is in', () async {
+    await teleprompter.start(lines(7));
+    expect([for (final (_, frame) in link.sent) frame[3]], [0, 0, 1, 1]);
+    link.sent.clear();
+
+    await teleprompter.nextLine();
+
+    expect([for (final (_, frame) in link.sent) frame[3]], [0, 0, 1, 1]);
+  });
+
   test('moving one line asks for the animated scroll', () async {
     await teleprompter.start(lines(7));
     link.sent.clear();

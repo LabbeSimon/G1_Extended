@@ -165,6 +165,9 @@ class GlassesTeleprompter {
       }
     }
 
+    // The official app restarts the sequence once the glasses took the whole
+    // first screen: every frame that follows counts again from zero.
+    _seq = 0;
     _running = true;
     active = this;
     _clock
