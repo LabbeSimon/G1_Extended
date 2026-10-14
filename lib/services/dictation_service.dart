@@ -4,8 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:g1_extended/models/g1/glasses_settings.dart';
 import 'package:g1_extended/services/assistant_service.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
+import 'package:g1_extended/services/even_ai_screen.dart';
 import 'package:g1_extended/services/home_assistant_service.dart';
 import 'package:g1_extended/services/notes_library.dart';
 import 'package:g1_extended/services/voice_command_runner.dart';
@@ -243,14 +245,15 @@ class DictationService {
   /// displayed like an answer on purpose — "The token was refused" on the
   /// lens is how someone finds out their setup is wrong, where a silent
   /// return leaves them tapping the temple again.
-  /// Shows [text] on the lens and, unless told otherwise, clears it once
+  /// Shows [text] on the lens and, unless told otherwise, closes it once
   /// there has been time to read it.
   ///
-  /// The glasses hold whatever was last sent until something replaces or
-  /// clears it: left alone, an answer or a confirmation stays on the lens
-  /// for good, which is what "the glasses don't clear it" looks like. The
-  /// official app faces the same thing and exits its AI screen a few seconds
-  /// after the answer; this mirrors that, scaled to how much there is to read.
+  /// The glasses hold whatever was last sent until something ends it: left
+  /// alone, an answer or a confirmation stays on the lens for good. Clearing
+  /// the text was not enough either — the AI screen the long press opened
+  /// stayed up, empty, with its scroll bar. The official app ends the session
+  /// with status 0 (its exitAI) a few seconds after the answer; this does the
+  /// same, timed to how much there is to read.
   Future<void> _show(String text, {bool clearAfter = true}) async {
     final bluetooth = BluetoothManager.singleton;
     final token = ++_displayToken;
@@ -267,9 +270,13 @@ class DictationService {
       // A newer message took the lens in the meantime: leave it be.
       if (token != _displayToken) return;
       try {
-        await bluetooth.clearGlassesDisplay();
+        if (!await EvenAiScreen.singleton.close()) {
+          // No AI session to end, or a firmware that refused it: exit to
+          // the dashboard, as the official app does when its session hangs.
+          await bluetooth.sendCommandToGlasses(ClearScreen.buildCommand());
+        }
       } catch (e) {
-        debugPrint('DictationService: could not clear the lens: $e');
+        debugPrint('DictationService: could not close the lens: $e');
       }
     });
   }
