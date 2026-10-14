@@ -27,7 +27,6 @@ import 'package:g1_extended/services/notification_apps.dart';
 
 import 'package:g1_extended/services/navigation_capture.dart';
 
-
 class DebugPage extends StatefulWidget {
   const DebugPage({super.key});
 
@@ -359,17 +358,19 @@ class _DebugPageSate extends State<DebugPage> {
       "et n'oubliez pas de liker et de vous abonner",
     ];
     for (var i = 0; i < demoText.length; i++) {
-      await bluetoothManager.sendCommandToGlasses(
-        tr.buildTranslatedCommand(demoText[i]),
-      );
-      await bluetoothManager.sendCommandToGlasses(
-        tr.buildOriginalCommand(demoTextFrench[i]),
-      );
+      for (final frame in tr.buildTranslatedCommand(demoText[i])) {
+        await bluetoothManager.sendCommandToGlasses(frame);
+      }
+      for (final frame in tr.buildOriginalCommand(demoTextFrench[i])) {
+        await bluetoothManager.sendCommandToGlasses(frame);
+      }
       await Future.delayed(const Duration(seconds: 4));
     }
+    await bluetoothManager.sendCommandToGlasses(tr.buildStopCommand());
     await bluetoothManager.setMicrophone(false);
+    await Future.delayed(const Duration(milliseconds: 500));
+    await bluetoothManager.rightGlass?.sendData([0x18]);
   }
-
 
   @override
   void initState() {
@@ -602,7 +603,6 @@ class _DebugPageSate extends State<DebugPage> {
             onPressed: _copyNavigationCapture,
             child: const Text("Copy navigation capture"),
           ),
-
         ],
       ),
     );

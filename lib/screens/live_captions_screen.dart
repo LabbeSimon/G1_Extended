@@ -3,10 +3,12 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import 'package:g1_extended/models/g1/glass.dart';
 import 'package:g1_extended/models/g1/translate.dart';
 import 'package:g1_extended/services/bluetooth_manager.dart';
 import 'package:g1_extended/services/translation_service.dart';
 import 'package:g1_extended/services/bluetooth_reciever.dart';
+import 'package:g1_extended/services/lens_text_width.dart';
 import 'package:g1_extended/services/speech_recognition_service.dart';
 import 'package:g1_extended/utils/lc3.dart';
 
@@ -45,15 +47,8 @@ class _LiveCaptionsScreenState extends State<LiveCaptionsScreen> {
   String _translated = '';
   Timer? _translateDebounce;
 
-  /// The firmware's own language ids, for the caption layout's header. It
-  /// knows only these four; anything else falls back to English — cosmetic
-  /// only, the text lines carry the actual languages.
-  static int _firmwareLanguage(String code) => switch (code) {
-        'zh' => TranslateLanguages.CHINESE,
-        'nl' => TranslateLanguages.DUTCH,
-        'fr' => TranslateLanguages.FRENCH,
-        _ => TranslateLanguages.ENGLISH,
-      };
+  /// The firmware's own language ids, for the screen's header.
+  static int _firmwareLanguage(String code) => TranslateLanguages.forCode(code);
 
   @override
   void initState() {
@@ -109,7 +104,8 @@ class _LiveCaptionsScreenState extends State<LiveCaptionsScreen> {
     }
 
     try {
-      _session = await SpeechRecognitionService.singleton.startLiveTranscription();
+      _session =
+          await SpeechRecognitionService.singleton.startLiveTranscription();
     } on SpeechModelMissingException catch (e) {
       _notify(e.toString());
       return;
@@ -124,7 +120,22 @@ class _LiveCaptionsScreenState extends State<LiveCaptionsScreen> {
     _display = display;
 
     await _bluetooth.sendCommandToGlasses(display.buildSetupCommand());
-    await _bluetooth.rightGlass?.sendData(display.buildRightGlassStartCommand());
+
+    // The right temple says whether a feature may start; 2 means another
+    // one is open and has to be closed first, as the official app does.
+    final answer = BluetoothReciever().awaitReply(
+      0x50,
+      timeout: const Duration(seconds: 2),
+      accept: (reply) => reply.length >= 6 && reply[4] == 0x01,
+      side: GlassSide.right,
+    );
+    await _bluetooth.rightGlass
+        ?.sendData(display.buildRightGlassStartCommand());
+    if ((await answer)?[5] == 0x02) {
+      await _bluetooth.sendCommandToGlasses([0x18]);
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+
     for (final command in display.buildInitalScreenLoad()) {
       await _bluetooth.sendCommandToGlasses(command);
     }
@@ -158,7 +169,7 @@ class _LiveCaptionsScreenState extends State<LiveCaptionsScreen> {
     if (display == null) return;
     // The original goes up immediately, translated or not: a caption that
     // waits for its translation reads as the microphone cutting out.
-    await _bluetooth.sendCommandToGlasses(display.buildOriginalCommand(line));
+    await _send(display.buildOriginalCommand(_layout(line)));
 
     if (!_translate || !_modelsReady) return;
 
@@ -173,9 +184,17 @@ class _LiveCaptionsScreenState extends State<LiveCaptionsScreen> {
 
       final still = _display;
       if (still == null) return;
-      await _bluetooth
-          .sendCommandToGlasses(still.buildTranslatedCommand(translated));
+      await _send(still.buildTranslatedCommand(_layout(translated)));
     });
+  }
+
+  static String _layout(String text) =>
+      Translate.layout(text, width: LensTextWidth.current);
+
+  Future<void> _send(List<Uint8List> frames) async {
+    for (final frame in frames) {
+      await _bluetooth.sendCommandToGlasses(frame);
+    }
   }
 
   Future<void> _stop() async {
@@ -194,13 +213,23 @@ class _LiveCaptionsScreenState extends State<LiveCaptionsScreen> {
 
     await _session?.close();
     _session = null;
+    final display = _display;
     _display = null;
 
     final receiver = BluetoothReciever();
     receiver.voiceCollector.isRecording = false;
     receiver.voiceCollector.reset();
 
-    await _bluetooth.setMicrophone(false);
+    if (display != null && _bluetooth.isConnected) {
+      // Stop translating, then leave the screen: without the last frame the
+      // glasses stayed on their translation layout after Stop.
+      await _bluetooth.sendCommandToGlasses(display.buildStopCommand());
+      await _bluetooth.setMicrophone(false);
+      await Future.delayed(const Duration(milliseconds: 500));
+      await _bluetooth.rightGlass?.sendData([0x18]);
+    } else {
+      await _bluetooth.setMicrophone(false);
+    }
   }
 
   Widget _languageDropdown({required bool isFrom}) {
@@ -212,8 +241,7 @@ class _LiveCaptionsScreenState extends State<LiveCaptionsScreen> {
       decoration: InputDecoration(
         labelText: isFrom ? 'They speak' : 'You read',
         border: const OutlineInputBorder(),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
       items: [
         for (final entry in TranslationService.languages.entries)
